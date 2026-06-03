@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import type { Deal, DealPrincipal, DealStatus, UnderwritingOutput } from "@/lib/types";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { Deal, DealPrincipal, DealStatus, UnderwritingOutput, UserRole } from "@/lib/types";
 
 /**
  * Data access for the deal pipeline. All raw column/relation names live here
@@ -132,4 +133,73 @@ export async function getDealById(id: string): Promise<Deal | null> {
     .maybeSingle();
   if (base.error || !base.data) return null;
   return normalize(base.data as unknown as DealRow);
+}
+
+// ---------------------------------------------------------------------------
+// Page-data helpers (sidebar sections)
+// ---------------------------------------------------------------------------
+
+export interface KeyPrincipal {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  role: UserRole;
+  entity_name: string | null;
+}
+
+/** All users with the `kp` role (Key Principals page). */
+export async function getKeyPrincipals(): Promise<KeyPrincipal[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, full_name, email, role, entity_name")
+    .eq("role", "kp")
+    .order("full_name");
+  if (error) return [];
+  return (data ?? []) as KeyPrincipal[];
+}
+
+export interface DealDocument {
+  id: string;
+  file_name: string;
+  file_type: string | null;
+  uploaded_at: string;
+  deal_address: string;
+  url: string | null;
+}
+
+/** All documents across deals, with signed download URLs (Documents page). */
+export async function getAllDocuments(): Promise<DealDocument[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("deal_documents")
+    .select("id, file_name, file_type, uploaded_at, file_url, deal:deal_id(property_address)")
+    .order("uploaded_at", { ascending: false });
+  if (error) return [];
+
+  const admin = createAdminClient();
+  const rows = (data ?? []) as unknown as {
+    id: string;
+    file_name: string;
+    file_type: string | null;
+    uploaded_at: string;
+    file_url: string;
+    deal: { property_address: string } | null;
+  }[];
+
+  return Promise.all(
+    rows.map(async (r) => {
+      const { data: signed } = await admin.storage
+        .from("deal-documents")
+        .createSignedUrl(r.file_url, 60 * 60);
+      return {
+        id: r.id,
+        file_name: r.file_name,
+        file_type: r.file_type,
+        uploaded_at: r.uploaded_at,
+        deal_address: r.deal?.property_address ?? "—",
+        url: signed?.signedUrl ?? null,
+      };
+    }),
+  );
 }

@@ -22,8 +22,8 @@ function buildNotes(
     `Submitted by ${contact.name || "—"} · ${contact.email || "—"} · ${contact.phone || "—"}`,
     d.property_type ? `Property type: ${d.property_type}` : null,
     d.balloon_term_months != null ? `Balloon: ${d.balloon_term_months} months` : null,
-    u.risks.length ? `Risks: ${u.risks.join("; ")}` : null,
-    u.conditions.length ? `Conditions: ${u.conditions.join("; ")}` : null,
+    u?.risks.length ? `Risks: ${u.risks.join("; ")}` : null,
+    u?.conditions.length ? `Conditions: ${u.conditions.join("; ")}` : null,
   ].filter(Boolean);
   return lines.join("\n");
 }
@@ -82,6 +82,12 @@ export async function POST(req: Request) {
   // Auto-populate the deal record (service role bypasses RLS for this trusted insert).
   const d = result.extracted_deal_data;
   const u = result.underwriting;
+  if (!u) {
+    return NextResponse.json(
+      { error: "Underwriting returned no analysis. Please try again." },
+      { status: 502 },
+    );
+  }
   const supabase = createAdminClient();
 
   const insertRow = {

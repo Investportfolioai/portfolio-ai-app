@@ -127,6 +127,9 @@ export interface ExtractedDealData {
   exit_strategy: ExitStrategy | null;
   lender_name: string | null;
   quote_number: string | null;
+  /** Capital Runway Multiple inputs — entered manually or extracted by AI. */
+  total_cash_invested: number | null;
+  net_monthly_cashflow: number | null;
 }
 
 export type Recommendation = "proceed" | "proceed_with_conditions" | "decline";
@@ -136,9 +139,9 @@ export interface UnderwritingAnalysis {
   acquisition_grade: number;
   stabilization_grade: number;
   equity_spread: number | null;
-  /** Inputs for the Capital Runway Multiple. */
-  total_cash_invested: number | null;
-  net_monthly_cashflow: number | null;
+  /** Legacy location for CRM inputs (now in extracted_deal_data). */
+  total_cash_invested?: number | null;
+  net_monthly_cashflow?: number | null;
   summary: string;
   strengths: string[];
   risks: string[];
@@ -147,7 +150,8 @@ export interface UnderwritingAnalysis {
 
 export interface UnderwritingOutput {
   extracted_deal_data: ExtractedDealData;
-  underwriting: UnderwritingAnalysis;
+  /** Null until underwriting has been run (manual deals start un-underwritten). */
+  underwriting: UnderwritingAnalysis | null;
 }
 
 export const RECOMMENDATION_LABELS: Record<Recommendation, string> = {
@@ -164,13 +168,14 @@ export const RECOMMENDATION_LABELS: Record<Recommendation, string> = {
 export function capitalRunwayMultiple(
   deal: Pick<Deal, "ai_analysis">,
 ): string {
-  const a = deal.ai_analysis?.underwriting;
-  if (!a || a.total_cash_invested == null || a.net_monthly_cashflow == null) {
-    return "—";
-  }
-  if (a.net_monthly_cashflow >= 0) return "Cash Flowing";
-  const months = a.total_cash_invested / -a.net_monthly_cashflow;
-  return `${months.toFixed(1)}x`;
+  const ed = deal.ai_analysis?.extracted_deal_data;
+  const uw = deal.ai_analysis?.underwriting;
+  // Prefer the deal-fact location; fall back to the legacy underwriting slot.
+  const cash = ed?.total_cash_invested ?? uw?.total_cash_invested ?? null;
+  const net = ed?.net_monthly_cashflow ?? uw?.net_monthly_cashflow ?? null;
+  if (cash == null || net == null) return "—";
+  if (net >= 0) return "Cash Flowing";
+  return `${(cash / -net).toFixed(1)}x`;
 }
 
 /**

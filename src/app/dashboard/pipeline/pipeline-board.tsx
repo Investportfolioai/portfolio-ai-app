@@ -20,8 +20,12 @@ import {
   passDeal,
   runUnderwriting,
   getDealDetail,
+  createDeal,
   type DealDetail,
+  type NewDealInput,
 } from "./actions";
+
+const ASSET_TYPES = ["Multifamily", "Commercial", "Mixed Use", "Industrial", "Land"];
 
 const STATUS_TABS: { key: DealStatus | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -59,6 +63,8 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
     [deals, status, structure],
   );
 
+  const [adding, setAdding] = useState(false);
+
   const selected = deals.find((d) => d.id === selectedId) ?? null;
 
   return (
@@ -67,8 +73,9 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
     >
-      {/* Status tabs */}
-      <div className="mb-4 flex flex-wrap gap-1 border-b border-border">
+      {/* Status tabs + Add Deal */}
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-2 border-b border-border">
+        <div className="flex flex-wrap gap-1">
         {STATUS_TABS.map((t) => {
           const active = status === t.key;
           return (
@@ -90,6 +97,14 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
             </button>
           );
         })}
+        </div>
+        <button
+          type="button"
+          onClick={() => setAdding(true)}
+          className="mb-1.5 rounded-full bg-accent px-4 py-1.5 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+        >
+          + Add Deal
+        </button>
       </div>
 
       {/* Structure chips */}
@@ -124,7 +139,175 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
       )}
 
       <DealPanel deal={selected} onClose={() => setSelectedId(null)} />
+      <AddDealModal open={adding} onClose={() => setAdding(false)} />
     </motion.div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Add Deal modal
+// ---------------------------------------------------------------------------
+
+function AddDealModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  function n(fd: FormData, k: string): number | null {
+    const v = String(fd.get(k) ?? "").trim();
+    return v === "" ? null : Number(v);
+  }
+
+  function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const input: NewDealInput = {
+      property_address: String(fd.get("property_address") ?? ""),
+      asset_type: String(fd.get("asset_type") ?? ""),
+      purchase_price: n(fd, "purchase_price"),
+      arv: n(fd, "arv"),
+      loan_amount: n(fd, "loan_amount"),
+      cash_invested: n(fd, "cash_invested"),
+      net_monthly_cashflow: n(fd, "net_monthly_cashflow"),
+      annual_gross_revenue: n(fd, "annual_gross_revenue"),
+      seller_carry: n(fd, "seller_carry"),
+      notes: String(fd.get("notes") ?? ""),
+      status: (String(fd.get("status") ?? "pending") as NewDealInput["status"]),
+    };
+    setError(null);
+    startTransition(async () => {
+      const res = await createDeal(input);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      router.refresh();
+      onClose();
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
+      <div className="absolute inset-0 bg-primary/40 backdrop-blur-[1px]" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <h2 className="text-lg text-primary">Add Deal</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-primary"
+          >
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+        <form onSubmit={onSubmit} className="space-y-4 px-6 py-5">
+          <ModalField label="Property address" name="property_address" required />
+          <ModalSelect label="Asset type" name="asset_type" options={ASSET_TYPES} />
+          <div className="grid grid-cols-2 gap-3">
+            <ModalField label="Purchase price" name="purchase_price" type="number" />
+            <ModalField label="ARV" name="arv" type="number" />
+            <ModalField label="Loan amount" name="loan_amount" type="number" />
+            <ModalField label="Cash invested" name="cash_invested" type="number" />
+            <ModalField label="Net monthly cash flow" name="net_monthly_cashflow" type="number" />
+            <ModalField label="Annual gross revenue" name="annual_gross_revenue" type="number" />
+            <ModalField label="Seller carry" name="seller_carry" type="number" defaultValue="0" />
+            <ModalSelect label="Status" name="status" options={["pending", "active"]} />
+          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+              Notes
+            </span>
+            <textarea
+              name="notes"
+              rows={2}
+              className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+          </label>
+
+          {error && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive ring-1 ring-destructive/20">
+              {error}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+            >
+              {pending ? "Adding…" : "Add Deal"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ModalField({
+  label,
+  ...props
+}: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+        {label}
+      </span>
+      <input
+        {...props}
+        step={props.type === "number" ? "any" : undefined}
+        className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+      />
+    </label>
+  );
+}
+
+function ModalSelect({
+  label,
+  name,
+  options,
+}: {
+  label: string;
+  name: string;
+  options: string[];
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+        {label}
+      </span>
+      <select
+        name={name}
+        defaultValue={options[0]}
+        className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+      >
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o.charAt(0).toUpperCase() + o.slice(1)}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -190,29 +373,36 @@ function StatusBadge({ status }: { status: DealStatus }) {
   );
 }
 
-function GradeBadge({
-  caption,
-  value,
-  tone,
-}: {
-  caption: string;
-  value: number | null;
-  tone: "gold" | "white";
-}) {
+function gradeClasses(v: number): string {
+  if (v >= 80) return "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30";
+  if (v >= 60) return "bg-accent/15 text-amber-700 ring-accent/40";
+  return "bg-rose-500/10 text-rose-600 ring-rose-400/30";
+}
+
+function GradeBadge({ caption, value }: { caption: string; value: number }) {
   return (
     <div className="flex flex-col items-center gap-1">
       <span
         className={
-          "data-number flex h-9 w-9 items-center justify-center rounded-full bg-primary text-[13px] font-medium tabular-nums ring-1 ring-inset ring-white/10 " +
-          (tone === "gold" ? "text-accent" : "text-white")
+          "data-number flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-medium tabular-nums ring-1 " +
+          gradeClasses(value)
         }
       >
-        {value ?? "—"}
+        {value}
       </span>
       <span className="text-[8px] font-medium uppercase tracking-widest text-muted-foreground">
         {caption}
       </span>
     </div>
+  );
+}
+
+/** Shown on cards with no grades yet. */
+function PendingGradeBadge() {
+  return (
+    <span className="rounded-full bg-secondary px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground ring-1 ring-border">
+      Pending
+    </span>
   );
 }
 
@@ -265,10 +455,14 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
 
       <div className="mb-4 flex items-center justify-between gap-3">
         <StatusBadge status={deal.status} />
-        <div className="flex items-center gap-2.5">
-          <GradeBadge caption="Acq" value={deal.acquisition_grade} tone="gold" />
-          <GradeBadge caption="Stab" value={deal.stabilization_grade} tone="white" />
-        </div>
+        {deal.acquisition_grade == null && deal.stabilization_grade == null ? (
+          <PendingGradeBadge />
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <GradeBadge caption="Acq" value={deal.acquisition_grade ?? 0} />
+            <GradeBadge caption="Stab" value={deal.stabilization_grade ?? 0} />
+          </div>
+        )}
       </div>
 
       <dl className="grid grid-cols-3 gap-3 border-t border-border pt-4">
@@ -551,7 +745,7 @@ function AiTab({
   running: boolean;
   onRun: () => void;
 }) {
-  const a = deal.ai_analysis;
+  const uw = deal.ai_analysis?.underwriting ?? null;
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -564,13 +758,13 @@ function AiTab({
           onClick={onRun}
           className="rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
         >
-          {running ? "Running…" : a ? "Re-run" : "Run underwriting"}
+          {running ? "Running…" : uw ? "Re-run" : "Run underwriting"}
         </button>
       </div>
 
-      {!a ? (
+      {!uw ? (
         <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-          Not yet underwritten. Run the engine on the deal&apos;s documents.
+          Not yet underwritten. Run the engine on this deal.
         </p>
       ) : (
         <div className="space-y-4">
@@ -579,17 +773,17 @@ function AiTab({
               Recommendation
             </div>
             <div className="mt-1 text-lg font-medium">
-              {RECOMMENDATION_LABELS[a.underwriting.recommendation]}
+              {RECOMMENDATION_LABELS[uw.recommendation]}
             </div>
             <div className="mt-2 flex gap-6 text-sm">
-              <span className="data-number">ACQ {a.underwriting.acquisition_grade}</span>
-              <span className="data-number">STAB {a.underwriting.stabilization_grade}</span>
+              <span className="data-number">ACQ {uw.acquisition_grade}</span>
+              <span className="data-number">STAB {uw.stabilization_grade}</span>
             </div>
           </div>
-          <p className="text-sm leading-relaxed text-foreground">{a.underwriting.summary}</p>
-          <BulletBlock title="Strengths" items={a.underwriting.strengths} />
-          <BulletBlock title="Risks" items={a.underwriting.risks} />
-          <BulletBlock title="Conditions" items={a.underwriting.conditions} />
+          <p className="text-sm leading-relaxed text-foreground">{uw.summary}</p>
+          <BulletBlock title="Strengths" items={uw.strengths} />
+          <BulletBlock title="Risks" items={uw.risks} />
+          <BulletBlock title="Conditions" items={uw.conditions} />
         </div>
       )}
     </div>

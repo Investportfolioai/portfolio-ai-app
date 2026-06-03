@@ -4,9 +4,24 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
-import { underwriteDeal } from "@/lib/underwriting";
+import { underwriteDeal, underwriteDealData } from "@/lib/underwriting";
+import type { DealStatus, UnderwritingOutput } from "@/lib/types";
 
 export type ActionState = { ok: true } | { ok: false; error: string };
+
+export interface NewDealInput {
+  property_address: string;
+  asset_type: string;
+  purchase_price: number | null;
+  arv: number | null;
+  loan_amount: number | null;
+  cash_invested: number | null;
+  net_monthly_cashflow: number | null;
+  annual_gross_revenue: number | null;
+  seller_carry: number | null;
+  notes: string;
+  status: DealStatus;
+}
 
 export interface ActivityEntry {
   id: string;
@@ -132,9 +147,6 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
 
   const loiDoc = docs?.find((d) => /loi/i.test(d.file_name));
   const deckDoc = docs?.find((d) => /deck/i.test(d.file_name));
-  if (!loiDoc) {
-    return { ok: false, error: "No LOI on file to underwrite." };
-  }
 
   async function download(path: string): Promise<string> {
     const { data, error } = await admin.storage.from(BUCKET).download(path);
@@ -142,17 +154,40 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
     return Buffer.from(await data.arrayBuffer()).toString("base64");
   }
 
-  let analysis;
+  let analysis: UnderwritingOutput;
   try {
-    const loi = { base64: await download(loiDoc.file_url) };
-    const deck = deckDoc ? { base64: await download(deckDoc.file_url) } : undefined;
-    analysis = await underwriteDeal(loi, deck);
+    if (loiDoc) {
+      // Document path — underwrite from the uploaded PDFs.
+      const loi = { base64: await download(loiDoc.file_url) };
+      const deck = deckDoc ? { base64: await download(deckDoc.file_url) } : undefined;
+      analysis = await underwriteDeal(loi, deck);
+    } else {
+      // No PDFs on file — underwrite from the deal's structured data.
+      const { data: deal } = await admin
+        .from("deals")
+        .select(
+          "property_address, city, state, structure_type, purchase_price, arv, loan_amount, initial_advance, holdback, interest_rate, ltv, seller_note_amount, seller_note_rate, exit_strategy, lender_name, quote_number, notes, ai_analysis",
+        )
+        .eq("id", dealId)
+        .maybeSingle();
+      if (!deal) return { ok: false, error: "Deal not found." };
+      const manual =
+        (deal.ai_analysis as UnderwritingOutput | null)?.extracted_deal_data ?? null;
+      const { ai_analysis: _drop, ...cols } = deal;
+      analysis = await underwriteDealData({
+        ...cols,
+        property_type: manual?.property_type ?? null,
+        total_cash_invested: manual?.total_cash_invested ?? null,
+        net_monthly_cashflow: manual?.net_monthly_cashflow ?? null,
+      });
+    }
   } catch (err) {
     console.error("runUnderwriting failed:", err);
-    return { ok: false, error: "Underwriting failed while reading the documents." };
+    return { ok: false, error: "Underwriting failed. Please try again." };
   }
 
   const u = analysis.underwriting;
+  if (!u) return { ok: false, error: "Underwriting returned no analysis." };
   await admin
     .from("deals")
     .update({
@@ -166,4 +201,55 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   await logActivity(dealId, "underwriting_run", `Recommendation: ${u.recommendation}.`);
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
+}
+
+/**
+ * Manually add a deal. Asset type + CRM inputs are stored in ai_analysis (no
+ * dedicated columns); grades stay null (pending) until underwriting is run.
+ */
+export async function createDeal(
+  input: NewDealInput,
+): Promise<ActionState & { dealId?: string }> {
+  const address = input.property_address.trim();
+  if (!address) return { ok: false, error: "Property address is required." };
+
+  const supabase = await createClient();
+  const aiAnalysis = {
+    extracted_deal_data: {
+      property_address: address,
+      property_type: input.asset_type || null,
+      purchase_price: input.purchase_price,
+      arv: input.arv,
+      loan_amount: input.loan_amount,
+      seller_note_amount: input.seller_carry,
+      total_cash_invested: input.cash_invested,
+      net_monthly_cashflow: input.net_monthly_cashflow,
+      annual_gross_revenue: input.annual_gross_revenue,
+    },
+    underwriting: null,
+  };
+
+  const { data, error } = await supabase
+    .from("deals")
+    .insert({
+      property_address: address,
+      structure_type: "creative",
+      stage: "prospecting",
+      status: input.status,
+      purchase_price: input.purchase_price,
+      arv: input.arv,
+      loan_amount: input.loan_amount,
+      seller_note_amount: input.seller_carry,
+      notes: input.notes.trim() || null,
+      ai_analysis: aiAnalysis,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    return { ok: false, error: error?.message ?? "Could not create the deal." };
+  }
+  await logActivity(data.id, "created", "Deal added manually.");
+  revalidatePath("/dashboard/pipeline");
+  return { ok: true, dealId: data.id };
 }
