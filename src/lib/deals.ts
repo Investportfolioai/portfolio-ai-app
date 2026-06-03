@@ -2,7 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { daysUntil } from "@/lib/types";
-import type { Deal, DealPrincipal, DealStatus, UnderwritingOutput, UserRole } from "@/lib/types";
+import type { Deal, DealPrincipal, DealStatus, LenderType, UnderwritingOutput, UserRole } from "@/lib/types";
 
 /**
  * Data access for the deal pipeline. All raw column/relation names live here
@@ -180,18 +180,66 @@ export interface KeyPrincipal {
   email: string | null;
   role: UserRole;
   entity_name: string | null;
+  deals_count: number;
+  capital_exposure: number;
 }
 
-/** All users with the `kp` role (Key Principals page). */
+/** KPs with attached-deal counts and total capital exposure (via deal_kps). */
 export async function getKeyPrincipals(): Promise<KeyPrincipal[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data: users, error } = await supabase
     .from("users")
     .select("id, full_name, email, role, entity_name")
     .eq("role", "kp")
     .order("full_name");
   if (error) return [];
-  return (data ?? []) as KeyPrincipal[];
+
+  const { data: links } = await supabase
+    .from("deal_kps")
+    .select("kp_id, deal:deal_id(ai_analysis)");
+  const byKp = new Map<string, { count: number; exposure: number }>();
+  for (const l of (links ?? []) as unknown as {
+    kp_id: string;
+    deal: { ai_analysis: UnderwritingOutput | null } | null;
+  }[]) {
+    const ed = l.deal?.ai_analysis?.extracted_deal_data;
+    const uw = l.deal?.ai_analysis?.underwriting;
+    const cash = ed?.total_cash_invested ?? uw?.total_cash_invested ?? 0;
+    const cur = byKp.get(l.kp_id) ?? { count: 0, exposure: 0 };
+    cur.count += 1;
+    cur.exposure += cash ?? 0;
+    byKp.set(l.kp_id, cur);
+  }
+
+  return ((users ?? []) as Omit<KeyPrincipal, "deals_count" | "capital_exposure">[]).map(
+    (u) => ({
+      ...u,
+      deals_count: byKp.get(u.id)?.count ?? 0,
+      capital_exposure: byKp.get(u.id)?.exposure ?? 0,
+    }),
+  );
+}
+
+export interface Lender {
+  id: string;
+  name: string;
+  type: LenderType | null;
+  rate: number | null;
+  max_ltv: number | null;
+  contact_name: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
+/** All lenders (Lenders page). */
+export async function getLenders(): Promise<Lender[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lenders")
+    .select("id, name, type, rate, max_ltv, contact_name, phone, email")
+    .order("name");
+  if (error) return [];
+  return (data ?? []) as Lender[];
 }
 
 export interface DealDocument {

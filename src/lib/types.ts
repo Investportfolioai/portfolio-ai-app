@@ -30,6 +30,16 @@ export type ExitStrategy = "sell" | "refi" | "hold" | "assignment";
 /** Platform roles (enum `public.user_role`). */
 export type UserRole = "owner" | "partner" | "kp" | "viewer";
 
+/** Lender type (enum `public.lender_type`). */
+export type LenderType = "hard_money" | "private" | "institutional" | "seller";
+
+export const LENDER_TYPE_LABELS: Record<LenderType, string> = {
+  hard_money: "Hard Money",
+  private: "Private",
+  institutional: "Institutional",
+  seller: "Seller",
+};
+
 /** A linked user (owner / co-owner), embedded from the `users` table. */
 export interface DealPrincipal {
   id: string;
