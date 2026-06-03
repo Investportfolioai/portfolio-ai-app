@@ -270,15 +270,22 @@ export async function createDeal(
 // Session 5 (cont.) — dead status, inline edit, milestones, doc upload
 // ===========================================================================
 
-/** Item 1 — mark a deal dead (starts the 120-day auto-delete countdown). */
-export async function markDealDead(dealId: string): Promise<ActionState> {
+/** Mark a deal dead with a reason (starts the 120-day auto-delete countdown). */
+export async function markDealDead(
+  dealId: string,
+  reason: string,
+): Promise<ActionState> {
   const supabase = await createClient();
   const { error } = await supabase
     .from("deals")
     .update({ status: "dead", status_changed_at: new Date().toISOString() })
     .eq("id", dealId);
   if (error) return { ok: false, error: error.message };
-  await logActivity(dealId, "marked_dead", "Marked dead — auto-deletes in 120 days.");
+  await logActivity(
+    dealId,
+    "marked_dead",
+    `${reason || "No reason"} — auto-deletes in 120 days.`,
+  );
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
 }
@@ -409,6 +416,68 @@ export async function uploadDealDocument(
     revalidatePath("/dashboard/pipeline");
     return { ok: false, error: "Uploaded, but date/term extraction failed." };
   }
+
+  // Auto-populate the Timeline with extracted dates (term changes are confirmed in the UI).
+  for (const ms of extraction.milestones) {
+    await admin.from("deal_milestones").insert({
+      deal_id: dealId,
+      label: ms.label,
+      target_date: ms.target_date,
+      milestone_type: ms.milestone_type,
+      source: "ai_extracted",
+    });
+  }
+  if (extraction.milestones.length > 0) {
+    await logActivity(
+      dealId,
+      "dates_extracted",
+      `Added ${extraction.milestones.length} milestone date(s) from ${file.name}.`,
+    );
+  }
+
   revalidatePath("/dashboard/pipeline");
   return { ok: true, extraction };
+}
+
+/** Item 5 — edit CRM/revenue fields stored in ai_analysis.extracted_deal_data. */
+const EDITABLE_AI_FIELDS: Record<string, string> = {
+  total_cash_invested: "Cash Invested",
+  net_monthly_cashflow: "Net Monthly Cash Flow",
+  annual_gross_revenue: "Annual Gross Revenue",
+};
+
+export async function updateDealAiField(
+  dealId: string,
+  key: string,
+  value: string,
+): Promise<ActionState> {
+  const label = EDITABLE_AI_FIELDS[key];
+  if (!label) return { ok: false, error: "That field is not editable." };
+  const v = value.trim();
+  const parsed = v === "" ? null : Number(v);
+  if (parsed !== null && Number.isNaN(parsed)) {
+    return { ok: false, error: "Enter a valid number." };
+  }
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("deals")
+    .select("ai_analysis")
+    .eq("id", dealId)
+    .maybeSingle();
+  const existing = (data?.ai_analysis as UnderwritingOutput | null) ?? {
+    extracted_deal_data: {},
+    underwriting: null,
+  };
+  const next = {
+    ...existing,
+    extracted_deal_data: { ...(existing.extracted_deal_data ?? {}), [key]: parsed },
+  };
+  const { error } = await supabase
+    .from("deals")
+    .update({ ai_analysis: next })
+    .eq("id", dealId);
+  if (error) return { ok: false, error: error.message };
+  await logActivity(dealId, "field_edited", `${label} → ${v || "—"}`);
+  revalidatePath("/dashboard/pipeline");
+  return { ok: true };
 }

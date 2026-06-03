@@ -28,6 +28,7 @@ import {
   createDeal,
   markDealDead,
   updateDealField,
+  updateDealAiField,
   createMilestone,
   deleteMilestone,
   uploadDealDocument,
@@ -39,6 +40,14 @@ import {
 type Extraction = Extract<UploadResult, { ok: true }>["extraction"];
 
 const ASSET_TYPES = ["Multifamily", "Commercial", "Mixed Use", "Industrial", "Land"];
+
+const DEAD_REASONS = [
+  "Not a fit",
+  "Seller unresponsive",
+  "Financing fell through",
+  "Terms changed",
+  "Other",
+];
 
 const STATUS_TABS: { key: DealStatus | "all"; label: string }[] = [
   { key: "all", label: "All" },
@@ -466,7 +475,20 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
           <h3 className="truncate text-base text-primary">{deal.property_address}</h3>
           {locality && <p className="truncate text-xs text-muted-foreground">{locality}</p>}
         </div>
-        <StructureBadge structure={deal.structure_type} />
+        <div className="flex shrink-0 items-center gap-1.5">
+          {deal.next_milestone_days != null && deal.next_milestone_days <= 10 && (
+            <span
+              title={`Milestone in ${deal.next_milestone_days}d`}
+              className="text-rose-600"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
+                <path d="M12 7.5v5l3 1.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              </svg>
+            </span>
+          )}
+          <StructureBadge structure={deal.structure_type} />
+        </div>
       </div>
 
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -610,6 +632,8 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [running, startRun] = useTransition();
   const [markingDead, startMarkDead] = useTransition();
+  const [confirmingDead, setConfirmingDead] = useState(false);
+  const [deadReason, setDeadReason] = useState(DEAD_REASONS[0]);
 
   const reloadDetail = () => {
     if (deal) getDealDetail(deal.id).then(setDetail);
@@ -621,7 +645,10 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
 
   // Reset to Overview when a different deal opens.
   useEffect(() => {
-    if (open) setTab("Overview");
+    if (open) {
+      setTab("Overview");
+      setConfirmingDead(false);
+    }
   }, [deal?.id, open]);
 
   // Load activity + documents for the open deal.
@@ -705,16 +732,10 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                 {deal.status !== "dead" && (
                   <button
                     type="button"
-                    disabled={markingDead}
-                    onClick={() =>
-                      startMarkDead(async () => {
-                        await markDealDead(deal.id);
-                        router.refresh();
-                      })
-                    }
-                    className="rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-medium text-primary-foreground/80 transition-colors hover:bg-white/10 disabled:opacity-60"
+                    onClick={() => setConfirmingDead(true)}
+                    className="rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-medium text-primary-foreground/80 transition-colors hover:bg-white/10"
                   >
-                    {markingDead ? "…" : "Mark Dead"}
+                    Mark Dead
                   </button>
                 )}
                 <button
@@ -729,6 +750,44 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                 </button>
               </div>
             </div>
+
+            {confirmingDead && (
+              <div className="flex items-center gap-2 border-b border-border bg-secondary px-4 py-2">
+                <span className="shrink-0 text-xs text-muted-foreground">Reason</span>
+                <select
+                  value={deadReason}
+                  onChange={(e) => setDeadReason(e.target.value)}
+                  className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                >
+                  {DEAD_REASONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={markingDead}
+                  onClick={() =>
+                    startMarkDead(async () => {
+                      await markDealDead(deal.id, deadReason);
+                      setConfirmingDead(false);
+                      router.refresh();
+                    })
+                  }
+                  className="shrink-0 rounded-full bg-destructive/90 px-3 py-1 text-xs font-medium text-white hover:bg-destructive disabled:opacity-60"
+                >
+                  {markingDead ? "…" : "Confirm Dead"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDead(false)}
+                  className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
 
             {/* Tabs */}
             <div className="flex border-b border-border px-2">
@@ -800,7 +859,8 @@ function OverviewTab({
   reunderwriting: boolean;
 }) {
   const [dirty, setDirty] = useState(false);
-  const assetType = deal.ai_analysis?.extracted_deal_data?.property_type ?? "—";
+  const ed = deal.ai_analysis?.extracted_deal_data;
+  const assetType = ed?.property_type ?? "—";
   const saved = () => {
     setDirty(true);
     onChanged();
@@ -814,6 +874,9 @@ function OverviewTab({
         <EditableRow dealId={deal.id} field="arv" label="ARV" numeric raw={deal.arv} display={money(deal.arv)} onSaved={saved} />
         <EditableRow dealId={deal.id} field="loan_amount" label="Loan Amount" numeric raw={deal.loan_amount} display={money(deal.loan_amount)} onSaved={saved} />
         <EditableRow dealId={deal.id} field="seller_note_amount" label="Seller Carry" numeric raw={deal.seller_note_amount} display={money(deal.seller_note_amount)} onSaved={saved} />
+        <EditableRow dealId={deal.id} field="total_cash_invested" label="Cash Invested" numeric ai raw={ed?.total_cash_invested ?? null} display={money(ed?.total_cash_invested ?? null)} onSaved={saved} />
+        <EditableRow dealId={deal.id} field="net_monthly_cashflow" label="Net Monthly" numeric ai raw={ed?.net_monthly_cashflow ?? null} display={money(ed?.net_monthly_cashflow ?? null)} onSaved={saved} />
+        <EditableRow dealId={deal.id} field="annual_gross_revenue" label="Annual Revenue" numeric ai raw={ed?.annual_gross_revenue ?? null} display={money(ed?.annual_gross_revenue ?? null)} onSaved={saved} />
         <Row label="Equity Spread" value={money(equitySpread(deal))} />
         <Row label="ACQ Grade" value={deal.acquisition_grade != null ? `${deal.acquisition_grade} / 100` : "—"} />
         <Row label="STAB Grade" value={deal.stabilization_grade != null ? `${deal.stabilization_grade} / 100` : "—"} />
@@ -849,6 +912,7 @@ function EditableRow({
   raw,
   display,
   numeric,
+  ai,
   onSaved,
 }: {
   dealId: string;
@@ -857,6 +921,7 @@ function EditableRow({
   raw: string | number | null;
   display: string;
   numeric?: boolean;
+  ai?: boolean;
   onSaved: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -865,7 +930,9 @@ function EditableRow({
 
   function save() {
     startSave(async () => {
-      const res = await updateDealField(dealId, field, value);
+      const res = ai
+        ? await updateDealAiField(dealId, field, value)
+        : await updateDealField(dealId, field, value);
       if (res.ok) {
         setEditing(false);
         onSaved();
@@ -1077,14 +1144,9 @@ function DocumentsTab({
               <span className="text-foreground">
                 {m.label} · <span className="data-number">{m.target_date}</span>
               </span>
-              <ApplyButton
-                label="Add date"
-                onApply={async () => {
-                  const r = await createMilestone(dealId, m, "ai_extracted");
-                  onChanged();
-                  return r;
-                }}
-              />
+              <span className="shrink-0 text-xs font-medium text-emerald-600">
+                Added to Timeline
+              </span>
             </div>
           ))}
           {extraction.term_changes.map((t, i) => (
@@ -1177,7 +1239,15 @@ function TimelineTab({
 
   function countdown(d: string) {
     const n = daysUntil(d);
-    const tone = n < 0 ? "text-muted-foreground" : n <= 2 ? "text-rose-600" : n <= 10 ? "text-amber-700" : "text-primary";
+    // green 7+, yellow 3-6, red under 3, gray expired
+    const tone =
+      n < 0
+        ? "text-muted-foreground"
+        : n < 3
+          ? "text-rose-600"
+          : n <= 6
+            ? "text-amber-700"
+            : "text-emerald-600";
     const txt = n === 0 ? "Today" : n < 0 ? `${-n}d ago` : `in ${n}d`;
     return <span className={"data-number text-sm font-medium " + tone}>{txt}</span>;
   }

@@ -3,6 +3,10 @@
     {
       "path": "/api/alerts/deadlines",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/deals/cleanup",
+      "schedule": "0 13 * * *"
     }
   ]
 }

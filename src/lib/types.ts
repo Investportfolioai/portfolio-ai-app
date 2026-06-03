@@ -93,6 +93,8 @@ export interface Deal {
 
   /** Count of KPs attached to this deal (derived; see deals.ts). */
   kp_count: number;
+  /** Days until the nearest upcoming milestone (derived; null if none). */
+  next_milestone_days: number | null;
 }
 
 /** Deal workflow status (enum `public.deal_status`). */
@@ -176,6 +178,7 @@ export interface ExtractedDealData {
   /** Capital Runway Multiple inputs — entered manually or extracted by AI. */
   total_cash_invested: number | null;
   net_monthly_cashflow: number | null;
+  annual_gross_revenue?: number | null;
 }
 
 export type Recommendation = "proceed" | "proceed_with_conditions" | "decline";

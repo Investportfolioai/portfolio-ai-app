@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { daysUntil } from "@/lib/types";
 import type { Deal, DealPrincipal, DealStatus, UnderwritingOutput, UserRole } from "@/lib/types";
 
 /**
@@ -30,7 +31,7 @@ const BASE_COLUMNS = `
 
 const WITH_STATUS = `${BASE_COLUMNS}, status, ai_analysis`;
 const WITH_GRADES = `${WITH_STATUS}, acquisition_grade, stabilization_grade`;
-const WITH_TIMELINE = `${WITH_GRADES}, status_changed_at`;
+const WITH_TIMELINE = `${WITH_GRADES}, status_changed_at, deal_milestones(target_date)`;
 const FULL_COLUMNS = `${WITH_TIMELINE}, deal_kps(count)`;
 
 type DealRow = Omit<
@@ -38,6 +39,7 @@ type DealRow = Omit<
   | "owner"
   | "coowner"
   | "kp_count"
+  | "next_milestone_days"
   | "status"
   | "status_changed_at"
   | "ai_analysis"
@@ -47,6 +49,7 @@ type DealRow = Omit<
   owner: DealPrincipal | null;
   coowner: DealPrincipal | null;
   deal_kps?: { count: number }[];
+  deal_milestones?: { target_date: string }[];
   status?: DealStatus;
   status_changed_at?: string | null;
   ai_analysis?: UnderwritingOutput | null;
@@ -57,6 +60,7 @@ type DealRow = Omit<
 function normalize(row: DealRow): Deal {
   const {
     deal_kps,
+    deal_milestones,
     status,
     status_changed_at,
     ai_analysis,
@@ -64,6 +68,9 @@ function normalize(row: DealRow): Deal {
     stabilization_grade,
     ...rest
   } = row;
+  const upcoming = (deal_milestones ?? [])
+    .map((m) => daysUntil(m.target_date))
+    .filter((d) => d >= 0);
   return {
     ...rest,
     status: status ?? "pending",
@@ -72,6 +79,7 @@ function normalize(row: DealRow): Deal {
     acquisition_grade: acquisition_grade ?? null,
     stabilization_grade: stabilization_grade ?? null,
     kp_count: deal_kps?.[0]?.count ?? 0,
+    next_milestone_days: upcoming.length ? Math.min(...upcoming) : null,
   };
 }
 

@@ -44,3 +44,21 @@ export async function logout() {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+/** Send a Supabase password-reset email that links back to /reset-password. */
+export async function requestPasswordReset(
+  email: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const e = email.trim();
+  if (!e) return { ok: false, error: "Enter your email." };
+  const base = process.env.NEXT_PUBLIC_APP_URL || "";
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resetPasswordForEmail(e, {
+    redirectTo: `${base}/reset-password`,
+  });
+  if (error) {
+    console.error("reset email failed:", error.message);
+    return { ok: false, error: error.message };
+  }
+  return { ok: true };
+}

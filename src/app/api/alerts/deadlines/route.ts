@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendDeadlineDigest, type DeadlineAlert } from "@/lib/email";
-import { DEAD_DEAL_TTL_DAYS } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -53,19 +52,6 @@ export async function GET(req: Request) {
     console.error("deadline digest send failed:", e);
   }
 
-  // 2. Auto-delete dead deals past their TTL.
-  const cutoff = new Date(Date.now() - DEAD_DEAL_TTL_DAYS * 86_400_000).toISOString();
-  const purged = await admin
-    .from("deals")
-    .delete()
-    .eq("status", "dead")
-    .lt("status_changed_at", cutoff)
-    .select("id");
-
-  return NextResponse.json({
-    ok: true,
-    alerts: alerts.length,
-    emailed,
-    purged_dead: purged.data?.length ?? 0,
-  });
+  // Dead-deal cleanup lives in /api/deals/cleanup (separate cron entry).
+  return NextResponse.json({ ok: true, alerts: alerts.length, emailed });
 }
