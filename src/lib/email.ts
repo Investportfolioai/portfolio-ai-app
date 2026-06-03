@@ -6,7 +6,7 @@ import { RECOMMENDATION_LABELS, type Recommendation } from "@/lib/types";
  * Transactional email via Resend. Sends from the investportfolio.ai domain
  * (verify it in Resend after deploy) to the owner inbox.
  */
-const FROM = "Portfolio AI <deals@investportfolio.ai>";
+const FROM = "Portfolio AI <deals@mail.investportfolio.ai>";
 const TO = "john@investportfolio.ai";
 
 export interface SubmissionEmail {
