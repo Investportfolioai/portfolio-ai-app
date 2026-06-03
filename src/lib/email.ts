@@ -1,6 +1,11 @@
 import "server-only";
 import { Resend } from "resend";
-import { RECOMMENDATION_LABELS, type Recommendation } from "@/lib/types";
+import {
+  RECOMMENDATION_LABELS,
+  STRUCTURE_LABELS,
+  type DealStructure,
+  type Recommendation,
+} from "@/lib/types";
 
 /**
  * Transactional email via Resend. Sends from the investportfolio.ai domain
@@ -51,6 +56,64 @@ export async function sendSubmissionNotification(
     from: FROM,
     to: TO,
     subject: `New deal submission — ${data.propertyAddress}`,
+    html,
+  });
+}
+
+export interface KpDealBrief {
+  kpEmail: string;
+  kpName: string | null;
+  assignmentId: string;
+  propertyAddress: string;
+  structureType: DealStructure;
+  purchasePrice: number | null;
+  arv: number | null;
+  acquisitionGrade: number | null;
+  stabilizationGrade: number | null;
+  aiSummary: string;
+}
+
+/**
+ * Send a KP a deal brief with Accept / Decline links. Links carry the
+ * assignment id and resolve at /kp/respond. Best-effort.
+ */
+export async function sendKpDealBrief(brief: KpDealBrief): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key || !brief.kpEmail) {
+    console.warn("RESEND_API_KEY / KP email missing — skipping deal brief.");
+    return;
+  }
+  const base = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const accept = `${base}/kp/respond?id=${brief.assignmentId}&action=accepted`;
+  const decline = `${base}/kp/respond?id=${brief.assignmentId}&action=declined`;
+  const money = (n: number | null) =>
+    n == null ? "—" : `$${n.toLocaleString("en-US")}`;
+  const grade = (g: number | null) => (g == null ? "—" : `${g}/100`);
+
+  const resend = new Resend(key);
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0a0a0a;line-height:1.6;max-width:560px">
+      <h2 style="color:#0f1c3f;margin:0 0 4px">New deal for your review</h2>
+      <p style="color:#6e6e73;margin:0 0 16px">${brief.kpName ? `Hi ${brief.kpName} — ` : ""}you've been invited as a Key Principal on this deal.</p>
+      <table style="border-collapse:collapse;font-size:14px;margin-bottom:16px">
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">Property</td><td><b>${brief.propertyAddress}</b></td></tr>
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">Structure</td><td>${STRUCTURE_LABELS[brief.structureType] ?? brief.structureType}</td></tr>
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">Purchase price</td><td>${money(brief.purchasePrice)}</td></tr>
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">ARV</td><td>${money(brief.arv)}</td></tr>
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">Acquisition grade</td><td><b>${grade(brief.acquisitionGrade)}</b></td></tr>
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">Stabilization grade</td><td><b>${grade(brief.stabilizationGrade)}</b></td></tr>
+      </table>
+      ${brief.aiSummary ? `<p style="font-size:14px;margin:0 0 20px">${brief.aiSummary}</p>` : ""}
+      <table style="border-collapse:collapse"><tr>
+        <td style="padding-right:12px"><a href="${accept}" style="background:#0f1c3f;color:#fff;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;display:inline-block">Accept</a></td>
+        <td><a href="${decline}" style="background:#f2f2f4;color:#0a0a0a;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;display:inline-block">Decline</a></td>
+      </tr></table>
+    </div>`;
+
+  await resend.emails.send({
+    from: FROM,
+    to: brief.kpEmail,
+    subject: `Deal for your review — ${brief.propertyAddress}`,
     html,
   });
 }

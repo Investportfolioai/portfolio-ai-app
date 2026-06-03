@@ -30,6 +30,55 @@ export type ExitStrategy = "sell" | "refi" | "hold" | "assignment";
 /** Platform roles (enum `public.user_role`). */
 export type UserRole = "owner" | "partner" | "kp" | "viewer";
 
+/** KP assignment response status (deal_kps.status). */
+export type AssignmentStatus = "pending" | "accepted" | "declined";
+
+export const ASSIGNMENT_STATUS_LABELS: Record<AssignmentStatus, string> = {
+  pending: "Pending",
+  accepted: "Accepted",
+  declined: "Declined",
+};
+
+export interface KpAssignment {
+  id: string;
+  kp_id: string;
+  kp_name: string | null;
+  kp_email: string | null;
+  status: AssignmentStatus;
+  responded_at: string | null;
+}
+
+export interface AvailableKp {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+}
+
+/** A deal as seen by a KP on their dashboard. */
+export interface KpDeal {
+  assignment_id: string;
+  status: AssignmentStatus;
+  deal_id: string;
+  property_address: string;
+  structure_type: DealStructure;
+  purchase_price: number | null;
+  arv: number | null;
+  acquisition_grade: number | null;
+  stabilization_grade: number | null;
+}
+
+/** A KP's external real-estate holding (kp_sreo). */
+export interface KpSreo {
+  id: string;
+  property_name: string;
+  property_type: string | null;
+  address: string | null;
+  value: number | null;
+  mortgage_balance: number | null;
+  monthly_payment: number | null;
+  created_at: string;
+}
+
 /** Lender type (enum `public.lender_type`). */
 export type LenderType = "hard_money" | "private" | "institutional" | "seller";
 

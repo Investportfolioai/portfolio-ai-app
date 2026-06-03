@@ -9,6 +9,10 @@ import {
   type DealStructure,
   type DealMilestone,
   type MilestoneType,
+  type AssignmentStatus,
+  type KpAssignment,
+  type AvailableKp,
+  ASSIGNMENT_STATUS_LABELS,
   MILESTONE_LABELS,
   RECOMMENDATION_LABELS,
   STATUS_LABELS,
@@ -36,6 +40,12 @@ import {
   type NewDealInput,
   type UploadResult,
 } from "./actions";
+import {
+  assignKpToDeal,
+  getDealKpAssignments,
+  getAvailableKps,
+  removeKpAssignment,
+} from "./kp-actions";
 
 type Extraction = Extract<UploadResult, { ok: true }>["extraction"];
 
@@ -610,7 +620,7 @@ function Metric({
 // Detail panel (4 tabs)
 // ---------------------------------------------------------------------------
 
-const TABS = ["Overview", "AI Underwriting", "Timeline", "Documents", "Activity"] as const;
+const TABS = ["Overview", "AI Underwriting", "Timeline", "Documents", "KPs", "Activity"] as const;
 type Tab = (typeof TABS)[number];
 
 function fmtDateTime(iso: string): string {
@@ -836,6 +846,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                   onChanged={onChanged}
                 />
               )}
+              {tab === "KPs" && <KpsTab dealId={deal.id} onChanged={onChanged} />}
               {tab === "Activity" && (
                 <ActivityTab loading={loadingDetail} detail={detail} />
               )}
@@ -1333,6 +1344,154 @@ function TimelineTab({
           {adding ? "Adding…" : "Add Milestone"}
         </button>
       </div>
+    </div>
+  );
+}
+
+const KP_STATUS_BADGE: Record<AssignmentStatus, string> = {
+  pending: "bg-amber-500/15 text-amber-300 ring-amber-400/30",
+  accepted: "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30",
+  declined: "bg-rose-500/15 text-rose-300 ring-rose-400/30",
+};
+
+function KpsTab({ dealId, onChanged }: { dealId: string; onChanged: () => void }) {
+  const [assignments, setAssignments] = useState<KpAssignment[]>([]);
+  const [available, setAvailable] = useState<AvailableKp[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState("");
+  const [error, setError] = useState("");
+  const [busy, startBusy] = useTransition();
+
+  const reload = () => {
+    setLoading(true);
+    Promise.all([getDealKpAssignments(dealId), getAvailableKps(dealId)])
+      .then(([a, av]) => {
+        setAssignments(a);
+        setAvailable(av);
+        setSelected("");
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([getDealKpAssignments(dealId), getAvailableKps(dealId)]).then(
+      ([a, av]) => {
+        if (cancelled) return;
+        setAssignments(a);
+        setAvailable(av);
+        setLoading(false);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [dealId]);
+
+  function assign() {
+    if (!selected) return;
+    setError("");
+    startBusy(async () => {
+      const res = await assignKpToDeal(dealId, selected);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      reload();
+      onChanged();
+    });
+  }
+
+  function remove(assignmentId: string) {
+    startBusy(async () => {
+      const res = await removeKpAssignment(assignmentId, dealId);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      reload();
+      onChanged();
+    });
+  }
+
+  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-xl border border-border bg-secondary/30 p-4">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Assign a Key Principal
+        </p>
+        {available.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No more KPs available. Add KPs from the Key Principals page first.
+          </p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-primary outline-none focus:border-accent"
+            >
+              <option value="">Select a KP…</option>
+              {available.map((kp) => (
+                <option key={kp.id} value={kp.id}>
+                  {kp.full_name ?? kp.email ?? "Unnamed KP"}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={!selected || busy}
+              onClick={assign}
+              className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              Assign
+            </button>
+          </div>
+        )}
+        {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
+      </div>
+
+      {assignments.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+          No KPs assigned to this deal yet.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {assignments.map((a) => (
+            <li
+              key={a.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-primary">
+                  {a.kp_name ?? a.kp_email ?? "Unnamed KP"}
+                </p>
+                {a.kp_email && (
+                  <p className="truncate text-xs text-muted-foreground">{a.kp_email}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ring-1 ring-inset ${KP_STATUS_BADGE[a.status]}`}
+                >
+                  {ASSIGNMENT_STATUS_LABELS[a.status]}
+                </span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => remove(a.id)}
+                  className="text-xs text-muted-foreground hover:text-rose-400 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
