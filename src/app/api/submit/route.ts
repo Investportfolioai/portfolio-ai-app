@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { underwriteDeal, type UnderwritingOutput } from "@/lib/underwriting";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendSubmissionNotification } from "@/lib/email";
 
 // Node runtime: needs Buffer + the Anthropic SDK. Allow a long AI call.
 export const runtime = "nodejs";
@@ -166,6 +167,22 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.warn("document/activity persistence skipped:", (e as Error).message);
+  }
+
+  // Notify the owner (best-effort — never blocks the submission).
+  try {
+    await sendSubmissionNotification({
+      submitterName: name,
+      submitterEmail: email,
+      submitterPhone: phone,
+      propertyAddress: insertRow.property_address,
+      acquisitionGrade: u.acquisition_grade,
+      stabilizationGrade: u.stabilization_grade,
+      recommendation: u.recommendation,
+      summary: u.summary,
+    });
+  } catch (e) {
+    console.warn("submission email skipped:", (e as Error).message);
   }
 
   return NextResponse.json({

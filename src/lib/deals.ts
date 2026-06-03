@@ -203,3 +203,35 @@ export async function getAllDocuments(): Promise<DealDocument[]> {
     }),
   );
 }
+
+export interface RecentActivity {
+  id: string;
+  action: string;
+  note: string | null;
+  created_at: string;
+  deal_address: string;
+}
+
+/** Last N activity entries across all deals (dashboard feed). */
+export async function getRecentActivity(limit = 10): Promise<RecentActivity[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("deal_activity")
+    .select("id, action, note, created_at, deal:deal_id(property_address)")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return [];
+  return ((data ?? []) as unknown as {
+    id: string;
+    action: string;
+    note: string | null;
+    created_at: string;
+    deal: { property_address: string } | null;
+  }[]).map((r) => ({
+    id: r.id,
+    action: r.action,
+    note: r.note,
+    created_at: r.created_at,
+    deal_address: r.deal?.property_address ?? "—",
+  }));
+}

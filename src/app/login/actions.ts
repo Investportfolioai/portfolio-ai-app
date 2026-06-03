@@ -23,7 +23,7 @@ export async function login(
     return { error: "Invalid email or password." };
   }
 
-  redirect("/dashboard/pipeline");
+  redirect("/dashboard");
 }
 
 export async function logout() {

@@ -45,7 +45,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
   if (user && isLogin) {
-    return NextResponse.redirect(new URL("/dashboard/pipeline", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return response;

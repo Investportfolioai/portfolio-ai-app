@@ -14,6 +14,7 @@ export interface SidebarUser {
 }
 
 const NAV: NavItem[] = [
+  { label: "Dashboard", href: "/dashboard" },
   { label: "Pipeline", href: "/dashboard/pipeline" },
   { label: "Deals", href: "/dashboard/deals" },
   { label: "Underwriting", href: "/dashboard/underwriting" },
@@ -40,7 +41,11 @@ export function Sidebar({ user }: { user: SidebarUser }) {
 
       <nav className="mt-2 flex-1 px-3">
         {NAV.map((item) => {
-          const active = item.href ? pathname.startsWith(item.href) : false;
+          const active = item.href
+            ? item.href === "/dashboard"
+              ? pathname === "/dashboard"
+              : pathname.startsWith(item.href)
+            : false;
           const base =
             "block rounded-md py-2 pl-3 pr-3 text-sm font-medium transition-all duration-150";
 
