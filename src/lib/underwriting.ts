@@ -17,7 +17,7 @@ export type {
  * extended thinking are mutually exclusive, so reasoning lives in the schema).
  */
 
-const MODEL = "claude-opus-4-8";
+const MODEL = "claude-sonnet-4-6";
 
 export interface PdfInput {
   base64: string;
