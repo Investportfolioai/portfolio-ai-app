@@ -110,28 +110,65 @@ const TOOL_SCHEMA = {
   required: ["extracted_deal_data", "underwriting"],
 } as const;
 
+/**
+ * Build the Anthropic client, validating the key up front. `new Anthropic()`
+ * throws synchronously if the key is unresolved; doing it here with a clear
+ * message (and trimming stray whitespace/newlines from a pasted key) makes the
+ * failure obvious in logs instead of a vague constructor error.
+ */
+function getClient(): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("ANTHROPIC_API_KEY is missing or empty in the server environment.");
+  }
+  return new Anthropic({ apiKey });
+}
+
+/**
+ * Log the full detail of an SDK/API failure (status, name, message, response
+ * body) and return a concise Error whose message is safe to surface upstream.
+ */
+function wrapApiError(context: string, err: unknown): Error {
+  if (err instanceof Anthropic.APIError) {
+    const body =
+      typeof err.error === "object" ? JSON.stringify(err.error) : String(err.error ?? "");
+    console.error(
+      `[underwriting] ${context}: Anthropic APIError status=${err.status} name=${err.name} message=${err.message} body=${body}`,
+    );
+    return new Error(`Anthropic ${err.status ?? "?"} ${err.name}: ${err.message}`);
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(`[underwriting] ${context}: ${msg}`);
+  return err instanceof Error ? err : new Error(msg);
+}
+
 /** Shared call: takes the user content blocks, returns the structured output. */
 async function callUnderwriting(
   content: Anthropic.ContentBlockParam[],
 ): Promise<UnderwritingOutput> {
-  const client = new Anthropic(); // reads ANTHROPIC_API_KEY from env
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 8000,
-    system: [
-      { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
-    ],
-    tools: [
-      {
-        name: "submit_underwriting",
-        description:
-          "Submit the extracted deal data and underwriting analysis for a deal.",
-        input_schema: TOOL_SCHEMA as unknown as Anthropic.Tool["input_schema"],
-      },
-    ],
-    tool_choice: { type: "tool", name: "submit_underwriting" },
-    messages: [{ role: "user", content }],
-  });
+  const client = getClient();
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 8000,
+      system: [
+        { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
+      ],
+      tools: [
+        {
+          name: "submit_underwriting",
+          description:
+            "Submit the extracted deal data and underwriting analysis for a deal.",
+          input_schema: TOOL_SCHEMA as unknown as Anthropic.Tool["input_schema"],
+        },
+      ],
+      tool_choice: { type: "tool", name: "submit_underwriting" },
+      messages: [{ role: "user", content }],
+    });
+  } catch (err) {
+    throw wrapApiError("callUnderwriting", err);
+  }
   const block = response.content.find((b) => b.type === "tool_use");
   if (!block || block.type !== "tool_use") {
     throw new Error("Underwriting model did not return structured output.");
@@ -255,33 +292,38 @@ Use empty arrays if nothing applies. Always call extract_document.`;
 export async function extractDocumentUpdates(
   pdfBase64: string,
 ): Promise<DocExtraction> {
-  const client = new Anthropic();
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 3000,
-    system: [{ type: "text", text: DOC_SYSTEM, cache_control: { type: "ephemeral" } }],
-    tools: [
-      {
-        name: "extract_document",
-        description: "Submit extracted milestone dates and term changes from the document.",
-        input_schema: DOC_SCHEMA as unknown as Anthropic.Tool["input_schema"],
-      },
-    ],
-    tool_choice: { type: "tool", name: "extract_document" },
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
-            title: "Deal document",
-          },
-          { type: "text", text: "Extract milestone dates and any deal-term changes. Call extract_document." },
-        ],
-      },
-    ],
-  });
+  const client = getClient();
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 3000,
+      system: [{ type: "text", text: DOC_SYSTEM, cache_control: { type: "ephemeral" } }],
+      tools: [
+        {
+          name: "extract_document",
+          description: "Submit extracted milestone dates and term changes from the document.",
+          input_schema: DOC_SCHEMA as unknown as Anthropic.Tool["input_schema"],
+        },
+      ],
+      tool_choice: { type: "tool", name: "extract_document" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
+              title: "Deal document",
+            },
+            { type: "text", text: "Extract milestone dates and any deal-term changes. Call extract_document." },
+          ],
+        },
+      ],
+    });
+  } catch (err) {
+    throw wrapApiError("extractDocumentUpdates", err);
+  }
   const block = response.content.find((b) => b.type === "tool_use");
   if (!block || block.type !== "tool_use") {
     throw new Error("Document extraction returned no structured output.");

@@ -3,9 +3,10 @@ import { underwriteDeal, type UnderwritingOutput } from "@/lib/underwriting";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendSubmissionNotification } from "@/lib/email";
 
-// Node runtime: needs Buffer + the Anthropic SDK. Allow a long AI call.
+// Node runtime: needs Buffer + the Anthropic SDK. 60s is the Hobby-plan ceiling
+// (values above the plan max are rejected/clamped by Vercel).
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25MB per file
 
@@ -69,13 +70,17 @@ export async function POST(req: Request) {
   const deckB64 = hasDeck ? await toBase64(deck as File) : undefined;
 
   // Run the AI underwriting engine on the PDFs.
+  console.log(
+    `[submit] underwriting start — loi=${loi.size}B deck=${hasDeck ? (deck as File).size + "B" : "none"} key=${process.env.ANTHROPIC_API_KEY ? "present" : "MISSING"}`,
+  );
   let result: UnderwritingOutput;
   try {
     result = await underwriteDeal({ base64: loiB64 }, deckB64 ? { base64: deckB64 } : undefined);
   } catch (err) {
-    console.error("underwriteDeal failed:", err);
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[submit] underwriteDeal failed:", detail, err);
     return NextResponse.json(
-      { error: "Underwriting failed while reading the documents. Please try again." },
+      { error: "Underwriting failed while reading the documents.", detail },
       { status: 502 },
     );
   }
