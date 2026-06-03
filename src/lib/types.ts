@@ -64,6 +64,10 @@ export interface Deal {
   assignment_fee: number | null;
   origination_fee: number | null;
 
+  /** Underwriting scores, 0–100, nullable (see migration 20260603010003). */
+  acquisition_grade: number | null;
+  stabilization_grade: number | null;
+
   exit_strategy: ExitStrategy | null;
   lender_name: string | null;
   quote_number: string | null;
@@ -75,6 +79,11 @@ export interface Deal {
   owner: DealPrincipal | null;
   coowner: DealPrincipal | null;
 
+  /** Workflow status (migration 20260603010004). */
+  status: DealStatus;
+  /** Full Claude underwriting output stored from the submit flow (jsonb). */
+  ai_analysis: UnderwritingOutput | null;
+
   ai_summary: string | null;
   notes: string | null;
   created_at: string;
@@ -82,6 +91,86 @@ export interface Deal {
 
   /** Count of KPs attached to this deal (derived; see deals.ts). */
   kp_count: number;
+}
+
+/** Deal workflow status (enum `public.deal_status`). */
+export type DealStatus = "pending" | "active" | "passed";
+
+export const STATUS_LABELS: Record<DealStatus, string> = {
+  pending: "Pending",
+  active: "Active",
+  passed: "Passed",
+};
+
+// ---------------------------------------------------------------------------
+// AI underwriting output (shared client/server shape; stored in deals.ai_analysis)
+// ---------------------------------------------------------------------------
+
+export interface ExtractedDealData {
+  property_address: string | null;
+  city: string | null;
+  state: string | null;
+  property_type: string | null;
+  structure_type: DealStructure | null;
+  purchase_price: number | null;
+  arv: number | null;
+  loan_amount: number | null;
+  initial_advance: number | null;
+  holdback: number | null;
+  interest_rate: number | null;
+  ltv: number | null;
+  seller_note_amount: number | null;
+  seller_note_rate: number | null;
+  balloon_term_months: number | null;
+  assignment_fee: number | null;
+  origination_fee: number | null;
+  exit_strategy: ExitStrategy | null;
+  lender_name: string | null;
+  quote_number: string | null;
+}
+
+export type Recommendation = "proceed" | "proceed_with_conditions" | "decline";
+
+export interface UnderwritingAnalysis {
+  recommendation: Recommendation;
+  acquisition_grade: number;
+  stabilization_grade: number;
+  equity_spread: number | null;
+  /** Inputs for the Capital Runway Multiple. */
+  total_cash_invested: number | null;
+  net_monthly_cashflow: number | null;
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  conditions: string[];
+}
+
+export interface UnderwritingOutput {
+  extracted_deal_data: ExtractedDealData;
+  underwriting: UnderwritingAnalysis;
+}
+
+export const RECOMMENDATION_LABELS: Record<Recommendation, string> = {
+  proceed: "Proceed",
+  proceed_with_conditions: "Proceed with conditions",
+  decline: "Decline",
+};
+
+/**
+ * Capital Runway Multiple = total cash invested ÷ net monthly cash OUTFLOW
+ * after all debt service. If net monthly is positive (cash flowing) → "Cash
+ * Flowing". Missing inputs → "—". Displayed to one decimal with an "x" suffix.
+ */
+export function capitalRunwayMultiple(
+  deal: Pick<Deal, "ai_analysis">,
+): string {
+  const a = deal.ai_analysis?.underwriting;
+  if (!a || a.total_cash_invested == null || a.net_monthly_cashflow == null) {
+    return "—";
+  }
+  if (a.net_monthly_cashflow >= 0) return "Cash Flowing";
+  const months = a.total_cash_invested / -a.net_monthly_cashflow;
+  return `${months.toFixed(1)}x`;
 }
 
 /**
