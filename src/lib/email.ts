@@ -54,3 +54,38 @@ export async function sendSubmissionNotification(
     html,
   });
 }
+
+export interface DeadlineAlert {
+  deal_address: string;
+  label: string;
+  target_date: string;
+  days: number;
+}
+
+/** Daily digest of milestones coming due (10/5/2 days out). Best-effort. */
+export async function sendDeadlineDigest(alerts: DeadlineAlert[]): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key || alerts.length === 0) return;
+  const resend = new Resend(key);
+  const rows = alerts
+    .map(
+      (a) =>
+        `<tr><td style="padding:4px 16px 4px 0">${a.deal_address}</td><td style="padding:4px 16px 4px 0">${a.label}</td><td style="padding:4px 16px 4px 0">${a.target_date}</td><td style="padding:4px 0"><b style="color:${a.days <= 2 ? "#d4183d" : "#d4af37"}">${a.days}d</b></td></tr>`,
+    )
+    .join("");
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0a0a0a;line-height:1.6">
+      <h2 style="color:#0f1c3f;margin:0 0 12px">Upcoming deal deadlines</h2>
+      <table style="border-collapse:collapse;font-size:14px">
+        <tr style="color:#6e6e73;text-align:left"><th style="padding-right:16px">Deal</th><th style="padding-right:16px">Milestone</th><th style="padding-right:16px">Date</th><th>Due in</th></tr>
+        ${rows}
+      </table>
+    </div>`;
+
+  await resend.emails.send({
+    from: "Portfolio AI <noreply@mail.investportfolio.ai>",
+    to: TO,
+    subject: `Deal deadlines — ${alerts.length} milestone${alerts.length === 1 ? "" : "s"} approaching`,
+    html,
+  });
+}

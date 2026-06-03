@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import {
   type Deal,
   type DealStatus,
   type DealStructure,
+  type DealMilestone,
+  type MilestoneType,
+  MILESTONE_LABELS,
   RECOMMENDATION_LABELS,
   STATUS_LABELS,
   STRUCTURE_LABELS,
   capitalRunwayMultiple,
   daysSince,
+  daysUntil,
+  deadDaysRemaining,
   equitySpread,
 } from "@/lib/types";
 import { money, moneyCompact, updatedLabel } from "@/lib/format";
@@ -21,9 +26,17 @@ import {
   runUnderwriting,
   getDealDetail,
   createDeal,
+  markDealDead,
+  updateDealField,
+  createMilestone,
+  deleteMilestone,
+  uploadDealDocument,
   type DealDetail,
   type NewDealInput,
+  type UploadResult,
 } from "./actions";
+
+type Extraction = Extract<UploadResult, { ok: true }>["extraction"];
 
 const ASSET_TYPES = ["Multifamily", "Commercial", "Mixed Use", "Industrial", "Land"];
 
@@ -32,6 +45,7 @@ const STATUS_TABS: { key: DealStatus | "all"; label: string }[] = [
   { key: "active", label: "Active" },
   { key: "pending", label: "Pending" },
   { key: "passed", label: "Passed" },
+  { key: "dead", label: "Dead" },
 ];
 
 export function PipelineBoard({ deals }: { deals: Deal[] }) {
@@ -365,7 +379,9 @@ function StatusBadge({ status }: { status: DealStatus }) {
       ? "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30"
       : status === "passed"
         ? "bg-rose-500/10 text-rose-600 ring-rose-400/20"
-        : "bg-accent/15 text-amber-700 ring-accent/30";
+        : status === "dead"
+          ? "bg-foreground/10 text-foreground/60 ring-foreground/20"
+          : "bg-accent/15 text-amber-700 ring-accent/30";
   return (
     <span className={"rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 " + tone}>
       {STATUS_LABELS[status]}
@@ -526,9 +542,15 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
         </div>
       ) : (
         <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-          <span>
-            {deal.kp_count} {deal.kp_count === 1 ? "KP" : "KPs"}
-          </span>
+          {deal.status === "dead" && deadDaysRemaining(deal) != null ? (
+            <span className="font-medium text-rose-600">
+              Auto-deletes in {deadDaysRemaining(deal)}d
+            </span>
+          ) : (
+            <span>
+              {deal.kp_count} {deal.kp_count === 1 ? "KP" : "KPs"}
+            </span>
+          )}
           <span>{updatedLabel(daysSince(deal.updated_at))}</span>
         </div>
       )}
@@ -566,7 +588,7 @@ function Metric({
 // Detail panel (4 tabs)
 // ---------------------------------------------------------------------------
 
-const TABS = ["Overview", "AI Underwriting", "Documents", "Activity"] as const;
+const TABS = ["Overview", "AI Underwriting", "Timeline", "Documents", "Activity"] as const;
 type Tab = (typeof TABS)[number];
 
 function fmtDateTime(iso: string): string {
@@ -587,6 +609,15 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   const [detail, setDetail] = useState<DealDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [running, startRun] = useTransition();
+  const [markingDead, startMarkDead] = useTransition();
+
+  const reloadDetail = () => {
+    if (deal) getDealDetail(deal.id).then(setDetail);
+  };
+  const onChanged = () => {
+    router.refresh();
+    reloadDetail();
+  };
 
   // Reset to Overview when a different deal opens.
   useEffect(() => {
@@ -670,16 +701,33 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                   </p>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="rounded-md p-1 text-primary-foreground/70 transition-colors hover:bg-white/10 hover:text-primary-foreground"
-              >
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                {deal.status !== "dead" && (
+                  <button
+                    type="button"
+                    disabled={markingDead}
+                    onClick={() =>
+                      startMarkDead(async () => {
+                        await markDealDead(deal.id);
+                        router.refresh();
+                      })
+                    }
+                    className="rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-medium text-primary-foreground/80 transition-colors hover:bg-white/10 disabled:opacity-60"
+                  >
+                    {markingDead ? "…" : "Mark Dead"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close"
+                  className="rounded-md p-1 text-primary-foreground/70 transition-colors hover:bg-white/10 hover:text-primary-foreground"
+                >
+                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                    <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Tabs */}
@@ -702,12 +750,32 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-6">
-              {tab === "Overview" && <OverviewTab deal={deal} />}
+              {tab === "Overview" && (
+                <OverviewTab
+                  deal={deal}
+                  onChanged={onChanged}
+                  onReunderwrite={onRun}
+                  reunderwriting={running}
+                />
+              )}
               {tab === "AI Underwriting" && (
                 <AiTab deal={deal} running={running} onRun={onRun} />
               )}
+              {tab === "Timeline" && (
+                <TimelineTab
+                  dealId={deal.id}
+                  milestones={detail?.milestones ?? []}
+                  loading={loadingDetail}
+                  onChanged={onChanged}
+                />
+              )}
               {tab === "Documents" && (
-                <DocumentsTab loading={loadingDetail} detail={detail} />
+                <DocumentsTab
+                  dealId={deal.id}
+                  loading={loadingDetail}
+                  detail={detail}
+                  onChanged={onChanged}
+                />
               )}
               {tab === "Activity" && (
                 <ActivityTab loading={loadingDetail} detail={detail} />
@@ -720,19 +788,130 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   );
 }
 
-function OverviewTab({ deal }: { deal: Deal }) {
+function OverviewTab({
+  deal,
+  onChanged,
+  onReunderwrite,
+  reunderwriting,
+}: {
+  deal: Deal;
+  onChanged: () => void;
+  onReunderwrite: () => void;
+  reunderwriting: boolean;
+}) {
+  const [dirty, setDirty] = useState(false);
   const assetType = deal.ai_analysis?.extracted_deal_data?.property_type ?? "—";
+  const saved = () => {
+    setDirty(true);
+    onChanged();
+  };
   return (
-    <Section title="Overview">
-      <Row label="Address" value={deal.property_address} mono={false} />
-      <Row label="Asset Type" value={assetType} mono={false} />
-      <Row label="Purchase Price" value={money(deal.purchase_price)} />
-      <Row label="ARV" value={money(deal.arv)} />
-      <Row label="Equity Spread" value={money(equitySpread(deal))} />
-      <Row label="ACQ Grade" value={deal.acquisition_grade != null ? `${deal.acquisition_grade} / 100` : "—"} />
-      <Row label="STAB Grade" value={deal.stabilization_grade != null ? `${deal.stabilization_grade} / 100` : "—"} />
-      <Row label="Capital Runway Multiple" value={capitalRunwayMultiple(deal)} />
-    </Section>
+    <div>
+      <Section title="Overview · click a value to edit">
+        <EditableRow dealId={deal.id} field="property_address" label="Address" raw={deal.property_address} display={deal.property_address} onSaved={saved} />
+        <Row label="Asset Type" value={assetType} mono={false} />
+        <EditableRow dealId={deal.id} field="purchase_price" label="Purchase Price" numeric raw={deal.purchase_price} display={money(deal.purchase_price)} onSaved={saved} />
+        <EditableRow dealId={deal.id} field="arv" label="ARV" numeric raw={deal.arv} display={money(deal.arv)} onSaved={saved} />
+        <EditableRow dealId={deal.id} field="loan_amount" label="Loan Amount" numeric raw={deal.loan_amount} display={money(deal.loan_amount)} onSaved={saved} />
+        <EditableRow dealId={deal.id} field="seller_note_amount" label="Seller Carry" numeric raw={deal.seller_note_amount} display={money(deal.seller_note_amount)} onSaved={saved} />
+        <Row label="Equity Spread" value={money(equitySpread(deal))} />
+        <Row label="ACQ Grade" value={deal.acquisition_grade != null ? `${deal.acquisition_grade} / 100` : "—"} />
+        <Row label="STAB Grade" value={deal.stabilization_grade != null ? `${deal.stabilization_grade} / 100` : "—"} />
+        <Row label="Capital Runway Multiple" value={capitalRunwayMultiple(deal)} />
+      </Section>
+
+      {dirty && (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-accent/10 px-4 py-3 ring-1 ring-accent/30">
+          <span className="text-sm text-foreground">
+            Deal terms changed — re-run underwriting to refresh grades.
+          </span>
+          <button
+            type="button"
+            disabled={reunderwriting}
+            onClick={() => {
+              setDirty(false);
+              onReunderwrite();
+            }}
+            className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+          >
+            {reunderwriting ? "Running…" : "Re-run"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditableRow({
+  dealId,
+  field,
+  label,
+  raw,
+  display,
+  numeric,
+  onSaved,
+}: {
+  dealId: string;
+  field: string;
+  label: string;
+  raw: string | number | null;
+  display: string;
+  numeric?: boolean;
+  onSaved: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(raw == null ? "" : String(raw));
+  const [saving, startSave] = useTransition();
+
+  function save() {
+    startSave(async () => {
+      const res = await updateDealField(dealId, field, value);
+      if (res.ok) {
+        setEditing(false);
+        onSaved();
+      }
+    });
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-4 px-3 py-2.5">
+      <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
+      {editing ? (
+        <div className="flex items-center gap-1">
+          <input
+            autoFocus
+            type={numeric ? "number" : "text"}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") save();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="w-36 rounded-md border border-border bg-secondary px-2 py-1 text-right text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <button
+            type="button"
+            disabled={saving}
+            onClick={save}
+            className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-accent-foreground disabled:opacity-60"
+          >
+            {saving ? "…" : "Save"}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setValue(raw == null ? "" : String(raw));
+            setEditing(true);
+          }}
+          className="data-number truncate rounded text-right text-sm font-medium text-primary hover:bg-secondary hover:px-1"
+          title="Click to edit"
+        >
+          {display}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -809,41 +988,282 @@ function BulletBlock({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function ApplyButton({
+  label,
+  onApply,
+}: {
+  label: string;
+  onApply: () => Promise<{ ok: boolean }>;
+}) {
+  const [busy, start] = useTransition();
+  const [done, setDone] = useState(false);
+  if (done) return <span className="text-xs font-medium text-emerald-600">Applied</span>;
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={() => start(async () => { const r = await onApply(); if (r.ok) setDone(true); })}
+      className="shrink-0 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+    >
+      {busy ? "…" : label}
+    </button>
+  );
+}
+
 function DocumentsTab({
+  dealId,
   loading,
   detail,
+  onChanged,
 }: {
+  dealId: string;
   loading: boolean;
   detail: DealDetail | null;
+  onChanged: () => void;
 }) {
-  if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, startUpload] = useTransition();
+  const [extraction, setExtraction] = useState<Extraction | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const docs = detail?.documents ?? [];
-  if (docs.length === 0)
-    return (
-      <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-        No documents on file.
-      </p>
-    );
+
+  function onUpload() {
+    const f = fileRef.current?.files?.[0];
+    if (!f) return;
+    const fd = new FormData();
+    fd.append("file", f);
+    setError(null);
+    startUpload(async () => {
+      const res = await uploadDealDocument(dealId, fd);
+      if (!res.ok) {
+        setError(res.error);
+        onChanged();
+        return;
+      }
+      setExtraction(res.extraction);
+      if (fileRef.current) fileRef.current.value = "";
+      onChanged();
+    });
+  }
+
   return (
-    <ul className="divide-y divide-border rounded-xl border border-border">
-      {docs.map((doc) => (
-        <li key={doc.id} className="flex items-center justify-between gap-4 px-3 py-3">
-          <span className="truncate text-sm text-primary">{doc.file_name}</span>
-          {doc.url ? (
-            <a
-              href={doc.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/70"
-            >
-              Download
-            </a>
-          ) : (
-            <span className="text-xs text-muted-foreground">Unavailable</span>
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/pdf"
+          className="min-w-0 flex-1 text-xs text-foreground file:mr-2 file:rounded-full file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-xs file:font-medium file:text-secondary-foreground"
+        />
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={onUpload}
+          className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+        >
+          {uploading ? "Reading…" : "Upload"}
+        </button>
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+
+      {extraction && (
+        <div className="space-y-3 rounded-xl border border-accent/30 bg-accent/5 p-3">
+          <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+            Claude found — apply updates?
+          </div>
+          <p className="text-xs text-muted-foreground">{extraction.summary}</p>
+          {extraction.milestones.map((m, i) => (
+            <div key={`m${i}`} className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-foreground">
+                {m.label} · <span className="data-number">{m.target_date}</span>
+              </span>
+              <ApplyButton
+                label="Add date"
+                onApply={async () => {
+                  const r = await createMilestone(dealId, m, "ai_extracted");
+                  onChanged();
+                  return r;
+                }}
+              />
+            </div>
+          ))}
+          {extraction.term_changes.map((t, i) => (
+            <div key={`t${i}`} className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-foreground">
+                {t.label} → <span className="data-number">{String(t.suggested_value)}</span>
+              </span>
+              <ApplyButton
+                label="Apply"
+                onApply={async () => {
+                  const r = await updateDealField(dealId, t.field, String(t.suggested_value ?? ""));
+                  onChanged();
+                  return r;
+                }}
+              />
+            </div>
+          ))}
+          {extraction.milestones.length === 0 && extraction.term_changes.length === 0 && (
+            <p className="text-xs text-muted-foreground">No dates or term changes detected.</p>
           )}
-        </li>
-      ))}
-    </ul>
+          <button
+            type="button"
+            onClick={() => setExtraction(null)}
+            className="text-xs text-muted-foreground hover:text-primary"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : docs.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+          No documents on file.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border rounded-xl border border-border">
+          {docs.map((doc) => (
+            <li key={doc.id} className="flex items-center justify-between gap-4 px-3 py-3">
+              <span className="truncate text-sm text-primary">{doc.file_name}</span>
+              {doc.url ? (
+                <a
+                  href={doc.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground hover:bg-secondary/70"
+                >
+                  Download
+                </a>
+              ) : (
+                <span className="text-xs text-muted-foreground">Unavailable</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function TimelineTab({
+  dealId,
+  milestones,
+  loading,
+  onChanged,
+}: {
+  dealId: string;
+  milestones: DealMilestone[];
+  loading: boolean;
+  onChanged: () => void;
+}) {
+  const [adding, startAdd] = useTransition();
+  const [label, setLabel] = useState("");
+  const [date, setDate] = useState("");
+  const [type, setType] = useState<MilestoneType>("custom");
+
+  function add() {
+    if (!label.trim() || !date) return;
+    startAdd(async () => {
+      const r = await createMilestone(dealId, { label, target_date: date, milestone_type: type });
+      if (r.ok) {
+        setLabel("");
+        setDate("");
+        setType("custom");
+        onChanged();
+      }
+    });
+  }
+
+  function countdown(d: string) {
+    const n = daysUntil(d);
+    const tone = n < 0 ? "text-muted-foreground" : n <= 2 ? "text-rose-600" : n <= 10 ? "text-amber-700" : "text-primary";
+    const txt = n === 0 ? "Today" : n < 0 ? `${-n}d ago` : `in ${n}d`;
+    return <span className={"data-number text-sm font-medium " + tone}>{txt}</span>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : milestones.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+          No milestones yet. Add EMD, inspection, or COE dates below — or upload a contract in Documents to auto-extract them.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border rounded-xl border border-border">
+          {milestones.map((m) => (
+            <li key={m.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-primary">
+                  {m.label}
+                  {m.milestone_type && m.milestone_type !== "custom" && (
+                    <span className="ml-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      {MILESTONE_LABELS[m.milestone_type]}
+                    </span>
+                  )}
+                  {m.source === "ai_extracted" && (
+                    <span className="ml-1 text-[10px] text-accent">AI</span>
+                  )}
+                </div>
+                <div className="data-number text-xs text-muted-foreground">{m.target_date}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                {countdown(m.target_date)}
+                <button
+                  type="button"
+                  onClick={() => deleteMilestone(m.id, dealId).then(onChanged)}
+                  aria-label="Delete milestone"
+                  className="text-muted-foreground hover:text-destructive"
+                >
+                  <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+                    <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="rounded-xl border border-border p-3">
+        <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+          Add milestone
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Label"
+            className="col-span-2 rounded-md border border-border bg-secondary px-3 py-1.5 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as MilestoneType)}
+            className="rounded-md border border-border bg-secondary px-3 py-1.5 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            <option value="emd">Earnest Money</option>
+            <option value="inspection">Inspection Period</option>
+            <option value="coe">Close of Escrow</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <button
+          type="button"
+          disabled={adding}
+          onClick={add}
+          className="mt-2 w-full rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+        >
+          {adding ? "Adding…" : "Add Milestone"}
+        </button>
+      </div>
+    </div>
   );
 }
 

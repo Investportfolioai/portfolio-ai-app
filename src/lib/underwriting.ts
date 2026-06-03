@@ -178,3 +178,113 @@ export async function underwriteDealData(
     },
   ]);
 }
+
+// ---------------------------------------------------------------------------
+// Document update extraction (item 3) — pull milestone dates + term changes
+// ---------------------------------------------------------------------------
+
+export interface ExtractedMilestone {
+  label: string;
+  target_date: string; // YYYY-MM-DD
+  milestone_type: "emd" | "inspection" | "coe" | "custom";
+}
+export interface ExtractedTermChange {
+  field: string; // deals column, e.g. "purchase_price"
+  label: string; // human label
+  suggested_value: number | string | null;
+  note: string;
+}
+export interface DocExtraction {
+  milestones: ExtractedMilestone[];
+  term_changes: ExtractedTermChange[];
+  summary: string;
+}
+
+const DOC_SCHEMA = {
+  type: "object",
+  properties: {
+    milestones: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          label: { type: "string" },
+          target_date: { type: "string" },
+          milestone_type: { type: "string", enum: ["emd", "inspection", "coe", "custom"] },
+        },
+        required: ["label", "target_date", "milestone_type"],
+      },
+    },
+    term_changes: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          field: {
+            type: "string",
+            enum: [
+              "purchase_price",
+              "arv",
+              "loan_amount",
+              "seller_note_amount",
+              "interest_rate",
+              "holdback",
+              "lender_name",
+              "quote_number",
+            ],
+          },
+          label: { type: "string" },
+          suggested_value: { type: ["number", "string", "null"] },
+          note: { type: "string" },
+        },
+        required: ["field", "label", "suggested_value", "note"],
+      },
+    },
+    summary: { type: "string" },
+  },
+  required: ["milestones", "term_changes", "summary"],
+} as const;
+
+const DOC_SYSTEM = `You read real-estate deal documents (contracts, amendments, LOIs, addenda) for Portfolio AI. Extract:
+- milestones: key dated deadlines — earnest money (emd), inspection/due-diligence period end (inspection), close of escrow (coe), or other (custom). target_date MUST be ISO YYYY-MM-DD. Only include dates actually present.
+- term_changes: any deal economics stated in the document that may differ from the current record — purchase_price, arv, loan_amount, seller_note_amount, interest_rate, holdback, lender_name, quote_number. suggested_value is the value found in the document. Only include terms actually stated.
+- summary: one or two sentences on what this document is and what changed.
+Use empty arrays if nothing applies. Always call extract_document.`;
+
+/** Extract milestone dates + term changes from a single PDF document. */
+export async function extractDocumentUpdates(
+  pdfBase64: string,
+): Promise<DocExtraction> {
+  const client = new Anthropic();
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 3000,
+    system: [{ type: "text", text: DOC_SYSTEM, cache_control: { type: "ephemeral" } }],
+    tools: [
+      {
+        name: "extract_document",
+        description: "Submit extracted milestone dates and term changes from the document.",
+        input_schema: DOC_SCHEMA as unknown as Anthropic.Tool["input_schema"],
+      },
+    ],
+    tool_choice: { type: "tool", name: "extract_document" },
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
+            title: "Deal document",
+          },
+          { type: "text", text: "Extract milestone dates and any deal-term changes. Call extract_document." },
+        ],
+      },
+    ],
+  });
+  const block = response.content.find((b) => b.type === "tool_use");
+  if (!block || block.type !== "tool_use") {
+    throw new Error("Document extraction returned no structured output.");
+  }
+  return block.input as DocExtraction;
+}

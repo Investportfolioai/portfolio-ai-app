@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/alerts/deadlines",
+      "schedule": "0 13 * * *"
+    }
+  ]
+}

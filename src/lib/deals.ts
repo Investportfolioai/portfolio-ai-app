@@ -30,7 +30,8 @@ const BASE_COLUMNS = `
 
 const WITH_STATUS = `${BASE_COLUMNS}, status, ai_analysis`;
 const WITH_GRADES = `${WITH_STATUS}, acquisition_grade, stabilization_grade`;
-const FULL_COLUMNS = `${WITH_GRADES}, deal_kps(count)`;
+const WITH_TIMELINE = `${WITH_GRADES}, status_changed_at`;
+const FULL_COLUMNS = `${WITH_TIMELINE}, deal_kps(count)`;
 
 type DealRow = Omit<
   Deal,
@@ -38,6 +39,7 @@ type DealRow = Omit<
   | "coowner"
   | "kp_count"
   | "status"
+  | "status_changed_at"
   | "ai_analysis"
   | "acquisition_grade"
   | "stabilization_grade"
@@ -46,17 +48,26 @@ type DealRow = Omit<
   coowner: DealPrincipal | null;
   deal_kps?: { count: number }[];
   status?: DealStatus;
+  status_changed_at?: string | null;
   ai_analysis?: UnderwritingOutput | null;
   acquisition_grade?: number | null;
   stabilization_grade?: number | null;
 };
 
 function normalize(row: DealRow): Deal {
-  const { deal_kps, status, ai_analysis, acquisition_grade, stabilization_grade, ...rest } =
-    row;
+  const {
+    deal_kps,
+    status,
+    status_changed_at,
+    ai_analysis,
+    acquisition_grade,
+    stabilization_grade,
+    ...rest
+  } = row;
   return {
     ...rest,
     status: status ?? "pending",
+    status_changed_at: status_changed_at ?? null,
     ai_analysis: ai_analysis ?? null,
     acquisition_grade: acquisition_grade ?? null,
     stabilization_grade: stabilization_grade ?? null,
@@ -74,7 +85,15 @@ export async function getDeals(): Promise<Deal[]> {
     .order("updated_at", { ascending: false });
   if (!full.error) return (full.data as unknown as DealRow[]).map(normalize);
 
-  // deal_kps not present — still read grades.
+  // deal_kps not present — still read status_changed_at + grades.
+  const withTimeline = await supabase
+    .from("deals")
+    .select(WITH_TIMELINE)
+    .order("updated_at", { ascending: false });
+  if (!withTimeline.error)
+    return (withTimeline.data as unknown as DealRow[]).map(normalize);
+
+  // status_changed_at not present — still read grades.
   const withGrades = await supabase
     .from("deals")
     .select(WITH_GRADES)
@@ -109,6 +128,14 @@ export async function getDealById(id: string): Promise<Deal | null> {
     .eq("id", id)
     .maybeSingle();
   if (!full.error && full.data) return normalize(full.data as unknown as DealRow);
+
+  const withTimeline = await supabase
+    .from("deals")
+    .select(WITH_TIMELINE)
+    .eq("id", id)
+    .maybeSingle();
+  if (!withTimeline.error && withTimeline.data)
+    return normalize(withTimeline.data as unknown as DealRow);
 
   const withGrades = await supabase
     .from("deals")
@@ -234,4 +261,16 @@ export async function getRecentActivity(limit = 10): Promise<RecentActivity[]> {
     created_at: r.created_at,
     deal_address: r.deal?.property_address ?? "—",
   }));
+}
+
+/** Milestones for a deal, soonest target first. */
+export async function getDealMilestones(dealId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("deal_milestones")
+    .select("id, deal_id, label, target_date, milestone_type, source, created_at")
+    .eq("deal_id", dealId)
+    .order("target_date", { ascending: true });
+  if (error) return [];
+  return data ?? [];
 }

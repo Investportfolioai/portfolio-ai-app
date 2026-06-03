@@ -81,6 +81,8 @@ export interface Deal {
 
   /** Workflow status (migration 20260603010004). */
   status: DealStatus;
+  /** When status last changed — drives the dead-deal auto-delete countdown. */
+  status_changed_at: string | null;
   /** Full Claude underwriting output stored from the submit flow (jsonb). */
   ai_analysis: UnderwritingOutput | null;
 
@@ -94,13 +96,57 @@ export interface Deal {
 }
 
 /** Deal workflow status (enum `public.deal_status`). */
-export type DealStatus = "pending" | "active" | "passed";
+export type DealStatus = "pending" | "active" | "passed" | "dead";
 
 export const STATUS_LABELS: Record<DealStatus, string> = {
   pending: "Pending",
   active: "Active",
   passed: "Passed",
+  dead: "Dead",
 };
+
+/** Dead deals auto-delete this many days after they were marked dead. */
+export const DEAD_DEAL_TTL_DAYS = 120;
+
+// ---------------------------------------------------------------------------
+// Milestones (deal_milestones table)
+// ---------------------------------------------------------------------------
+
+export type MilestoneType = "emd" | "inspection" | "coe" | "custom";
+
+export const MILESTONE_LABELS: Record<MilestoneType, string> = {
+  emd: "Earnest Money",
+  inspection: "Inspection Period",
+  coe: "Close of Escrow",
+  custom: "Custom",
+};
+
+export interface DealMilestone {
+  id: string;
+  deal_id: string;
+  label: string;
+  target_date: string;
+  milestone_type: MilestoneType | null;
+  source: "manual" | "ai_extracted" | null;
+  created_at: string;
+}
+
+/** Whole days from today until an ISO date (negative = past due). */
+export function daysUntil(dateStr: string): number {
+  const target = new Date(dateStr + (dateStr.length === 10 ? "T00:00:00" : ""));
+  if (Number.isNaN(target.getTime())) return 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
+}
+
+/** Days left before a dead deal is auto-deleted (null if not dead/unknown). */
+export function deadDaysRemaining(
+  deal: Pick<Deal, "status" | "status_changed_at">,
+): number | null {
+  if (deal.status !== "dead" || !deal.status_changed_at) return null;
+  return Math.max(0, DEAD_DEAL_TTL_DAYS - daysSince(deal.status_changed_at));
+}
 
 // ---------------------------------------------------------------------------
 // AI underwriting output (shared client/server shape; stored in deals.ai_analysis)
