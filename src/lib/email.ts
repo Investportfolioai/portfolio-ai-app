@@ -13,6 +13,9 @@ import {
  */
 const FROM = "Portfolio AI <deals@mail.investportfolio.ai>";
 const TO = "john@investportfolio.ai";
+// Replies to any outbound mail route to the Portfolio AI principals.
+// (Resend's SDK maps `replyTo` to the `reply_to` API field.)
+const REPLY_TO = ["john@investportfolio.ai", "loa@investportfolio.ai"];
 
 export interface SubmissionEmail {
   submitterName: string;
@@ -55,6 +58,7 @@ export async function sendSubmissionNotification(
   await resend.emails.send({
     from: FROM,
     to: TO,
+    replyTo: REPLY_TO,
     subject: `New deal submission — ${data.propertyAddress}`,
     html,
   });
@@ -106,7 +110,7 @@ export async function sendWholesalerResponse(params: {
     </div>`;
 
   const resend = new Resend(key);
-  await resend.emails.send({ from: FROM, to: params.to, subject, html });
+  await resend.emails.send({ from: FROM, to: params.to, replyTo: REPLY_TO, subject, html });
 }
 
 /** Minimal HTML escaping for user-entered text embedded in an email. */
@@ -170,6 +174,7 @@ export async function sendKpDealBrief(brief: KpDealBrief): Promise<void> {
   await resend.emails.send({
     from: FROM,
     to: brief.kpEmail,
+    replyTo: REPLY_TO,
     subject: `Deal for your review — ${brief.propertyAddress}`,
     html,
   });
