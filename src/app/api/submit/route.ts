@@ -102,7 +102,6 @@ export async function POST(req: Request) {
 
   const insertRow = {
     owner_id: OWNER_ID,
-    submitter_email: email || null,
     property_address: d.property_address ?? "Untitled submission",
     city: d.city,
     state: d.state,
@@ -172,6 +171,14 @@ export async function POST(req: Request) {
     })
     .eq("id", dealId);
   if (enrich.error) console.warn("analysis/grade write skipped:", enrich.error.message);
+
+  // Store the submitter's email so the wholesaler-response emails can reach
+  // them. Separate best-effort write: the submitter_email column may not exist
+  // yet, and that must not undo the deal or block the grade write above.
+  if (email) {
+    const se = await supabase.from("deals").update({ submitter_email: email }).eq("id", dealId);
+    if (se.error) console.warn("submitter_email write skipped:", se.error.message);
+  }
 
   // Persist the source PDFs to storage + register them as documents.
   try {
