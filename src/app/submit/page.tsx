@@ -3,28 +3,11 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 
-type Result = {
-  ok: true;
-  deal_id: string;
-  address: string;
-  recommendation: "proceed" | "proceed_with_conditions" | "decline";
-  acquisition_grade: number;
-  stabilization_grade: number;
-  summary: string;
-};
-
-const REC_LABEL: Record<Result["recommendation"], string> = {
-  proceed: "Proceed",
-  proceed_with_conditions: "Proceed with conditions",
-  decline: "Decline",
-};
-
 export default function SubmitPage() {
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">(
     "idle",
   );
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<Result | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -35,13 +18,14 @@ export default function SubmitPage() {
         method: "POST",
         body: new FormData(e.currentTarget),
       });
-      const json = await res.json();
       if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
         setError(json.error ?? "Something went wrong.");
         setStatus("error");
         return;
       }
-      setResult(json as Result);
+      // The underwriting result is intentionally NOT shown to the wholesaler —
+      // grades/recommendation/summary live in the internal pipeline only.
       setStatus("done");
     } catch {
       setError("Network error. Please try again.");
@@ -57,8 +41,8 @@ export default function SubmitPage() {
           <img src="/logo-white.png" alt="Portfolio AI" className="max-h-10 max-w-full" />
         </div>
 
-        {status === "done" && result ? (
-          <Confirmation result={result} />
+        {status === "done" ? (
+          <Confirmation />
         ) : (
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h1 className="text-2xl text-primary">Submit a Deal</h1>
@@ -116,58 +100,19 @@ export default function SubmitPage() {
   );
 }
 
-function Confirmation({ result }: { result: Result }) {
+function Confirmation() {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="rounded-2xl border border-border bg-card p-6 shadow-sm"
+      className="rounded-2xl border border-border bg-card p-8 text-center shadow-sm"
     >
       <h1 className="text-2xl text-primary">Deal received</h1>
-      <p className="mt-1 text-sm text-muted-foreground">{result.address}</p>
-
-      <div className="mt-5 flex items-center gap-3">
-        <Grade label="Acq" value={result.acquisition_grade} tone="gold" />
-        <Grade label="Stab" value={result.stabilization_grade} tone="navy" />
-        <div className="ml-auto rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-          {REC_LABEL[result.recommendation]}
-        </div>
-      </div>
-
-      <p className="mt-4 border-t border-border pt-4 text-sm leading-relaxed text-foreground">
-        {result.summary}
-      </p>
-      <p className="mt-4 text-xs text-muted-foreground">
-        Our team has your deal and will follow up. No further action needed.
+      <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+        Thank you — our team will be in touch. No further action is needed.
       </p>
     </motion.div>
-  );
-}
-
-function Grade({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: "gold" | "navy";
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <span
-        className={
-          "data-number flex h-11 w-11 items-center justify-center rounded-full bg-primary text-sm font-medium ring-1 ring-inset ring-white/10 " +
-          (tone === "gold" ? "text-accent" : "text-white")
-        }
-      >
-        {value}
-      </span>
-      <span className="text-[8px] font-medium uppercase tracking-widest text-muted-foreground">
-        {label}
-      </span>
-    </div>
   );
 }
 
