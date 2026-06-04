@@ -7,12 +7,19 @@ import { createClient } from "@supabase/supabase-js";
  * checks. Use only for trusted server work (AI underwriting, seeding,
  * cross-tenant admin tasks).
  */
+/**
+ * Strip ALL whitespace from a credential. The env values were pasted into
+ * Vercel line-wrapped, so they contain newlines *inside* the token (not just
+ * trailing) — which throw "invalid header value" when the SDK sets the auth
+ * header. JWTs/API keys never contain whitespace, so removing it is safe and
+ * rejoins the wrapped token.
+ */
+const cleanKey = (v: string | undefined) => (v ?? "").replace(/\s/g, "");
+
 export function createAdminClient() {
-  // .trim() guards against a trailing newline in the env value — an untrimmed
-  // key throws "invalid header value" when the SDK sets the auth header.
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
-    process.env.SUPABASE_SERVICE_ROLE_KEY!.trim(),
+    cleanKey(process.env.NEXT_PUBLIC_SUPABASE_URL),
+    cleanKey(process.env.SUPABASE_SERVICE_ROLE_KEY),
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 }

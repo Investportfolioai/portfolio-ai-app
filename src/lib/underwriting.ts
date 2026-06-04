@@ -117,7 +117,9 @@ const TOOL_SCHEMA = {
  * failure obvious in logs instead of a vague constructor error.
  */
 function getClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  // Strip ALL whitespace — a line-wrapped paste embeds newlines inside the key
+  // which throw "invalid header value" (.trim() only handles trailing ones).
+  const apiKey = (process.env.ANTHROPIC_API_KEY ?? "").replace(/\s/g, "");
   if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY is missing or empty in the server environment.");
   }
