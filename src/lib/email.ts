@@ -60,6 +60,63 @@ export async function sendSubmissionNotification(
   });
 }
 
+export type WholesalerResponseKind = "accepted" | "rejected" | "negotiate";
+
+/**
+ * Email the wholesaler who submitted a deal with Portfolio AI's response.
+ * Sends from deals@mail.investportfolio.ai. Best-effort — never throws.
+ */
+export async function sendWholesalerResponse(params: {
+  to: string;
+  propertyAddress: string;
+  kind: WholesalerResponseKind;
+  message?: string;
+}): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key || !params.to) {
+    console.warn("RESEND_API_KEY / submitter email missing — skipping wholesaler email.");
+    return;
+  }
+  const addr = params.propertyAddress || "your deal";
+
+  let subject: string;
+  let body: string;
+  if (params.kind === "accepted") {
+    subject = `Moving forward — ${addr}`;
+    body = `<p style="margin:0 0 16px">Thank you for bringing <b>${addr}</b> to Portfolio AI.</p>
+      <p style="margin:0 0 16px">We've completed our review and are moving forward with this deal. Our team will be in touch shortly with next steps.</p>`;
+  } else if (params.kind === "rejected") {
+    subject = `Update on ${addr}`;
+    body = `<p style="margin:0 0 16px">Thank you for submitting <b>${addr}</b> to Portfolio AI.</p>
+      <p style="margin:0 0 16px">After careful review, we're passing on this opportunity at this time. We appreciate you thinking of us and welcome future deals.</p>`;
+  } else {
+    subject = `Let's discuss — ${addr}`;
+    const note = (params.message ?? "").trim();
+    body = `<p style="margin:0 0 16px">Thank you for submitting <b>${addr}</b> to Portfolio AI.</p>
+      <p style="margin:0 0 16px">We're interested in this deal and would like to discuss the terms.</p>
+      ${note ? `<div style="margin:0 0 16px;border-left:3px solid #d4af37;padding:4px 0 4px 14px;color:#0a0a0a;white-space:pre-wrap">${escapeHtml(note)}</div>` : ""}
+      <p style="margin:0 0 16px">Reply to this email and we'll set up a time to connect.</p>`;
+  }
+
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0a0a0a;line-height:1.6;max-width:560px">
+      <h2 style="color:#0f1c3f;margin:0 0 16px">Portfolio AI</h2>
+      ${body}
+      <p style="margin:24px 0 0;color:#6e6e73;font-size:13px">— The Portfolio AI team</p>
+    </div>`;
+
+  const resend = new Resend(key);
+  await resend.emails.send({ from: FROM, to: params.to, subject, html });
+}
+
+/** Minimal HTML escaping for user-entered text embedded in an email. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export interface KpDealBrief {
   kpEmail: string;
   kpName: string | null;

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { sendWholesalerResponse, type WholesalerResponseKind } from "@/lib/email";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   underwriteDeal,
   underwriteDealData,
@@ -60,7 +62,35 @@ async function logActivity(dealId: string, action: string, note?: string) {
   });
 }
 
-/** Accept a pending deal → active. Underwriting is queued, NOT auto-triggered. */
+/**
+ * Email the deal's submitter (the wholesaler) with our response. Best-effort —
+ * a missing email / Resend key never blocks the status change.
+ */
+async function notifyWholesaler(
+  supabase: SupabaseClient,
+  dealId: string,
+  kind: WholesalerResponseKind,
+  message?: string,
+): Promise<void> {
+  try {
+    const { data } = await supabase
+      .from("deals")
+      .select("submitter_email, property_address")
+      .eq("id", dealId)
+      .maybeSingle();
+    if (!data?.submitter_email) return;
+    await sendWholesalerResponse({
+      to: data.submitter_email,
+      propertyAddress: data.property_address,
+      kind,
+      message,
+    });
+  } catch (e) {
+    console.warn("[wholesaler] email skipped:", (e as Error).message);
+  }
+}
+
+/** Accept a deal → active, and tell the wholesaler we're moving forward. */
 export async function acceptDeal(dealId: string): Promise<ActionState> {
   const supabase = await createClient();
   const { error } = await supabase
@@ -69,16 +99,14 @@ export async function acceptDeal(dealId: string): Promise<ActionState> {
     .eq("id", dealId);
   if (error) return { ok: false, error: error.message };
 
-  await logActivity(dealId, "accepted", "Accepted — underwriting queued.");
+  await notifyWholesaler(supabase, dealId, "accepted");
+  await logActivity(dealId, "accepted", "Accepted — wholesaler notified we're moving forward.");
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
 }
 
-/** Pass on a pending deal → passed, with an optional reason. */
-export async function passDeal(
-  dealId: string,
-  reason: string,
-): Promise<ActionState> {
+/** Reject a deal → passed, and tell the wholesaler we're passing for now. */
+export async function rejectDeal(dealId: string): Promise<ActionState> {
   const supabase = await createClient();
   const { error } = await supabase
     .from("deals")
@@ -86,7 +114,26 @@ export async function passDeal(
     .eq("id", dealId);
   if (error) return { ok: false, error: error.message };
 
-  await logActivity(dealId, "passed", reason.trim() || "No reason given.");
+  await notifyWholesaler(supabase, dealId, "rejected");
+  await logActivity(dealId, "rejected", "Rejected — wholesaler notified we're passing.");
+  revalidatePath("/dashboard/pipeline");
+  return { ok: true };
+}
+
+/**
+ * Negotiate: email the wholesaler John's message (we're interested, want to
+ * discuss terms). Status is left unchanged so the deal stays actionable.
+ */
+export async function negotiateDeal(
+  dealId: string,
+  message: string,
+): Promise<ActionState> {
+  const msg = message.trim();
+  if (!msg) return { ok: false, error: "Enter a message to send." };
+
+  const supabase = await createClient();
+  await notifyWholesaler(supabase, dealId, "negotiate", msg);
+  await logActivity(dealId, "negotiating", msg);
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
 }

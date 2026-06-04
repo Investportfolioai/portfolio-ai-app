@@ -26,7 +26,8 @@ import {
 import { money, moneyCompact, updatedLabel } from "@/lib/format";
 import {
   acceptDeal,
-  passDeal,
+  rejectDeal,
+  negotiateDeal,
   runUnderwriting,
   getDealDetail,
   createDeal,
@@ -446,27 +447,8 @@ function PendingGradeBadge() {
 // ---------------------------------------------------------------------------
 
 function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [passing, setPassing] = useState(false);
-  const [reason, setReason] = useState("");
   const spread = equitySpread(deal);
   const locality = [deal.city, deal.state].filter(Boolean).join(", ");
-
-  function accept(e: React.MouseEvent) {
-    e.stopPropagation();
-    startTransition(async () => {
-      await acceptDeal(deal.id);
-      router.refresh();
-    });
-  }
-  function confirmPass(e: React.MouseEvent) {
-    e.stopPropagation();
-    startTransition(async () => {
-      await passDeal(deal.id, reason);
-      router.refresh();
-    });
-  }
 
   return (
     <motion.div
@@ -519,73 +501,18 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
         <Metric label="Equity Spread" value={moneyCompact(spread)} accent />
       </dl>
 
-      {deal.status === "pending" ? (
-        <div className="mt-4 border-t border-border pt-4" onClick={(e) => e.stopPropagation()}>
-          {passing ? (
-            <div className="space-y-2">
-              <input
-                autoFocus
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Reason for passing (optional)"
-                className="w-full rounded-md border border-border bg-secondary px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-              />
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={confirmPass}
-                  className="flex-1 rounded-full bg-destructive/90 px-3 py-1.5 text-xs font-medium text-white hover:bg-destructive disabled:opacity-60"
-                >
-                  Confirm Pass
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPassing(false)}
-                  className="rounded-full bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={pending}
-                onClick={accept}
-                className="flex-1 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-              >
-                Accept
-              </button>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPassing(true);
-                }}
-                className="flex-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-primary hover:bg-secondary disabled:opacity-60"
-              >
-                Pass
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-          {deal.status === "dead" && deadDaysRemaining(deal) != null ? (
-            <span className="font-medium text-rose-600">
-              Auto-deletes in {deadDaysRemaining(deal)}d
-            </span>
-          ) : (
-            <span>
-              {deal.kp_count} {deal.kp_count === 1 ? "KP" : "KPs"}
-            </span>
-          )}
-          <span>{updatedLabel(daysSince(deal.updated_at))}</span>
-        </div>
-      )}
+      <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
+        {deal.status === "dead" && deadDaysRemaining(deal) != null ? (
+          <span className="font-medium text-rose-600">
+            Auto-deletes in {deadDaysRemaining(deal)}d
+          </span>
+        ) : (
+          <span>
+            {deal.kp_count} {deal.kp_count === 1 ? "KP" : "KPs"}
+          </span>
+        )}
+        <span>{updatedLabel(daysSince(deal.updated_at))}</span>
+      </div>
     </motion.div>
   );
 }
@@ -912,6 +839,123 @@ function OverviewTab({
           </button>
         </div>
       )}
+
+      <WholesalerActions deal={deal} onChanged={onChanged} />
+    </div>
+  );
+}
+
+/**
+ * Wholesaler response actions for a pending deal: Accept / Negotiate / Reject.
+ * Each emails the submitter and logs to deal_activity (server-side). Negotiate
+ * reveals an inline textarea for John's message.
+ */
+function WholesalerActions({
+  deal,
+  onChanged,
+}: {
+  deal: Deal;
+  onChanged: () => void;
+}) {
+  const [pending, start] = useTransition();
+  const [negotiating, setNegotiating] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  if (deal.status !== "pending") return null;
+
+  function run(fn: () => Promise<{ ok: boolean; error?: string }>, after?: () => void) {
+    setError("");
+    start(async () => {
+      const res = await fn();
+      if (!res.ok) {
+        setError(res.error ?? "Something went wrong.");
+        return;
+      }
+      after?.();
+      onChanged();
+    });
+  }
+
+  return (
+    <div className="mt-6 border-t border-border pt-5">
+      <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        Respond to wholesaler
+      </p>
+
+      {negotiating ? (
+        <div className="space-y-2">
+          <textarea
+            autoFocus
+            rows={4}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Your message to the wholesaler — what you'd like to discuss…"
+            className="w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={pending || !message.trim()}
+              onClick={() =>
+                run(
+                  () => negotiateDeal(deal.id, message),
+                  () => {
+                    setNegotiating(false);
+                    setMessage("");
+                  },
+                )
+              }
+              className="flex-1 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+            >
+              {pending ? "Sending…" : "Send Message"}
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setNegotiating(false);
+                setError("");
+              }}
+              className="rounded-full bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => acceptDeal(deal.id))}
+            className="flex-1 rounded-full bg-accent px-3 py-2 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+          >
+            Accept
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              setError("");
+              setNegotiating(true);
+            }}
+            className="flex-1 rounded-full border border-border px-3 py-2 text-xs font-medium text-primary hover:bg-secondary disabled:opacity-60"
+          >
+            Negotiate
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => rejectDeal(deal.id))}
+            className="flex-1 rounded-full bg-destructive/90 px-3 py-2 text-xs font-medium text-white hover:bg-destructive disabled:opacity-60"
+          >
+            Reject
+          </button>
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-xs text-rose-500">{error}</p>}
     </div>
   );
 }
