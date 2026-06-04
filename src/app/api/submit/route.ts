@@ -131,9 +131,29 @@ export async function POST(req: Request) {
     .single();
 
   if (error || !data) {
-    console.error("deal insert failed:", error?.message);
+    // Log the full PostgREST/Postgres error — code/details/hint pinpoint the
+    // failing column or constraint, which `.message` alone often omits.
+    console.error(
+      "[submit] deal insert failed:",
+      JSON.stringify(
+        {
+          code: error?.code,
+          message: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+        },
+        null,
+        2,
+      ),
+    );
+    console.error("[submit] insert payload keys:", Object.keys(insertRow).join(", "));
     return NextResponse.json(
-      { error: "Underwriting succeeded but saving the deal failed." },
+      {
+        error: "Underwriting succeeded but saving the deal failed.",
+        detail: error
+          ? `${error.code ?? ""} ${error.message}${error.details ? ` — ${error.details}` : ""}${error.hint ? ` (hint: ${error.hint})` : ""}`.trim()
+          : "Insert returned no row.",
+      },
       { status: 500 },
     );
   }
