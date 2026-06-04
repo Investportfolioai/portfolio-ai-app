@@ -10,6 +10,10 @@ export const maxDuration = 60;
 
 const MAX_BYTES = 25 * 1024 * 1024; // 25MB per file
 
+// Public submissions have no session, so the deal is owned by the Portfolio AI
+// owner account by default (covers a NOT NULL owner_id on the deals table).
+const OWNER_ID = "396a9b93-b2cd-407c-b548-99978db17c2c";
+
 async function toBase64(file: File): Promise<string> {
   return Buffer.from(await file.arrayBuffer()).toString("base64");
 }
@@ -97,6 +101,7 @@ export async function POST(req: Request) {
   const supabase = createAdminClient();
 
   const insertRow = {
+    owner_id: OWNER_ID,
     property_address: d.property_address ?? "Untitled submission",
     city: d.city,
     state: d.state,

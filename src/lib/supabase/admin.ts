@@ -8,9 +8,11 @@ import { createClient } from "@supabase/supabase-js";
  * cross-tenant admin tasks).
  */
 export function createAdminClient() {
+  // .trim() guards against a trailing newline in the env value — an untrimmed
+  // key throws "invalid header value" when the SDK sets the auth header.
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_URL!.trim(),
+    process.env.SUPABASE_SERVICE_ROLE_KEY!.trim(),
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 }
