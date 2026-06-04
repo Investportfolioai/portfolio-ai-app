@@ -102,6 +102,7 @@ export async function POST(req: Request) {
 
   const insertRow = {
     owner_id: OWNER_ID,
+    submitter_email: email || null,
     property_address: d.property_address ?? "Untitled submission",
     city: d.city,
     state: d.state,
