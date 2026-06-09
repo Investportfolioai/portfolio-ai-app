@@ -12,7 +12,8 @@ export type DealStructure =
   | "ab_bc"
   | "assignment"
   | "creative"
-  | "nnn";
+  | "nnn"
+  | "seller_finance";
 
 /** Pipeline stages (enum `public.deal_stage`), earliest → exited. */
 export type DealStage =
@@ -319,6 +320,7 @@ export const STRUCTURE_LABELS: Record<DealStructure, string> = {
   assignment: "Assignment",
   creative: "Creative",
   nnn: "NNN",
+  seller_finance: "Seller Finance",
 };
 
 export const STAGE_LABELS: Record<DealStage, string> = {

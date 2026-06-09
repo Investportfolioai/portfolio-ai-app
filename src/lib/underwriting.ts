@@ -30,7 +30,7 @@ Portfolio AI's model is the "AB→BC" engine: an institutional or private lender
 You will receive a deal as either PDF documents (an LOI and optional deck) or as structured JSON data. Read whatever you are given directly.
 
 Your job:
-1. EXTRACT every deal field into extracted_deal_data. Use null for anything genuinely absent — never invent values. Money fields are plain numbers (700000, not "$700K"). Rates are percent numbers (9.125), EXCEPT ltv which is a 0–1 ratio. Classify structure_type as one of: morby, ab_bc, assignment, creative, nnn. Classify exit_strategy as: sell, refi, hold, assignment. Include total_cash_invested (sponsor cash deployed) and net_monthly_cashflow (monthly income − opex − ALL debt service; NEGATIVE = monthly carry/outflow, POSITIVE = cash flowing) — these drive the Capital Runway Multiple. If they were provided in the input data, carry them through.
+1. EXTRACT every deal field into extracted_deal_data. Use null for anything genuinely absent — never invent values. Money fields are plain numbers (700000, not "$700K"). Rates are percent numbers (9.125), EXCEPT ltv which is a 0–1 ratio. Classify structure_type as one of: morby, ab_bc, assignment, creative, nnn, seller_finance. Classify exit_strategy as: sell, refi, hold, assignment. Include total_cash_invested (sponsor cash deployed) and net_monthly_cashflow (monthly income − opex − ALL debt service; NEGATIVE = monthly carry/outflow, POSITIVE = cash flowing) — these drive the Capital Runway Multiple. If they were provided in the input data, carry them through.
 2. UNDERWRITE the deal:
    - equity_spread = ARV − loan amount (null if unknown).
    - acquisition_grade (0–100): quality of the entry — spread, LTV vs the 70–75% target, basis vs ARV, fee capture, structural control.
@@ -56,7 +56,7 @@ const TOOL_SCHEMA = {
         property_type: str,
         structure_type: {
           type: ["string", "null"],
-          enum: ["morby", "ab_bc", "assignment", "creative", "nnn", null],
+          enum: ["morby", "ab_bc", "assignment", "creative", "nnn", "seller_finance", null],
         },
         purchase_price: num,
         arv: num,
