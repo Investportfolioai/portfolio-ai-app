@@ -63,9 +63,8 @@ const DEAD_REASONS = [
 
 const STATUS_TABS: { key: DealStatus | "all" | "escrow"; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "active", label: "Active" },
-  { key: "escrow", label: "Escrow" },
   { key: "pending", label: "Pending" },
+  { key: "escrow", label: "Escrow" },
   { key: "passed", label: "Passed" },
   { key: "dead", label: "Dead" },
 ];
@@ -147,22 +146,24 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
   const [structure, setStructure] = useState<StructureFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Escrow = active deals with an escrow_date; the Active tab excludes them.
+  // All = active + pending (excludes dead/passed); Escrow = active w/ escrow_date.
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: deals.length, escrow: 0 };
+    const c: Record<string, number> = { all: 0, escrow: 0, pending: 0, passed: 0, dead: 0 };
     for (const d of deals) {
+      if (d.status === "active" || d.status === "pending") c.all += 1;
       if (d.status === "active" && d.escrow_date) c.escrow += 1;
-      else c[d.status] = (c[d.status] ?? 0) + 1;
+      if (d.status === "pending") c.pending += 1;
+      if (d.status === "passed") c.passed += 1;
+      if (d.status === "dead") c.dead += 1;
     }
     return c;
   }, [deals]);
 
   const filtered = useMemo(() => {
     const matchStatus = (d: Deal) => {
-      if (status === "all") return true;
+      if (status === "all") return d.status === "active" || d.status === "pending";
       if (status === "escrow") return d.status === "active" && !!d.escrow_date;
-      if (status === "active") return d.status === "active" && !d.escrow_date;
-      return d.status === status;
+      return d.status === status; // pending | passed | dead
     };
     return deals.filter(
       (d) =>
