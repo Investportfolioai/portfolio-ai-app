@@ -38,6 +38,7 @@ Step 1: Calculate first_lien = purchase_price * 0.75
 Step 2: Calculate first_lien_payment using 8% 30yr amortization
 Step 3: seller_carry = purchase_price - first_lien
 Step 4: cashback = (first_lien_proceeds + seller_carry) - purchase_price - closing_costs
+  closing_costs = 10% of purchase price. If the deal document mentions agent commissions, ADD those on top of the 10%.
   Note: if deal states explicit cashback or net_to_buyer, use that number directly
 Step 5: cashback_pct = cashback / purchase_price * 100
 
@@ -110,7 +111,7 @@ REQUIRED OUTPUT FORMAT — respond with the submit_underwriting tool call contai
 - projected_coverage_pct: percentage
 - rent_source: 'document' or 'web_search' or 'estimated'
 - ai_summary: 3-4 sentence plain English verdict structured as:
-  '[Deal Tier]. Cashback at close: $X (X%). First lien $X/mo + seller carry $X/mo = $X total obligations. Current rent covers X% of obligations[, projected rent covers X% stabilized]. [One sentence on what makes this deal work or what needs to happen for it to work.]'
+  '[Deal Tier]. Cashback at close: $X (X%). Estimated closing costs: 10% of purchase price ($X). First lien $X/mo + seller carry $X/mo = $X total obligations. Current rent covers X% of obligations[, projected rent covers X% stabilized]. [One sentence on what makes this deal work or what needs to happen for it to work.]'
 - important_flags: array of strings — any material items: extension clauses, deferred interest, value-add assumptions, rent comp confidence level, opportunity zone, etc.`;
 
 const num = { type: ["number", "null"] };

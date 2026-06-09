@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { money } from "@/lib/format";
+import { portfolioAiFee } from "@/lib/types";
 
 interface EscrowDeal {
   id: string;
@@ -37,8 +38,8 @@ interface Intel {
   pending_deals: PendingDeal[];
 }
 
-const FEE_RATE = 0.03;
-const fee = (price: number | null) => (price != null ? price * FEE_RATE : null);
+const fee = (cashback: number | null, price: number | null) =>
+  portfolioAiFee({ cashback_at_close: cashback, purchase_price: price });
 const daysBetween = (iso: string | null) =>
   iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : 0;
 
@@ -117,7 +118,7 @@ export function DashboardIntel() {
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${acq.cls}`}>ACQ {acq.letter}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${stab.cls}`}>STAB {stab.letter}</span>
                   <span className="data-number shrink-0 text-xs tabular-nums text-muted-foreground">{daysBetween(d.created_at)}d</span>
-                  <span className="data-number shrink-0 text-xs tabular-nums text-accent">{money(fee(d.purchase_price))}</span>
+                  <span className="data-number shrink-0 text-xs tabular-nums text-accent">{money(fee(d.cashback_at_close, d.purchase_price))}</span>
                 </div>
               );
             })
@@ -159,7 +160,7 @@ function EscrowRow({ deal, onSaved }: { deal: EscrowDeal; onSaved: () => void })
       <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-accent/30">
         {daysBetween(deal.escrow_date)}d
       </span>
-      <span className="data-number shrink-0 text-xs tabular-nums text-accent">{money(fee(deal.purchase_price))}</span>
+      <span className="data-number shrink-0 text-xs tabular-nums text-accent">{money(fee(cbNum, deal.purchase_price))}</span>
       <div className="flex shrink-0 items-center rounded-md border border-border bg-secondary px-1.5 py-0.5">
         <span className="text-[11px] text-muted-foreground">$</span>
         <input

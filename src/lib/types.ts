@@ -314,6 +314,23 @@ export function capitalRunwayMultiple(
 }
 
 /**
+ * Portfolio AI fee = 10% of cashback at close. When cashback isn't set yet,
+ * estimate it from the standard Morby structure
+ * (first lien 75% − purchase price + seller carry) and take 10%. Never negative.
+ */
+export function portfolioAiFee(opts: {
+  cashback_at_close?: number | null;
+  purchase_price?: number | null;
+  seller_carry_amount?: number | null;
+}): number | null {
+  const { cashback_at_close, purchase_price, seller_carry_amount } = opts;
+  if (cashback_at_close != null) return Math.max(0, cashback_at_close * 0.1);
+  if (purchase_price == null) return null;
+  const estCashback = purchase_price * 0.75 - purchase_price + (seller_carry_amount ?? 0);
+  return Math.max(0, estCashback * 0.1);
+}
+
+/**
  * Equity spread to display. `equity_spread` is a GENERATED column in Postgres
  * (ARV − loan amount); prefer it, and mirror that formula if it's ever null.
  */

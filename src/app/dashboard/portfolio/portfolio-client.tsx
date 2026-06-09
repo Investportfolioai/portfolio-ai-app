@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { money } from "@/lib/format";
-import { daysSince } from "@/lib/types";
+import { daysSince, portfolioAiFee } from "@/lib/types";
 import { getBalloonStatus, formatBalloonDisplay } from "@/lib/balloon";
 
 // ---------------------------------------------------------------------------
@@ -1006,13 +1006,12 @@ function GradeBadge({ label, value }: { label: string; value: number | null }) {
 function DealCard({ deal, mode }: { deal: PortfolioDeal; mode: "pending" | "escrow" }) {
   const router = useRouter();
   const [busy, start] = useTransition();
-  const [acqFee, setAcqFee] = useState(deal.purchase_price != null ? Math.round(deal.purchase_price * 0.03) : 0);
-  const [editingFee, setEditingFee] = useState(false);
   const [cashback, setCashback] = useState<string>(deal.cashback_at_close != null ? String(deal.cashback_at_close) : "");
 
   const equitySpread = deal.arv != null && deal.purchase_price != null ? deal.arv - deal.purchase_price : null;
   const cbNum = cashback === "" ? null : Number(cashback);
   const cbPct = cbNum != null && deal.purchase_price ? (cbNum / deal.purchase_price) * 100 : null;
+  const aiFee = portfolioAiFee({ cashback_at_close: cbNum, purchase_price: deal.purchase_price });
 
   function saveCashback() {
     start(async () => {
@@ -1045,12 +1044,8 @@ function DealCard({ deal, mode }: { deal: PortfolioDeal; mode: "pending" | "escr
         <Stat label={mode === "escrow" ? "Days in Escrow" : "Days in Pending"} value={`${days}d`} />
       </dl>
       <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4 text-sm">
-        <span className="text-[10px] uppercase tracking-widest text-white/40">Projected ACQ Fee</span>
-        {editingFee ? (
-          <input autoFocus type="number" value={acqFee} onChange={(e) => setAcqFee(Number(e.target.value))} onBlur={() => setEditingFee(false)} className="w-28 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-right text-sm text-white outline-none focus:border-[#c9a84c]" />
-        ) : (
-          <button onClick={() => setEditingFee(true)} className="data-number tabular-nums text-white hover:text-[#c9a84c]" title="Click to edit">{money(acqFee)}</button>
-        )}
+        <span className="text-[10px] uppercase tracking-widest text-white/40">Portfolio AI Fee (10% of cashback)</span>
+        <span className="data-number tabular-nums text-[#c9a84c]">{aiFee != null ? money(aiFee) : "—"}</span>
       </div>
       <div className="mt-3 flex items-center justify-between text-sm">
         <span className="text-[10px] uppercase tracking-widest text-white/40">Cashback at Close</span>

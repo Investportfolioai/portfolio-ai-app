@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { portfolioAiFee } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DAY_MS = 86_400_000;
-const FEE_RATE = 0.03;
 
 function canManage(role: string | null): boolean {
   return role === "owner" || role === "partner";
@@ -20,6 +20,7 @@ interface DealRow {
   created_at: string;
   purchase_price: number | null;
   cashback_at_close: number | null;
+  seller_note_amount: number | null;
   acquisition_grade: number | null;
   stabilization_grade: number | null;
   intentional_pass: boolean | null;
@@ -37,7 +38,7 @@ export async function GET() {
   const { data, error } = await admin
     .from("deals")
     .select(
-      "id, property_address, status, escrow_date, created_at, purchase_price, cashback_at_close, acquisition_grade, stabilization_grade, intentional_pass",
+      "id, property_address, status, escrow_date, created_at, purchase_price, cashback_at_close, seller_note_amount, acquisition_grade, stabilization_grade, intentional_pass",
     );
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
@@ -46,10 +47,19 @@ export async function GET() {
   const isPending = (d: DealRow) => d.status === "pending";
   const activeOrPending = (d: DealRow) => d.status === "active" || d.status === "pending";
 
-  // Projected fees: escrow + pending deals (price * 3%).
+  // Portfolio AI fees: escrow + pending deals, 10% of cashback at close.
   const total_projected_fees = deals
     .filter((d) => isEscrow(d) || isPending(d))
-    .reduce((s, d) => s + (d.purchase_price ?? 0) * FEE_RATE, 0);
+    .reduce(
+      (s, d) =>
+        s +
+        (portfolioAiFee({
+          cashback_at_close: d.cashback_at_close,
+          purchase_price: d.purchase_price,
+          seller_carry_amount: d.seller_note_amount,
+        }) ?? 0),
+      0,
+    );
 
   const total_projected_cashback = deals
     .filter((d) => activeOrPending(d) && d.cashback_at_close != null)

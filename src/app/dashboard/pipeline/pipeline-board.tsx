@@ -21,6 +21,7 @@ import {
   daysUntil,
   deadDaysRemaining,
   equitySpread,
+  portfolioAiFee,
 } from "@/lib/types";
 import { money, moneyCompact, updatedLabel } from "@/lib/format";
 import {
@@ -118,7 +119,7 @@ function IntelligenceBar() {
       </button>
       {open && (
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
-          <MiniStat label="Proj Fees" value={money(intel?.total_projected_fees ?? 0)} />
+          <MiniStat label="Portfolio AI Fees" value={money(intel?.total_projected_fees ?? 0)} />
           <MiniStat label="Proj Cashback" value={money(intel?.total_projected_cashback ?? 0)} />
           <MiniStat label="Close Rate" value={`${(intel?.close_rate ?? 0).toFixed(0)}%`} />
           <MiniStat label="Avg ACQ" value={intel?.avg_acq_grade != null ? intel.avg_acq_grade.toFixed(0) : "—"} />
@@ -653,9 +654,13 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
   const [cashback, setCashback] = useState(
     deal.cashback_at_close != null ? String(deal.cashback_at_close) : "",
   );
-  const projFee = deal.purchase_price != null ? deal.purchase_price * 0.03 : null;
   const cbNum = cashback === "" ? null : Number(cashback);
   const cbPct = cbNum != null && deal.purchase_price ? (cbNum / deal.purchase_price) * 100 : null;
+  const aiFee = portfolioAiFee({
+    cashback_at_close: cbNum,
+    purchase_price: deal.purchase_price,
+    seller_carry_amount: deal.ai_analysis?.underwriting?.seller_carry_amount ?? deal.seller_note_amount,
+  });
 
   function save() {
     start(async () => {
@@ -677,8 +682,8 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
         </div>
       )}
       <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Proj. Fee</span>
-        <span className="data-number tabular-nums text-primary">{projFee != null ? money(projFee) : "—"}</span>
+        <span className="text-muted-foreground">Portfolio AI Fee</span>
+        <span className="data-number tabular-nums text-accent">{aiFee != null ? money(aiFee) : "—"}</span>
       </div>
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">Cashback at Close</span>
