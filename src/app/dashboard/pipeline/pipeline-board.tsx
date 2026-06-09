@@ -28,6 +28,7 @@ import {
   rejectDeal,
   negotiateDeal,
   runUnderwriting,
+  setRentalStrategy,
   getDealDetail,
   createDeal,
   markDealDead,
@@ -515,6 +516,45 @@ function PendingGradeBadge() {
 // Card
 // ---------------------------------------------------------------------------
 
+/** LTR / STR segmented toggle. Changing it re-underwrites with the matching comp search. */
+function RentalToggle({ deal, onChanged }: { deal: Deal; onChanged?: () => void }) {
+  const router = useRouter();
+  const [busy, start] = useTransition();
+  const current = deal.rental_strategy ?? "ltr";
+
+  function choose(strategy: "ltr" | "str") {
+    if (strategy === current || busy) return;
+    start(async () => {
+      await setRentalStrategy(deal.id, strategy);
+      if (onChanged) onChanged();
+      else router.refresh();
+    });
+  }
+
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary p-0.5"
+    >
+      {(["ltr", "str"] as const).map((s) => (
+        <button
+          key={s}
+          type="button"
+          disabled={busy}
+          onClick={() => choose(s)}
+          className={
+            "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors disabled:opacity-50 " +
+            (current === s ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-primary")
+          }
+        >
+          {s}
+        </button>
+      ))}
+      {busy && <span className="px-1 text-[10px] text-muted-foreground">re-underwriting…</span>}
+    </div>
+  );
+}
+
 function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
   const spread = equitySpread(deal);
   const locality = [deal.city, deal.state].filter(Boolean).join(", ");
@@ -569,6 +609,11 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
             <GradeBadge caption="Stab" value={deal.stabilization_grade ?? 0} />
           </div>
         )}
+      </div>
+
+      <div className="mb-3 flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Rental</span>
+        <RentalToggle deal={deal} />
       </div>
 
       <dl className="grid grid-cols-3 gap-3 border-t border-border pt-4">
@@ -962,6 +1007,13 @@ function OverviewTab({
   };
   return (
     <div>
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/40 px-4 py-2.5">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Rental Strategy
+        </span>
+        <RentalToggle deal={deal} onChanged={onChanged} />
+      </div>
+
       <Section title="Overview · click a value to edit">
         <EditableRow dealId={deal.id} field="property_address" label="Address" raw={deal.property_address} display={deal.property_address} onSaved={saved} />
         <Row label="Asset Type" value={assetType} mono={false} />

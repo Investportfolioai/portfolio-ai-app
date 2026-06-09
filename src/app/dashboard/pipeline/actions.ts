@@ -199,6 +199,13 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   if (!allowed) return { ok: false, error: "Not authorized." };
 
   const admin = createAdminClient();
+  const { data: stratRow } = await admin
+    .from("deals")
+    .select("rental_strategy")
+    .eq("id", dealId)
+    .maybeSingle();
+  const rentalStrategy = (stratRow?.rental_strategy as string | null) ?? "ltr";
+
   const { data: docs } = await admin
     .from("deal_documents")
     .select("file_name, file_url")
@@ -219,7 +226,7 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       // Document path — underwrite from the uploaded PDFs.
       const loi = { base64: await download(loiDoc.file_url) };
       const deck = deckDoc ? { base64: await download(deckDoc.file_url) } : undefined;
-      analysis = await underwriteDeal(loi, deck);
+      analysis = await underwriteDeal(loi, deck, { rentalStrategy });
     } else {
       // No PDFs on file — underwrite from the deal's structured data.
       const { data: deal } = await admin
@@ -235,6 +242,7 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       const { ai_analysis: _drop, ...cols } = deal;
       analysis = await underwriteDealData({
         ...cols,
+        rental_strategy: rentalStrategy,
         property_type: manual?.property_type ?? null,
         total_cash_invested: manual?.total_cash_invested ?? null,
         net_monthly_cashflow: manual?.net_monthly_cashflow ?? null,
@@ -260,6 +268,32 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   await logActivity(dealId, "underwriting_run", `Tier: ${u.deal_tier ?? "—"}.`);
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
+}
+
+/**
+ * Set a deal's rental strategy (ltr/str) and re-underwrite with the matching
+ * rental-comp search. Owner/partner only.
+ */
+export async function setRentalStrategy(
+  dealId: string,
+  strategy: "ltr" | "str",
+): Promise<ActionState> {
+  if (strategy !== "ltr" && strategy !== "str") {
+    return { ok: false, error: "Invalid strategy." };
+  }
+  const session = await createClient();
+  const { data: allowed } = await session.rpc("is_owner_or_partner");
+  if (!allowed) return { ok: false, error: "Not authorized." };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("deals")
+    .update({ rental_strategy: strategy })
+    .eq("id", dealId);
+  if (error) return { ok: false, error: error.message };
+
+  // Re-underwrite with the new strategy (runUnderwriting reads rental_strategy).
+  return runUnderwriting(dealId);
 }
 
 /**

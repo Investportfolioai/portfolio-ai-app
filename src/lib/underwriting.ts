@@ -84,6 +84,13 @@ DEAL TIER (assign one):
 - Watch: cashback_pct 5-10% OR coverage 50-70%
 - Pass: cashback_pct < 5% OR current_coverage < 40%
 
+RENTAL STRATEGY (read rental_strategy from the input; default 'ltr'):
+- If rental_strategy = 'str': use web_search for "{address} Airbnb nightly rate average" and "{city} STR average monthly revenue" to estimate monthly STR income. Assume 65% occupancy. Monthly STR income = nightly_rate * 30 * 0.65. Use this as current_rent for the coverage calculation, set rent_source = 'web_search', and ALWAYS include this exact phrase in ai_summary: "STR underwrite — assumes 65% occupancy at market nightly rate."
+- If rental_strategy = 'ltr' (default): use web_search for long-term rental comps as described above.
+
+COMMERCIAL / NNN GUARD:
+- If structure_type = 'nnn' OR the property is clearly commercial (retail, office, industrial, or a triple-net-leased asset): SKIP the residential rent-coverage path entirely. If NOI is available, score STAB on NOI / total_obligations; otherwise set stabilization_grade = 'N/A', stabilization_score = 0, and treat STAB as "Commercial — Manual Review". Set deal_tier = "Commercial NNN — Manual Review" and add a note to important_flags.
+
 REQUIRED OUTPUT FORMAT — respond with the submit_underwriting tool call containing:
 - acquisition_grade: letter A/B/C/D/F
 - stabilization_grade: letter A/B/C/D/F
@@ -282,6 +289,7 @@ async function callUnderwriting(
 export async function underwriteDeal(
   loi: PdfInput,
   deck?: PdfInput,
+  opts?: { rentalStrategy?: string },
 ): Promise<UnderwritingOutput> {
   const content: Anthropic.ContentBlockParam[] = [
     {
@@ -299,7 +307,7 @@ export async function underwriteDeal(
   }
   content.push({
     type: "text",
-    text: "Read the attached document(s), extract every deal field, and underwrite this deal. Call submit_underwriting with your complete analysis.",
+    text: `Read the attached document(s), extract every deal field, and underwrite this deal. Rental strategy for this underwrite: ${opts?.rentalStrategy ?? "ltr"} (ltr = long-term rental, str = short-term/Airbnb). Call submit_underwriting with your complete analysis.`,
   });
   return callUnderwriting(content);
 }
@@ -312,7 +320,7 @@ export async function underwriteDealData(
     {
       type: "text",
       text:
-        "Underwrite this deal from its structured data. Confirm extracted_deal_data and run the full analysis:\n\n" +
+        "Underwrite this deal from its structured data. Read rental_strategy from the data (default ltr). Confirm extracted_deal_data and run the full analysis:\n\n" +
         JSON.stringify(deal, null, 2),
     },
   ]);

@@ -147,6 +147,8 @@ export interface Deal {
   escrow_date: string | null;
   /** Cashback captured at close (Phase 3). */
   cashback_at_close: number | null;
+  /** Rental underwriting strategy: long-term (ltr) or short-term/Airbnb (str). */
+  rental_strategy: "ltr" | "str";
   /** Full Claude underwriting output stored from the submit flow (jsonb). */
   ai_analysis: UnderwritingOutput | null;
 
