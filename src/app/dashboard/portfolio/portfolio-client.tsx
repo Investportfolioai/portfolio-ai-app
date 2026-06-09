@@ -59,7 +59,7 @@ function letterGrade(n: number | null): { letter: string; cls: string } {
 }
 
 function updatedLabel(iso: string | null): string {
-  if (!iso) return "Updating…";
+  if (!iso) return "Not pulled yet";
   const ms = Date.now() - new Date(iso).getTime();
   const h = Math.floor(ms / 3_600_000);
   if (h < 1) return "Updated just now";
@@ -149,6 +149,27 @@ function HoldingsTab() {
     load();
   }
 
+  /** Refresh one holding's AVM (~30s async Zillow lookup); patches local state. */
+  async function refreshOne(id: string): Promise<{ ok: boolean; error?: string }> {
+    const res = await fetch("/api/holdings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && j.ok) {
+      setHoldings((hs) =>
+        hs.map((h) =>
+          h.id === id
+            ? { ...h, zillow_avm: j.zillow_avm, zillow_last_pulled: j.zillow_last_pulled }
+            : h,
+        ),
+      );
+      return { ok: true };
+    }
+    return { ok: false, error: j.error || "Refresh failed." };
+  }
+
   function exportCsv() {
     const head = [
       "Address",
@@ -217,7 +238,12 @@ function HoldingsTab() {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {holdings.map((h) => (
-            <HoldingCard key={h.id} h={h} onDelete={() => remove(h.id)} />
+            <HoldingCard
+              key={h.id}
+              h={h}
+              onDelete={() => remove(h.id)}
+              onRefresh={() => refreshOne(h.id)}
+            />
           ))}
         </div>
       )}
@@ -227,9 +253,30 @@ function HoldingsTab() {
   );
 }
 
-function HoldingCard({ h, onDelete }: { h: Holding; onDelete: () => void }) {
+function HoldingCard({
+  h,
+  onDelete,
+  onRefresh,
+}: {
+  h: Holding;
+  onDelete: () => void;
+  onRefresh: () => Promise<{ ok: boolean; error?: string }>;
+}) {
+  const [refreshing, setRefreshing] = useState(false);
+  const [err, setErr] = useState("");
   const equity =
     h.zillow_avm != null && h.mortgage_balance != null ? h.zillow_avm - h.mortgage_balance : null;
+
+  async function refresh() {
+    setErr("");
+    setRefreshing(true);
+    try {
+      const r = await onRefresh();
+      if (!r.ok) setErr(r.error || "Refresh failed.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   return (
     <div className="flex flex-col rounded-xl border border-white/10 bg-white/5 p-5">
@@ -242,14 +289,25 @@ function HoldingCard({ h, onDelete }: { h: Holding; onDelete: () => void }) {
         )}
       </div>
 
-      <div className="mt-4">
-        <p className="data-number text-2xl font-medium text-[#c9a84c]">
-          {h.zillow_avm != null ? money(h.zillow_avm) : "—"}
-        </p>
-        <p className="mt-0.5 text-[11px] text-white/40">
-          Zillow AVM · {updatedLabel(h.zillow_last_pulled)}
-        </p>
+      <div className="mt-4 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="data-number text-2xl font-medium text-[#c9a84c]">
+            {h.zillow_avm != null ? money(h.zillow_avm) : "—"}
+          </p>
+          <p className="mt-0.5 text-[11px] text-white/40">
+            Zillow AVM · {refreshing ? "Refreshing…" : updatedLabel(h.zillow_last_pulled)}
+          </p>
+        </div>
+        <button
+          onClick={refresh}
+          disabled={refreshing}
+          title="Refresh Zillow AVM (~30s)"
+          className="shrink-0 rounded-md border border-white/15 px-2.5 py-1 text-[11px] font-medium text-white/70 transition-colors hover:bg-white/5 disabled:opacity-50"
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
       </div>
+      {err && <p className="mt-1 text-[11px] text-rose-400">{err}</p>}
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-white/10 pt-4 text-sm">
         <Stat label="Equity" value={equity != null ? money(equity) : "—"} valueCls={eqColor(equity)} />

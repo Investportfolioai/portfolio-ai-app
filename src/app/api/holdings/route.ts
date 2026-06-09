@@ -6,23 +6,13 @@ import { getZillowAVM } from "@/lib/zillow";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 function canManage(role: string | null): boolean {
   return role === "owner" || role === "partner";
 }
 
-interface Holding {
-  id: string;
-  address: string;
-  zillow_avm: number | null;
-  zillow_last_pulled: string | null;
-  [k: string]: unknown;
-}
-
 /**
- * GET — return the firm's holdings. For any holding whose AVM is stale (never
- * pulled or > 24h old), refresh it from Zillow and persist before returning.
+ * GET — return the firm's holdings immediately from the DB (no Zillow call).
+ * AVMs are refreshed on demand per card via PATCH, not on page load.
  */
 export async function GET() {
   const user = await getSessionUser();
@@ -34,24 +24,48 @@ export async function GET() {
     .select("*")
     .order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ holdings: data ?? [] });
+}
 
-  const holdings = (data ?? []) as Holding[];
-  const now = Date.now();
+/**
+ * PATCH { id } — refresh a single holding's Zillow AVM (the ~30s async lookup
+ * happens here, triggered by the per-card refresh button). Persists and returns
+ * the new value on success; leaves the stored value untouched on a miss.
+ */
+export async function PATCH(req: Request) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  await Promise.all(
-    holdings.map(async (h) => {
-      const last = h.zillow_last_pulled ? new Date(h.zillow_last_pulled).getTime() : 0;
-      if (last && now - last < DAY_MS) return; // fresh enough
-      const avm = await getZillowAVM(h.address);
-      if (avm == null) return; // leave prior value; retry next load
-      const stamp = new Date().toISOString();
-      await admin.from("holdings").update({ zillow_avm: avm, zillow_last_pulled: stamp }).eq("id", h.id);
-      h.zillow_avm = avm;
-      h.zillow_last_pulled = stamp;
-    }),
-  );
+  let body: { id?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
+  }
+  if (!body.id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
-  return NextResponse.json({ holdings });
+  const admin = createAdminClient();
+  const { data: holding, error: fErr } = await admin
+    .from("holdings")
+    .select("address")
+    .eq("id", body.id)
+    .maybeSingle();
+  if (fErr || !holding) return NextResponse.json({ error: "Holding not found" }, { status: 404 });
+
+  const avm = await getZillowAVM(holding.address);
+  if (avm == null) {
+    return NextResponse.json({ ok: false, error: "Couldn't fetch a Zillow estimate." });
+  }
+
+  const stamp = new Date().toISOString();
+  const { error } = await admin
+    .from("holdings")
+    .update({ zillow_avm: avm, zillow_last_pulled: stamp })
+    .eq("id", body.id);
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
+
+  return NextResponse.json({ ok: true, zillow_avm: avm, zillow_last_pulled: stamp });
 }
 
 /** POST — create a holding owned by the authenticated user. */
