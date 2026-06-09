@@ -68,18 +68,17 @@ const STATUS_TABS: { key: DealStatus | "all"; label: string }[] = [
   { key: "dead", label: "Dead" },
 ];
 
+type StructureFilter = "all" | "ab_bc" | "seller_finance";
+const STRUCTURE_FILTERS: [StructureFilter, string][] = [
+  ["all", "All"],
+  ["ab_bc", "AB→BC"],
+  ["seller_finance", "Seller Finance"],
+];
+
 export function PipelineBoard({ deals }: { deals: Deal[] }) {
   const [status, setStatus] = useState<DealStatus | "all">("all");
-  const [structure, setStructure] = useState<DealStructure | "all">("all");
+  const [structure, setStructure] = useState<StructureFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const structures = useMemo(
-    () =>
-      (Object.keys(STRUCTURE_LABELS) as DealStructure[]).filter((s) =>
-        deals.some((d) => d.structure_type === s),
-      ),
-    [deals],
-  );
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: deals.length };
@@ -92,7 +91,7 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
       deals.filter(
         (d) =>
           (status === "all" || d.status === status) &&
-          (structure === "all" || d.structure_type === structure),
+          (structure === "all" || (d.structure_type as string) === structure),
       ),
     [deals, status, structure],
   );
@@ -142,21 +141,16 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
       </div>
 
       {/* Structure chips */}
-      {structures.length > 0 && (
-        <div className="mb-5 flex flex-wrap items-center gap-2">
-          <span className="w-20 shrink-0 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-            Structure
-          </span>
-          <Chip active={structure === "all"} onClick={() => setStructure("all")}>
-            All
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <span className="w-20 shrink-0 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+          Structure
+        </span>
+        {STRUCTURE_FILTERS.map(([value, label]) => (
+          <Chip key={value} active={structure === value} onClick={() => setStructure(value)}>
+            {label}
           </Chip>
-          {structures.map((s) => (
-            <Chip key={s} active={structure === s} onClick={() => setStructure(s)}>
-              {STRUCTURE_LABELS[s]}
-            </Chip>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
 
       {filtered.length === 0 ? (
         <EmptyState hasDeals={deals.length > 0} />

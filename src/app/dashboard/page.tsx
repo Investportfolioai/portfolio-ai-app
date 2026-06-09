@@ -1,16 +1,10 @@
 import Link from "next/link";
 import { getDeals, getRecentActivity } from "@/lib/deals";
-import { equitySpread, type Deal } from "@/lib/types";
+import { equitySpread } from "@/lib/types";
 import { money } from "@/lib/format";
 
 export const metadata = { title: "Dashboard — Portfolio AI" };
 export const dynamic = "force-dynamic";
-
-function cashInvested(d: Deal): number {
-  const ed = d.ai_analysis?.extracted_deal_data;
-  const uw = d.ai_analysis?.underwriting;
-  return ed?.total_cash_invested ?? uw?.total_cash_invested ?? 0;
-}
 
 function avg(nums: number[]): number | null {
   if (nums.length === 0) return null;
@@ -27,7 +21,9 @@ function fmtDateTime(iso: string): string {
 export default async function DashboardHome() {
   const [deals, activity] = await Promise.all([getDeals(), getRecentActivity(10)]);
   const active = deals.filter((d) => d.status === "active");
-  const capitalDeployed = active.reduce((s, d) => s + cashInvested(d), 0);
+  const projectedCashback = deals
+    .filter((d) => d.status === "active" || d.status === "pending")
+    .reduce((s, d) => s + (d.cashback_at_close ?? 0), 0);
   const equityPosition = active.reduce((s, d) => s + (equitySpread(d) ?? 0), 0);
   const acqGrades = deals.map((d) => d.acquisition_grade).filter((g): g is number => g != null);
   const stabGrades = deals.map((d) => d.stabilization_grade).filter((g): g is number => g != null);
@@ -47,7 +43,7 @@ export default async function DashboardHome() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         <Metric label="Total Deals" value={String(deals.length)} />
         <Metric label="Active Deals" value={String(active.length)} />
-        <Metric label="Capital Deployed" value={money(capitalDeployed)} accent />
+        <Metric label="Projected Cashback" value={money(projectedCashback)} accent />
         <Metric label="Equity Position" value={money(equityPosition)} accent />
         <Metric label="Avg ACQ Grade" value={avgAcq == null ? "—" : `${avgAcq}`} />
         <Metric label="Avg STAB Grade" value={avgStab == null ? "—" : `${avgStab}`} />

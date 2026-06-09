@@ -144,6 +144,8 @@ export interface Deal {
   status_changed_at: string | null;
   /** Set when the deal is moved into the escrow pipeline (Phase 3). */
   escrow_date: string | null;
+  /** Cashback captured at close (Phase 3). */
+  cashback_at_close: number | null;
   /** Full Claude underwriting output stored from the submit flow (jsonb). */
   ai_analysis: UnderwritingOutput | null;
 
