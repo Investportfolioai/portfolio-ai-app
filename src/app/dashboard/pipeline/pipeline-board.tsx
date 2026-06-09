@@ -60,9 +60,10 @@ const DEAD_REASONS = [
   "Other",
 ];
 
-const STATUS_TABS: { key: DealStatus | "all"; label: string }[] = [
+const STATUS_TABS: { key: DealStatus | "all" | "escrow"; label: string }[] = [
   { key: "all", label: "All" },
   { key: "active", label: "Active" },
+  { key: "escrow", label: "Escrow" },
   { key: "pending", label: "Pending" },
   { key: "passed", label: "Passed" },
   { key: "dead", label: "Dead" },
@@ -76,25 +77,33 @@ const STRUCTURE_FILTERS: [StructureFilter, string][] = [
 ];
 
 export function PipelineBoard({ deals }: { deals: Deal[] }) {
-  const [status, setStatus] = useState<DealStatus | "all">("all");
+  const [status, setStatus] = useState<DealStatus | "all" | "escrow">("all");
   const [structure, setStructure] = useState<StructureFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
+  // Escrow = active deals with an escrow_date; the Active tab excludes them.
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: deals.length };
-    for (const d of deals) c[d.status] = (c[d.status] ?? 0) + 1;
+    const c: Record<string, number> = { all: deals.length, escrow: 0 };
+    for (const d of deals) {
+      if (d.status === "active" && d.escrow_date) c.escrow += 1;
+      else c[d.status] = (c[d.status] ?? 0) + 1;
+    }
     return c;
   }, [deals]);
 
-  const filtered = useMemo(
-    () =>
-      deals.filter(
-        (d) =>
-          (status === "all" || d.status === status) &&
-          (structure === "all" || (d.structure_type as string) === structure),
-      ),
-    [deals, status, structure],
-  );
+  const filtered = useMemo(() => {
+    const matchStatus = (d: Deal) => {
+      if (status === "all") return true;
+      if (status === "escrow") return d.status === "active" && !!d.escrow_date;
+      if (status === "active") return d.status === "active" && !d.escrow_date;
+      return d.status === status;
+    };
+    return deals.filter(
+      (d) =>
+        matchStatus(d) &&
+        (structure === "all" || (d.structure_type as string) === structure),
+    );
+  }, [deals, status, structure]);
 
   const [adding, setAdding] = useState(false);
 
@@ -502,6 +511,10 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
         <Metric label="Equity Spread" value={moneyCompact(spread)} accent />
       </dl>
 
+      {(deal.status === "pending" || (deal.status === "active" && deal.escrow_date)) && (
+        <CardCashback deal={deal} escrow={deal.status === "active" && !!deal.escrow_date} />
+      )}
+
       <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
         {deal.status === "dead" && deadDaysRemaining(deal) != null ? (
           <span className="font-medium text-rose-600">
@@ -515,6 +528,70 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
         <span>{updatedLabel(daysSince(deal.updated_at))}</span>
       </div>
     </motion.div>
+  );
+}
+
+/**
+ * Cashback + projected-fee block on pending/escrow pipeline cards. Cashback is
+ * inline-editable and saved on blur via PATCH /api/deals/escrow. Interactive
+ * area stops propagation so editing doesn't open the deal panel.
+ */
+function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
+  const router = useRouter();
+  const [busy, start] = useTransition();
+  const [cashback, setCashback] = useState(
+    deal.cashback_at_close != null ? String(deal.cashback_at_close) : "",
+  );
+  const projFee = deal.purchase_price != null ? deal.purchase_price * 0.03 : null;
+  const cbNum = cashback === "" ? null : Number(cashback);
+  const cbPct = cbNum != null && deal.purchase_price ? (cbNum / deal.purchase_price) * 100 : null;
+
+  function save() {
+    start(async () => {
+      await fetch("/api/deals/escrow", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal_id: deal.id, cashback_at_close: cashback === "" ? null : cbNum }),
+      });
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mt-4 space-y-2 border-t border-border pt-4" onClick={(e) => e.stopPropagation()}>
+      {escrow && deal.escrow_date && (
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground">Days in escrow</span>
+          <span className="data-number tabular-nums text-primary">{daysSince(deal.escrow_date)}d</span>
+        </div>
+      )}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">Proj. Fee</span>
+        <span className="data-number tabular-nums text-primary">{projFee != null ? money(projFee) : "—"}</span>
+      </div>
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">Cashback at Close</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-md border border-border bg-secondary px-2 py-0.5">
+            <span className="text-muted-foreground">$</span>
+            <input
+              type="number"
+              value={cashback}
+              disabled={busy}
+              onChange={(e) => setCashback(e.target.value)}
+              onBlur={save}
+              placeholder="0"
+              className="w-20 bg-transparent px-1 text-right text-xs text-primary outline-none"
+            />
+          </div>
+          {cbPct != null && (
+            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-semibold text-accent ring-1 ring-inset ring-accent/40">
+              {cbPct.toFixed(1)}%
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
