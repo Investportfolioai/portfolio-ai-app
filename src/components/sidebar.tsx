@@ -16,6 +16,7 @@ export interface SidebarUser {
 const NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard" },
   { label: "Pipeline", href: "/dashboard/pipeline" },
+  { label: "Portfolio", href: "/dashboard/portfolio" },
   { label: "Deals", href: "/dashboard/deals" },
   { label: "Underwriting", href: "/dashboard/underwriting" },
   { label: "Key Principals", href: "/dashboard/kps" },
