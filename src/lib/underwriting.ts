@@ -1,6 +1,6 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import type { UnderwritingOutput } from "@/lib/types";
+import type { UnderwritingOutput, UnderwritingAnalysis, Recommendation } from "@/lib/types";
 
 export type {
   ExtractedDealData,
@@ -23,23 +23,88 @@ export interface PdfInput {
   base64: string;
 }
 
-const SYSTEM_PROMPT = `You are the AI underwriting engine for Portfolio AI, a real estate deal-structuring firm.
+const SYSTEM_PROMPT = `You are an expert real estate underwriter specializing in Morby Method creative finance deals. Your job is to score every deal on two dimensions: ACQ (acquisition) and STAB (stabilization).
 
-Portfolio AI's model is the "AB→BC" engine: an institutional or private lender funds 70–75% LTV while the seller carries the remaining balance via a subordinate, flexible note — creating an immediate equity spread captured at acquisition. Fees are earned at acquisition. The person who controls the structure controls the equity.
+DEAL STRUCTURE CONTEXT:
+- Primary strategy: Morby Method — institutional first lien at 75% LTV + seller carry second
+- Standard first lien assumption: 75% of purchase price, 8% interest, 30-year amortization
+- Monthly payment formula: P * (r*(1+r)^360) / ((1+r)^360 - 1) where r = 0.08/12
+- Seller carry: the gap between purchase price and first lien. Assume 3% IO if terms not stated.
+- Deferred seller carry = $0/month obligations from carry note
 
-You will receive a deal as either PDF documents (an LOI and optional deck) or as structured JSON data. Read whatever you are given directly.
+ACQ SCORE (0-100) — measures cashback at close and acquisition structure:
 
-Your job:
-1. EXTRACT every deal field into extracted_deal_data. Use null for anything genuinely absent — never invent values. Money fields are plain numbers (700000, not "$700K"). Rates are percent numbers (9.125), EXCEPT ltv which is a 0–1 ratio. Classify structure_type as one of: morby, ab_bc, assignment, creative, nnn, seller_finance. Classify exit_strategy as: sell, refi, hold, assignment. Include total_cash_invested (sponsor cash deployed) and net_monthly_cashflow (monthly income − opex − ALL debt service; NEGATIVE = monthly carry/outflow, POSITIVE = cash flowing) — these drive the Capital Runway Multiple. If they were provided in the input data, carry them through.
-2. UNDERWRITE the deal:
-   - equity_spread = ARV − loan amount (null if unknown).
-   - acquisition_grade (0–100): quality of the entry — spread, LTV vs the 70–75% target, basis vs ARV, fee capture, structural control.
-   - stabilization_grade (0–100): quality of the hold/exit — rehab/lease-up risk, exit viability, debt terms, carry runway.
-   - recommendation: proceed, proceed_with_conditions, or decline.
-   - summary: 2–4 sentences a lender or KP can trust.
-   - strengths / risks / conditions: concise bullets.
+Step 1: Calculate first_lien = purchase_price * 0.75
+Step 2: Calculate first_lien_payment using 8% 30yr amortization
+Step 3: seller_carry = purchase_price - first_lien
+Step 4: cashback = (first_lien_proceeds + seller_carry) - purchase_price - closing_costs
+  Note: if deal states explicit cashback or net_to_buyer, use that number directly
+Step 5: cashback_pct = cashback / purchase_price * 100
 
-Be rigorous and honest. Missing data is itself a risk. Always call submit_underwriting.`;
+ACQ scoring:
+- cashback_pct >= 20%: score 90-100 (A)
+- cashback_pct 15-19.9%: score 80-89 (B+)
+- cashback_pct 10-14.9%: score 70-79 (B)
+- cashback_pct 5-9.9%: score 50-69 (C)
+- cashback_pct 1-4.9%: score 30-49 (D)
+- cashback_pct <= 0%: score 0-29 (F) — deal killer
+
+ACQ adjustments:
+- ARV > purchase_price * 1.20: +5
+- ARV < purchase_price * 1.05: -10
+- Seller carrying > 30% of purchase price: +3
+- No ARV provided: -5
+
+STAB SCORE (0-100) — measures rent coverage of total monthly obligations:
+
+Step 1: total_obligations = first_lien_payment + seller_carry_payment + taxes + insurance + hoa
+  If seller carry is deferred: seller_carry_payment = 0
+Step 2: Use web_search to find current long-term rental comps for the subject property address
+Step 3: current_coverage = current_rent / total_obligations * 100
+Step 4: projected_coverage = projected_rent / total_obligations * 100
+
+STAB scoring (use current_coverage as base):
+- coverage >= 100%: score 85-100 (A) — fully covered
+- coverage 90-99%: score 75-84 (B)
+- coverage 70-89%: score 60-74 (C)
+- coverage 40-69%: score 35-59 (D)
+- coverage < 40%: score 0-34 (F)
+
+STAB adjustments:
+- Seller carry fully deferred ($0/mo): +15
+- Projected coverage >= 130%: +8 (strong value-add upside)
+- No rent data available after search: flag 'Rent comp needed', score 50
+
+DEAL TIER (assign one):
+- Elite — Paid to Buy: cashback_pct >= 20% AND current_coverage >= 150%
+- Buybox — Deferred Carry: cashback_pct >= 10% AND seller_carry_payment = 0
+- Buybox — Standard Morby: cashback_pct >= 15%
+- Value Add — Strong Upside: cashback_pct >= 10% AND projected_coverage >= 130% AND current_coverage < 100%
+- Solid Deal: cashback_pct >= 10% AND current_coverage >= 70%
+- Watch: cashback_pct 5-10% OR coverage 50-70%
+- Pass: cashback_pct < 5% OR current_coverage < 40%
+
+REQUIRED OUTPUT FORMAT — respond with the submit_underwriting tool call containing:
+- acquisition_grade: letter A/B/C/D/F
+- stabilization_grade: letter A/B/C/D/F
+- acquisition_score: number 0-100
+- stabilization_score: number 0-100
+- deal_tier: one of the tier labels above
+- cashback_amount: dollar amount
+- cashback_pct: percentage
+- first_lien_amount: calculated
+- first_lien_payment: monthly
+- seller_carry_amount: calculated
+- seller_carry_payment: monthly (0 if deferred)
+- total_obligations: monthly
+- current_rent: from document or web search
+- projected_rent: from document or web search
+- current_coverage_pct: percentage
+- projected_coverage_pct: percentage
+- rent_source: 'document' or 'web_search' or 'estimated'
+- ai_summary: 3-4 sentence plain English verdict structured as:
+  '[Deal Tier]. Cashback at close: $X (X%). First lien $X/mo + seller carry $X/mo = $X total obligations. Current rent covers X% of obligations[, projected rent covers X% stabilized]. [One sentence on what makes this deal work or what needs to happen for it to work.]'
+- important_flags: array of strings — any material items: extension clauses, deferred interest, value-add assumptions, rent comp confidence level, opportunity zone, etc.`;
 
 const num = { type: ["number", "null"] };
 const str = { type: ["string", "null"] };
@@ -84,26 +149,34 @@ const TOOL_SCHEMA = {
     underwriting: {
       type: "object",
       properties: {
-        recommendation: {
-          type: "string",
-          enum: ["proceed", "proceed_with_conditions", "decline"],
-        },
-        acquisition_grade: { type: "integer" },
-        stabilization_grade: { type: "integer" },
-        equity_spread: num,
-        summary: { type: "string" },
-        strengths: { type: "array", items: { type: "string" } },
-        risks: { type: "array", items: { type: "string" } },
-        conditions: { type: "array", items: { type: "string" } },
+        acquisition_grade: { type: "string", enum: ["A", "B", "C", "D", "F"] },
+        stabilization_grade: { type: "string", enum: ["A", "B", "C", "D", "F"] },
+        acquisition_score: { type: "integer" },
+        stabilization_score: { type: "integer" },
+        deal_tier: { type: "string" },
+        cashback_amount: num,
+        cashback_pct: num,
+        first_lien_amount: num,
+        first_lien_payment: num,
+        seller_carry_amount: num,
+        seller_carry_payment: num,
+        total_obligations: num,
+        current_rent: num,
+        projected_rent: num,
+        current_coverage_pct: num,
+        projected_coverage_pct: num,
+        rent_source: str,
+        ai_summary: { type: "string" },
+        important_flags: { type: "array", items: { type: "string" } },
       },
       required: [
-        "recommendation",
         "acquisition_grade",
         "stabilization_grade",
-        "summary",
-        "strengths",
-        "risks",
-        "conditions",
+        "acquisition_score",
+        "stabilization_score",
+        "deal_tier",
+        "ai_summary",
+        "important_flags",
       ],
     },
   },
@@ -144,11 +217,33 @@ function wrapApiError(context: string, err: unknown): Error {
   return err instanceof Error ? err : new Error(msg);
 }
 
-/** Shared call: takes the user content blocks, returns the structured output. */
+/** Map the deal tier to the legacy recommendation enum (for email + AiTab). */
+function recommendationFromTier(tier?: string): Recommendation {
+  const t = (tier ?? "").toLowerCase();
+  if (t.startsWith("pass")) return "decline";
+  if (t.startsWith("watch")) return "proceed_with_conditions";
+  return "proceed";
+}
+
+/**
+ * Shared call. Uses the web_search server tool (to pull rental comps before
+ * scoring STAB) + the submit_underwriting custom tool. tool_choice is "auto"
+ * so the model can search first, then submit — forcing a tool would block the
+ * search. Returns the validated structured output.
+ */
 async function callUnderwriting(
   content: Anthropic.ContentBlockParam[],
 ): Promise<UnderwritingOutput> {
   const client = getClient();
+  const tools = [
+    { type: "web_search_20250305", name: "web_search" },
+    {
+      name: "submit_underwriting",
+      description: "Submit the extracted deal data and full underwriting analysis.",
+      input_schema: TOOL_SCHEMA,
+    },
+  ] as unknown as Anthropic.MessageCreateParams["tools"];
+
   let response: Anthropic.Message;
   try {
     response = await client.messages.create({
@@ -157,25 +252,30 @@ async function callUnderwriting(
       system: [
         { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
       ],
-      tools: [
-        {
-          name: "submit_underwriting",
-          description:
-            "Submit the extracted deal data and underwriting analysis for a deal.",
-          input_schema: TOOL_SCHEMA as unknown as Anthropic.Tool["input_schema"],
-        },
-      ],
-      tool_choice: { type: "tool", name: "submit_underwriting" },
+      tools,
+      tool_choice: { type: "auto" },
       messages: [{ role: "user", content }],
     });
   } catch (err) {
     throw wrapApiError("callUnderwriting", err);
   }
-  const block = response.content.find((b) => b.type === "tool_use");
+
+  const block = response.content.find(
+    (b) => b.type === "tool_use" && b.name === "submit_underwriting",
+  );
   if (!block || block.type !== "tool_use") {
     throw new Error("Underwriting model did not return structured output.");
   }
-  return block.input as UnderwritingOutput;
+  const out = block.input as UnderwritingOutput;
+
+  // Derive backward-compat fields so existing consumers (email, AiTab) work.
+  if (out.underwriting) {
+    const uw = out.underwriting as UnderwritingAnalysis;
+    uw.summary = uw.ai_summary ?? uw.summary ?? "";
+    uw.recommendation = uw.recommendation ?? recommendationFromTier(uw.deal_tier);
+    uw.important_flags = uw.important_flags ?? [];
+  }
+  return out;
 }
 
 /** Underwrite from uploaded PDFs (LOI required, deck optional). */

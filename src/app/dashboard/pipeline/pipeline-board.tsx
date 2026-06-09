@@ -14,7 +14,6 @@ import {
   type AvailableKp,
   ASSIGNMENT_STATUS_LABELS,
   MILESTONE_LABELS,
-  RECOMMENDATION_LABELS,
   STATUS_LABELS,
   STRUCTURE_LABELS,
   capitalRunwayMultiple,
@@ -76,6 +75,71 @@ const STRUCTURE_FILTERS: [StructureFilter, string][] = [
   ["seller_finance", "Seller Finance"],
 ];
 
+interface PipelineIntel {
+  total_projected_fees: number;
+  total_projected_cashback: number;
+  avg_acq_grade: number | null;
+  avg_stab_grade: number | null;
+  close_rate: number;
+  avg_days_to_escrow: number | null;
+  buybox_score: number | null;
+  deals_in_escrow: number;
+  deals_pending: number;
+}
+
+/** Collapsible pipeline-intelligence bar (navy, gold numbers) above the tabs. */
+function IntelligenceBar() {
+  const [open, setOpen] = useState(true);
+  const [intel, setIntel] = useState<PipelineIntel | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/pipeline/intelligence")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => !cancelled && d && setIntel(d))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="mb-4 rounded-xl bg-[#0a1628] px-4 py-3 text-white">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between"
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-white/50">
+          Pipeline Intelligence
+        </span>
+        <span className="text-xs text-white/50">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+          <MiniStat label="Proj Fees" value={money(intel?.total_projected_fees ?? 0)} />
+          <MiniStat label="Proj Cashback" value={money(intel?.total_projected_cashback ?? 0)} />
+          <MiniStat label="Close Rate" value={`${(intel?.close_rate ?? 0).toFixed(0)}%`} />
+          <MiniStat label="Avg ACQ" value={intel?.avg_acq_grade != null ? intel.avg_acq_grade.toFixed(0) : "—"} />
+          <MiniStat label="Avg STAB" value={intel?.avg_stab_grade != null ? intel.avg_stab_grade.toFixed(0) : "—"} />
+          <MiniStat label="To Escrow" value={intel?.avg_days_to_escrow != null ? `${intel.avg_days_to_escrow.toFixed(0)}d` : "—"} />
+          <MiniStat label="Buybox" value={intel?.buybox_score != null ? `${intel.buybox_score.toFixed(1)}%` : "—"} />
+          <MiniStat label="In Escrow" value={String(intel?.deals_in_escrow ?? 0)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[9px] font-medium uppercase tracking-widest text-white/40">{label}</div>
+      <div className="data-number mt-0.5 text-sm font-medium tabular-nums text-[#c9a84c]">{value}</div>
+    </div>
+  );
+}
+
 export function PipelineBoard({ deals }: { deals: Deal[] }) {
   const [status, setStatus] = useState<DealStatus | "all" | "escrow">("all");
   const [structure, setStructure] = useState<StructureFilter>("all");
@@ -115,6 +179,8 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
     >
+      <IntelligenceBar />
+
       {/* Status tabs + Add Deal */}
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2 border-b border-border">
         <div className="flex flex-wrap gap-1">
@@ -649,6 +715,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   const [markingDead, startMarkDead] = useTransition();
   const [confirmingDead, setConfirmingDead] = useState(false);
   const [deadReason, setDeadReason] = useState(DEAD_REASONS[0]);
+  const [intentionalPass, setIntentionalPass] = useState(false);
 
   const reloadDetail = () => {
     if (deal) getDealDetail(deal.id).then(setDetail);
@@ -767,40 +834,52 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
             </div>
 
             {confirmingDead && (
-              <div className="flex items-center gap-2 border-b border-border bg-secondary px-4 py-2">
-                <span className="shrink-0 text-xs text-muted-foreground">Reason</span>
-                <select
-                  value={deadReason}
-                  onChange={(e) => setDeadReason(e.target.value)}
-                  className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-sm focus:border-accent focus:outline-none"
-                >
-                  {DEAD_REASONS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  disabled={markingDead}
-                  onClick={() =>
-                    startMarkDead(async () => {
-                      await markDealDead(deal.id, deadReason);
-                      setConfirmingDead(false);
-                      router.refresh();
-                    })
-                  }
-                  className="shrink-0 rounded-full bg-destructive/90 px-3 py-1 text-xs font-medium text-white hover:bg-destructive disabled:opacity-60"
-                >
-                  {markingDead ? "…" : "Confirm Dead"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDead(false)}
-                  className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
-                >
-                  Cancel
-                </button>
+              <div className="flex flex-col gap-2 border-b border-border bg-secondary px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0 text-xs text-muted-foreground">Reason</span>
+                  <select
+                    value={deadReason}
+                    onChange={(e) => setDeadReason(e.target.value)}
+                    className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                  >
+                    {DEAD_REASONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={markingDead}
+                    onClick={() =>
+                      startMarkDead(async () => {
+                        await markDealDead(deal.id, deadReason, intentionalPass);
+                        setConfirmingDead(false);
+                        setIntentionalPass(false);
+                        router.refresh();
+                      })
+                    }
+                    className="shrink-0 rounded-full bg-destructive/90 px-3 py-1 text-xs font-medium text-white hover:bg-destructive disabled:opacity-60"
+                  >
+                    {markingDead ? "…" : "Confirm Dead"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDead(false)}
+                    className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={intentionalPass}
+                    onChange={(e) => setIntentionalPass(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-[#c9a84c]"
+                  />
+                  Intentional Pass — outside buybox, exclude from close rate
+                </label>
               </div>
             )}
 
@@ -1206,22 +1285,37 @@ function AiTab({
         <div className="space-y-4">
           <div className="rounded-xl bg-primary p-4 text-primary-foreground">
             <div className="text-[10px] font-medium uppercase tracking-widest text-primary-foreground/60">
-              Recommendation
+              Deal Tier
             </div>
-            <div className="mt-1 text-lg font-medium">
-              {RECOMMENDATION_LABELS[uw.recommendation]}
-            </div>
+            <div className="mt-1 text-lg font-medium">{uw.deal_tier ?? "—"}</div>
             <div className="mt-2 flex gap-6 text-sm">
-              <span className="data-number">ACQ {uw.acquisition_grade}</span>
-              <span className="data-number">STAB {uw.stabilization_grade}</span>
+              <span className="data-number">ACQ {uw.acquisition_grade} · {uw.acquisition_score}</span>
+              <span className="data-number">STAB {uw.stabilization_grade} · {uw.stabilization_score}</span>
             </div>
           </div>
-          <p className="text-sm leading-relaxed text-foreground">{uw.summary}</p>
-          <BulletBlock title="Strengths" items={uw.strengths} />
-          <BulletBlock title="Risks" items={uw.risks} />
-          <BulletBlock title="Conditions" items={uw.conditions} />
+          <div className="grid grid-cols-2 gap-3">
+            <AiStat label="Cashback" value={`${money(uw.cashback_amount ?? null)}${uw.cashback_pct != null ? ` · ${uw.cashback_pct.toFixed(1)}%` : ""}`} />
+            <AiStat label="Total Oblig. / mo" value={money(uw.total_obligations ?? null)} />
+            <AiStat label="First Lien / mo" value={money(uw.first_lien_payment ?? null)} />
+            <AiStat label="Seller Carry / mo" value={money(uw.seller_carry_payment ?? null)} />
+            <AiStat label="Current Coverage" value={uw.current_coverage_pct != null ? `${uw.current_coverage_pct.toFixed(0)}%` : "—"} />
+            <AiStat label="Proj. Coverage" value={uw.projected_coverage_pct != null ? `${uw.projected_coverage_pct.toFixed(0)}%` : "—"} />
+            <AiStat label="Current Rent" value={money(uw.current_rent ?? null)} />
+            <AiStat label="Rent Source" value={uw.rent_source ?? "—"} />
+          </div>
+          <p className="text-sm leading-relaxed text-foreground">{uw.ai_summary ?? uw.summary}</p>
+          <BulletBlock title="Important Flags" items={uw.important_flags ?? []} />
         </div>
       )}
+    </div>
+  );
+}
+
+function AiStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-secondary/40 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</div>
+      <div className="data-number mt-0.5 text-sm tabular-nums text-primary">{value}</div>
     </div>
   );
 }

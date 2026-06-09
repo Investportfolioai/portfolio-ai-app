@@ -248,17 +248,37 @@ export interface ExtractedDealData {
 export type Recommendation = "proceed" | "proceed_with_conditions" | "decline";
 
 export interface UnderwritingAnalysis {
-  recommendation: Recommendation;
-  acquisition_grade: number;
-  stabilization_grade: number;
-  equity_spread: number | null;
-  /** Legacy location for CRM inputs (now in extracted_deal_data). */
+  /** Letter grades A/B/C/D/F (Phase 4 scoring model). */
+  acquisition_grade: string;
+  stabilization_grade: string;
+  /** Numeric scores 0–100 — written to the deals.*_grade numeric columns. */
+  acquisition_score: number;
+  stabilization_score: number;
+  deal_tier: string;
+  cashback_amount: number | null;
+  cashback_pct: number | null;
+  first_lien_amount: number | null;
+  first_lien_payment: number | null;
+  seller_carry_amount: number | null;
+  seller_carry_payment: number | null;
+  total_obligations: number | null;
+  current_rent: number | null;
+  projected_rent: number | null;
+  current_coverage_pct: number | null;
+  projected_coverage_pct: number | null;
+  rent_source: string | null;
+  ai_summary: string;
+  important_flags: string[];
+
+  // Backward-compat / derived (kept so older callers + stored analyses work).
+  summary?: string;
+  recommendation?: Recommendation;
+  equity_spread?: number | null;
   total_cash_invested?: number | null;
   net_monthly_cashflow?: number | null;
-  summary: string;
-  strengths: string[];
-  risks: string[];
-  conditions: string[];
+  strengths?: string[];
+  risks?: string[];
+  conditions?: string[];
 }
 
 export interface UnderwritingOutput {

@@ -1,5 +1,4 @@
 import { getDeals } from "@/lib/deals";
-import { RECOMMENDATION_LABELS } from "@/lib/types";
 
 export const metadata = { title: "Underwriting — Portfolio AI" };
 export const dynamic = "force-dynamic";
@@ -58,7 +57,7 @@ export default async function UnderwritingPage() {
                       STAB {d.stabilization_grade ?? "—"}
                     </span>
                     <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-accent/30">
-                      {RECOMMENDATION_LABELS[u.recommendation]}
+                      {u.deal_tier ?? u.recommendation ?? "—"}
                     </span>
                   </div>
                 </li>

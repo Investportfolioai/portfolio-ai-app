@@ -28,8 +28,8 @@ function buildNotes(
     `Submitted by ${contact.name || "—"} · ${contact.email || "—"} · ${contact.phone || "—"}`,
     d.property_type ? `Property type: ${d.property_type}` : null,
     d.balloon_term_months != null ? `Balloon: ${d.balloon_term_months} months` : null,
-    u?.risks.length ? `Risks: ${u.risks.join("; ")}` : null,
-    u?.conditions.length ? `Conditions: ${u.conditions.join("; ")}` : null,
+    u?.deal_tier ? `Tier: ${u.deal_tier}` : null,
+    u?.important_flags?.length ? `Flags: ${u.important_flags.join("; ")}` : null,
   ].filter(Boolean);
   return lines.join("\n");
 }
@@ -120,7 +120,7 @@ export async function POST(req: Request) {
     exit_strategy: d.exit_strategy,
     lender_name: d.lender_name,
     quote_number: d.quote_number,
-    ai_summary: u.summary,
+    ai_summary: u.ai_summary,
     notes: buildNotes({ name, email, phone }, result),
   };
 
@@ -166,8 +166,8 @@ export async function POST(req: Request) {
     .from("deals")
     .update({
       ai_analysis: result,
-      acquisition_grade: u.acquisition_grade,
-      stabilization_grade: u.stabilization_grade,
+      acquisition_grade: u.acquisition_score,
+      stabilization_grade: u.stabilization_score,
     })
     .eq("id", dealId);
   if (enrich.error) console.warn("analysis/grade write skipped:", enrich.error.message);
@@ -214,10 +214,10 @@ export async function POST(req: Request) {
       submitterEmail: email,
       submitterPhone: phone,
       propertyAddress: insertRow.property_address,
-      acquisitionGrade: u.acquisition_grade,
-      stabilizationGrade: u.stabilization_grade,
-      recommendation: u.recommendation,
-      summary: u.summary,
+      acquisitionGrade: u.acquisition_score,
+      stabilizationGrade: u.stabilization_score,
+      recommendation: u.recommendation ?? "proceed_with_conditions",
+      summary: u.ai_summary,
     });
   } catch (e) {
     console.warn("submission email skipped:", (e as Error).message);
@@ -227,9 +227,10 @@ export async function POST(req: Request) {
     ok: true,
     deal_id: data.id,
     address: insertRow.property_address,
-    recommendation: u.recommendation,
-    acquisition_grade: u.acquisition_grade,
-    stabilization_grade: u.stabilization_grade,
-    summary: u.summary,
+    deal_tier: u.deal_tier,
+    recommendation: u.recommendation ?? "proceed_with_conditions",
+    acquisition_grade: u.acquisition_score,
+    stabilization_grade: u.stabilization_score,
+    summary: u.ai_summary,
   });
 }

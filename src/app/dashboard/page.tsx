@@ -1,15 +1,9 @@
 import Link from "next/link";
-import { getDeals, getRecentActivity } from "@/lib/deals";
-import { equitySpread } from "@/lib/types";
-import { money } from "@/lib/format";
+import { getRecentActivity } from "@/lib/deals";
+import { DashboardIntel } from "./dashboard-intel";
 
 export const metadata = { title: "Dashboard — Portfolio AI" };
 export const dynamic = "force-dynamic";
-
-function avg(nums: number[]): number | null {
-  if (nums.length === 0) return null;
-  return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
-}
 
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
@@ -19,16 +13,7 @@ function fmtDateTime(iso: string): string {
 }
 
 export default async function DashboardHome() {
-  const [deals, activity] = await Promise.all([getDeals(), getRecentActivity(10)]);
-  const active = deals.filter((d) => d.status === "active");
-  const projectedCashback = deals
-    .filter((d) => d.status === "active" || d.status === "pending")
-    .reduce((s, d) => s + (d.cashback_at_close ?? 0), 0);
-  const equityPosition = active.reduce((s, d) => s + (equitySpread(d) ?? 0), 0);
-  const acqGrades = deals.map((d) => d.acquisition_grade).filter((g): g is number => g != null);
-  const stabGrades = deals.map((d) => d.stabilization_grade).filter((g): g is number => g != null);
-  const avgAcq = avg(acqGrades);
-  const avgStab = avg(stabGrades);
+  const activity = await getRecentActivity(10);
 
   return (
     <div className="mx-auto max-w-7xl px-8 py-8">
@@ -40,16 +25,11 @@ export default async function DashboardHome() {
         </p>
       </header>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
-        <Metric label="Total Deals" value={String(deals.length)} />
-        <Metric label="Active Deals" value={String(active.length)} />
-        <Metric label="Projected Cashback" value={money(projectedCashback)} accent />
-        <Metric label="Equity Position" value={money(equityPosition)} accent />
-        <Metric label="Avg ACQ Grade" value={avgAcq == null ? "—" : `${avgAcq}`} />
-        <Metric label="Avg STAB Grade" value={avgStab == null ? "—" : `${avgStab}`} />
-      </div>
+      {/* Sections 1–3: KPI row, pipeline panels, performance stats */}
+      <DashboardIntel />
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        {/* Section 4 — Recent Activity */}
         <section className="lg:col-span-2">
           <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
             Recent Activity
@@ -84,6 +64,7 @@ export default async function DashboardHome() {
           </div>
         </section>
 
+        {/* Section 5 — Quick Links */}
         <section>
           <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
             Quick Links
@@ -94,32 +75,6 @@ export default async function DashboardHome() {
             <QuickLink href="/dashboard/underwriting" title="Underwriting" desc="AI grades & queue" />
           </div>
         </section>
-      </div>
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-        {label}
-      </div>
-      <div
-        className={
-          "data-number mt-2 text-2xl font-medium tabular-nums " +
-          (accent ? "text-accent" : "text-primary")
-        }
-      >
-        {value}
       </div>
     </div>
   );

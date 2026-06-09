@@ -251,13 +251,13 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
     .from("deals")
     .update({
       ai_analysis: analysis,
-      ai_summary: u.summary,
-      acquisition_grade: u.acquisition_grade,
-      stabilization_grade: u.stabilization_grade,
+      ai_summary: u.ai_summary,
+      acquisition_grade: u.acquisition_score,
+      stabilization_grade: u.stabilization_score,
     })
     .eq("id", dealId);
 
-  await logActivity(dealId, "underwriting_run", `Recommendation: ${u.recommendation}.`);
+  await logActivity(dealId, "underwriting_run", `Tier: ${u.deal_tier ?? "—"}.`);
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
 }
@@ -321,17 +321,22 @@ export async function createDeal(
 export async function markDealDead(
   dealId: string,
   reason: string,
+  intentionalPass = false,
 ): Promise<ActionState> {
   const supabase = await createClient();
   const { error } = await supabase
     .from("deals")
-    .update({ status: "dead", status_changed_at: new Date().toISOString() })
+    .update({
+      status: "dead",
+      status_changed_at: new Date().toISOString(),
+      intentional_pass: intentionalPass,
+    })
     .eq("id", dealId);
   if (error) return { ok: false, error: error.message };
   await logActivity(
     dealId,
     "marked_dead",
-    `${reason || "No reason"} — auto-deletes in 120 days.`,
+    `${reason || "No reason"}${intentionalPass ? " (intentional pass — outside buybox)" : ""} — auto-deletes in 120 days.`,
   );
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
