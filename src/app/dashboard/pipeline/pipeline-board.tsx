@@ -484,7 +484,14 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
       </div>
 
       <div className="mb-4 flex items-center justify-between gap-3">
-        <StatusBadge status={deal.status} />
+        <div className="flex items-center gap-1.5">
+          <StatusBadge status={deal.status} />
+          {deal.escrow_date && (
+            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-accent ring-1 ring-inset ring-accent/40">
+              In Escrow
+            </span>
+          )}
+        </div>
         {deal.acquisition_grade == null && deal.stabilization_grade == null ? (
           <PendingGradeBadge />
         ) : (
@@ -841,6 +848,63 @@ function OverviewTab({
       )}
 
       <WholesalerActions deal={deal} onChanged={onChanged} />
+      <EscrowAction deal={deal} onChanged={onChanged} />
+    </div>
+  );
+}
+
+/**
+ * Move an active deal into the escrow pipeline. Shown only for active deals;
+ * once escrow_date is set it shows an "In Escrow" indicator instead.
+ */
+function EscrowAction({ deal, onChanged }: { deal: Deal; onChanged: () => void }) {
+  const [busy, start] = useTransition();
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
+
+  if (deal.status !== "active") return null;
+
+  function move() {
+    setError("");
+    start(async () => {
+      const res = await fetch("/api/deals/escrow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deal_id: deal.id }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setError(j.error || "Could not move the deal to escrow.");
+        return;
+      }
+      setDone(true);
+      onChanged();
+      setTimeout(() => setDone(false), 4000);
+    });
+  }
+
+  return (
+    <div className="mt-6 border-t border-border pt-5">
+      <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        Escrow
+      </p>
+      {deal.escrow_date ? (
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-accent">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          In Escrow since {new Date(deal.escrow_date).toLocaleDateString("en-US")}
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={move}
+          disabled={busy}
+          className="rounded-full bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+        >
+          {busy ? "Moving…" : "Move to Escrow"}
+        </button>
+      )}
+      {done && <p className="mt-2 text-xs font-medium text-emerald-600">Deal moved to Escrow Pipeline</p>}
+      {error && <p className="mt-2 text-xs text-rose-500">{error}</p>}
     </div>
   );
 }

@@ -31,7 +31,7 @@ const BASE_COLUMNS = `
 
 const WITH_STATUS = `${BASE_COLUMNS}, status, ai_analysis`;
 const WITH_GRADES = `${WITH_STATUS}, acquisition_grade, stabilization_grade`;
-const WITH_TIMELINE = `${WITH_GRADES}, status_changed_at, deal_milestones(target_date)`;
+const WITH_TIMELINE = `${WITH_GRADES}, status_changed_at, escrow_date, deal_milestones(target_date)`;
 const FULL_COLUMNS = `${WITH_TIMELINE}, deal_kps(count)`;
 
 type DealRow = Omit<
@@ -42,6 +42,7 @@ type DealRow = Omit<
   | "next_milestone_days"
   | "status"
   | "status_changed_at"
+  | "escrow_date"
   | "ai_analysis"
   | "acquisition_grade"
   | "stabilization_grade"
@@ -52,6 +53,7 @@ type DealRow = Omit<
   deal_milestones?: { target_date: string }[];
   status?: DealStatus;
   status_changed_at?: string | null;
+  escrow_date?: string | null;
   ai_analysis?: UnderwritingOutput | null;
   acquisition_grade?: number | null;
   stabilization_grade?: number | null;
@@ -63,6 +65,7 @@ function normalize(row: DealRow): Deal {
     deal_milestones,
     status,
     status_changed_at,
+    escrow_date,
     ai_analysis,
     acquisition_grade,
     stabilization_grade,
@@ -75,6 +78,7 @@ function normalize(row: DealRow): Deal {
     ...rest,
     status: status ?? "pending",
     status_changed_at: status_changed_at ?? null,
+    escrow_date: escrow_date ?? null,
     ai_analysis: ai_analysis ?? null,
     acquisition_grade: acquisition_grade ?? null,
     stabilization_grade: stabilization_grade ?? null,

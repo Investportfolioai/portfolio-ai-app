@@ -142,6 +142,8 @@ export interface Deal {
   status: DealStatus;
   /** When status last changed — drives the dead-deal auto-delete countdown. */
   status_changed_at: string | null;
+  /** Set when the deal is moved into the escrow pipeline (Phase 3). */
+  escrow_date: string | null;
   /** Full Claude underwriting output stored from the submit flow (jsonb). */
   ai_analysis: UnderwritingOutput | null;
 
