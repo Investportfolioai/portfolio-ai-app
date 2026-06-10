@@ -39,7 +39,7 @@ export async function createKp(input: NewKp): Promise<Result> {
     email,
     options: {
       data: { role: input.role || "kp", full_name: name },
-      redirectTo: `${base}/api/auth/callback`,
+      redirectTo: `${base}/kp/setup`,
     },
   });
 
@@ -87,7 +87,7 @@ export async function resendKpInvite(kpId: string): Promise<Result> {
   const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
     type: "magiclink",
     email: kp.email,
-    options: { redirectTo: `${base}/api/auth/callback` },
+    options: { redirectTo: `${base}/kp/setup` },
   });
 
   if (linkError || !linkData?.properties?.action_link) {
