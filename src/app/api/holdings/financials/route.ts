@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { canManage } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 
@@ -30,10 +31,6 @@ export function netCashflow(f: Partial<Record<(typeof FIELDS)[number], number | 
   );
 }
 
-function canManage(role: string | null): boolean {
-  return role === "owner" || role === "partner";
-}
-
 async function getOrCreate(admin: ReturnType<typeof createAdminClient>, holdingId: string) {
   const { data } = await admin.from("holding_financials").select("*").eq("holding_id", holdingId).maybeSingle();
   if (data) return data as FinRow;
@@ -49,6 +46,7 @@ async function getOrCreate(admin: ReturnType<typeof createAdminClient>, holdingI
 export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const holdingId = new URL(req.url).searchParams.get("holding_id");
   if (!holdingId) return NextResponse.json({ error: "Missing holding_id" }, { status: 400 });

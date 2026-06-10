@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { canManage } from "@/lib/permissions";
 import { sendWholesalerResponse, type WholesalerResponseKind } from "@/lib/email";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -92,6 +93,8 @@ async function notifyWholesaler(
 
 /** Accept a deal → active, and tell the wholesaler we're moving forward. */
 export async function acceptDeal(dealId: string): Promise<ActionState> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
   const supabase = await createClient();
   const { error } = await supabase
     .from("deals")
@@ -107,6 +110,8 @@ export async function acceptDeal(dealId: string): Promise<ActionState> {
 
 /** Reject a deal → passed, and tell the wholesaler we're passing for now. */
 export async function rejectDeal(dealId: string): Promise<ActionState> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
   const supabase = await createClient();
   const { error } = await supabase
     .from("deals")
@@ -130,6 +135,9 @@ export async function negotiateDeal(
 ): Promise<ActionState> {
   const msg = message.trim();
   if (!msg) return { ok: false, error: "Enter a message to send." };
+
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
 
   const supabase = await createClient();
   await notifyWholesaler(supabase, dealId, "negotiate", msg);
@@ -306,6 +314,9 @@ export async function createDeal(
   const address = input.property_address.trim();
   if (!address) return { ok: false, error: "Property address is required." };
 
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
+
   const supabase = await createClient();
   const aiAnalysis = {
     extracted_deal_data: {
@@ -357,6 +368,8 @@ export async function markDealDead(
   reason: string,
   intentionalPass = false,
 ): Promise<ActionState> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
   const supabase = await createClient();
   const { error } = await supabase
     .from("deals")
@@ -397,6 +410,8 @@ export async function updateDealField(
 ): Promise<ActionState> {
   const meta = EDITABLE_FIELDS[field];
   if (!meta) return { ok: false, error: "That field is not editable." };
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
   let parsed: string | number | null;
   if (meta.numeric) {
     const v = value.trim();
@@ -424,6 +439,8 @@ export async function createMilestone(
   if (!m.label?.trim() || !m.target_date) {
     return { ok: false, error: "Label and date are required." };
   }
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
   const supabase = await createClient();
   const { error } = await supabase.from("deal_milestones").insert({
     deal_id: dealId,
@@ -442,6 +459,8 @@ export async function deleteMilestone(
   milestoneId: string,
   dealId: string,
 ): Promise<ActionState> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
   const supabase = await createClient();
   const { error } = await supabase.from("deal_milestones").delete().eq("id", milestoneId);
   if (error) return { ok: false, error: error.message };

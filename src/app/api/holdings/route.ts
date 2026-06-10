@@ -1,25 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { canManage } from "@/lib/permissions";
+import { netCashflow } from "./financials/route";
 import { getZillowAVM } from "@/lib/zillow";
 import { getBalloonStatus } from "@/lib/balloon";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-function canManage(role: string | null): boolean {
-  return role === "owner" || role === "partner";
-}
-
-function netCashflow(f: Record<string, unknown> | null | undefined): number {
-  if (!f) return 0;
-  const n = (v: unknown) => Number(v ?? 0) || 0;
-  return (
-    n(f.income_rent) + n(f.income_other) -
-    n(f.outflow_mortgage) - n(f.outflow_seller_carry) -
-    n(f.outflow_taxes) - n(f.outflow_hoa) - n(f.outflow_other)
-  );
-}
 
 // Manual-override field coercion for PATCH ?id=.
 const NUMERIC = new Set([
@@ -41,6 +29,7 @@ const ALLOWED = new Set([
 export async function GET() {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const admin = createAdminClient();
   const { data: holdings, error } = await admin

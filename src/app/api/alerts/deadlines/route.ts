@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isAuthorizedCron } from "@/lib/cron-auth";
 import { sendDeadlineDigest, type DeadlineAlert } from "@/lib/email";
 
 export const runtime = "nodejs";
@@ -15,9 +16,7 @@ function daysUntil(dateStr: string): number {
 }
 
 export async function GET(req: Request) {
-  // If a CRON_SECRET is configured, require it (Vercel cron sends it as Bearer).
-  const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

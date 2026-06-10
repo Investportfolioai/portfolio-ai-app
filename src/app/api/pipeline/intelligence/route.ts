@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { canManage } from "@/lib/permissions";
 import { portfolioAiFee } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DAY_MS = 86_400_000;
-
-function canManage(role: string | null): boolean {
-  return role === "owner" || role === "partner";
-}
 
 interface DealRow {
   id: string;

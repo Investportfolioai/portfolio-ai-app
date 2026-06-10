@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { canManage } from "@/lib/permissions";
 
 export const runtime = "nodejs";
-
-function canManage(role: string | null): boolean {
-  return role === "owner" || role === "partner";
-}
 
 /**
  * POST { deal_id } — move a deal into escrow: stamp escrow_date and mark it
