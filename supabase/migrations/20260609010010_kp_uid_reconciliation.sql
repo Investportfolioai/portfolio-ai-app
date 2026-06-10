@@ -1,0 +1,14 @@
+-- Data reconciliation: align Johnathon Masingale's users.id with his
+-- Supabase Auth UID. Applied via REST API on 2026-06-09.
+--
+-- Before: users.id = f39cc8cf-b39f-469b-a4d4-84520a4d5361 (stale, pre-invite-fix UUID)
+--         auth.users.id = 55dcf089-b519-4ecb-9460-e32b7fc98e98
+--         deal_kps.kp_id = f39cc8cf-... → KP dashboard showed no deals
+--
+-- Fix applied in three steps:
+--   1. Freed the unique email constraint on the stale row
+--   2. Inserted canonical row with id = auth UID
+--   3. Updated deal_kps.kp_id and deleted the stale row
+--
+-- Future KPs added via createKp will not hit this issue because generateLink
+-- now returns the auth UID which is used as users.id at insert time.
