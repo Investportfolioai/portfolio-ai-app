@@ -3,7 +3,8 @@
 import { useState, useTransition, useRef, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "motion/react";
-import { buildModule, addFolder, type BuiltModule, type AddedFolder } from "./actions";
+import { buildModule, addFolder, type BuiltModule, type AddedFolder, type ContentBlock } from "./actions";
+import { ModulePanel, type PanelModule } from "./module-panel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +25,7 @@ export interface SandboxModule {
   folder_type: string | null;
   status: string;
   created_at: string;
+  content: ContentBlock[] | null;
 }
 
 export interface SandboxDetail {
@@ -199,9 +201,11 @@ function StatusBadge({ status }: { status: string }) {
 function ModuleCard({
   mod,
   creatorName,
+  onClick,
 }: {
   mod: SandboxModule | BuiltModule;
   creatorName: string;
+  onClick: () => void;
 }) {
   const date = new Date(mod.created_at).toLocaleDateString("en-US", {
     month: "short",
@@ -211,7 +215,8 @@ function ModuleCard({
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group flex flex-col gap-3 rounded-xl border border-white/8 bg-[#0d1b30] p-5 transition-all duration-200 hover:border-[#c9a84c]/30 hover:shadow-lg hover:shadow-black/30"
+      onClick={onClick}
+      className="group flex cursor-pointer flex-col gap-3 rounded-xl border border-white/8 bg-[#0d1b30] p-5 transition-all duration-200 hover:border-[#c9a84c]/30 hover:shadow-lg hover:shadow-black/30"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#c9a84c]/10">
@@ -404,6 +409,9 @@ export function SandboxInterior({
   );
   const [modules, setModules] = useState<(SandboxModule | BuiltModule)[]>(initialModules);
 
+  // Module panel state
+  const [selectedModule, setSelectedModule] = useState<PanelModule | null>(null);
+
   // AI Builder state
   const [prompt, setPrompt] = useState("");
   const [buildError, setBuildError] = useState<string | null>(null);
@@ -462,6 +470,25 @@ export function SandboxInterior({
     }
   }
 
+  // ── Module panel handlers ──
+
+  function openModule(mod: SandboxModule | BuiltModule) {
+    setSelectedModule({
+      id: mod.id,
+      title: mod.title ?? null,
+      status: mod.status,
+      folder_type: mod.folder_type ?? null,
+      content: (mod as SandboxModule).content ?? (mod as BuiltModule).content ?? null,
+    });
+  }
+
+  function handlePanelUpdate(id: string, updates: { title?: string; content?: ContentBlock[] }) {
+    setModules((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, ...updates } : m)),
+    );
+    setSelectedModule((prev) => (prev && prev.id === id ? { ...prev, ...updates } : prev));
+  }
+
   // ── Add Folder handler ──
 
   function handleAddFolder(name: string, folderType: string) {
@@ -498,6 +525,17 @@ export function SandboxInterior({
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#070f1c] text-white">
+      {/* Module Panel */}
+      <AnimatePresence>
+        {selectedModule && (
+          <ModulePanel
+            module={selectedModule}
+            onClose={() => setSelectedModule(null)}
+            onUpdate={handlePanelUpdate}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Add Folder Modal */}
       <AnimatePresence>
         {showAddFolder && (
@@ -629,6 +667,7 @@ export function SandboxInterior({
                       key={mod.id}
                       mod={mod}
                       creatorName={creatorName}
+                      onClick={() => openModule(mod)}
                     />
                   ))}
                 </AnimatePresence>

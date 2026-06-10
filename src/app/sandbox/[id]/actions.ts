@@ -281,3 +281,124 @@ export async function addFolder(
   revalidatePath(`/sandbox/${sandboxId}`);
   return { ok: true, folder: folder as AddedFolder };
 }
+
+// ---------------------------------------------------------------------------
+// updateModuleContent — debounced auto-save, no revalidate (client is source of truth)
+// ---------------------------------------------------------------------------
+
+export async function updateModuleContent(
+  moduleId: string,
+  content: ContentBlock[],
+  title?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Not authenticated." };
+  if (!canManage(user.role)) return { ok: false, error: "Not authorized." };
+
+  const supabase = await createClient();
+
+  const updates: Record<string, unknown> = { content };
+  if (title !== undefined) updates.title = title.trim() || null;
+
+  const { error } = await supabase
+    .from("sandbox_modules")
+    .update(updates)
+    .eq("id", moduleId);
+
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// editModuleWithAI — sends current content + instruction to Claude, saves result
+// ---------------------------------------------------------------------------
+
+const EDIT_SCHEMA = {
+  type: "object",
+  properties: {
+    content: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["checklist", "script", "sequence", "text"] },
+          value: { type: "string" },
+        },
+        required: ["type", "value"],
+      },
+    },
+  },
+  required: ["content"],
+} as const;
+
+export type EditModuleResult =
+  | { ok: true; content: ContentBlock[] }
+  | { ok: false; error: string };
+
+export async function editModuleWithAI(
+  moduleId: string,
+  currentContent: ContentBlock[],
+  prompt: string,
+): Promise<EditModuleResult> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Not authenticated." };
+  if (!canManage(user.role)) return { ok: false, error: "Not authorized." };
+
+  const client = getClient();
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4000,
+      system: [
+        {
+          type: "text",
+          text: `You are editing a real estate workspace module. The user will provide the current content array and an edit instruction. Call update_content with the revised array.
+
+Rules:
+- Each block has type (checklist|script|sequence|text) and value (string)
+- For checklist and sequence types, individual items are newline-separated within the value string
+- Preserve the overall structure and block order unless the instruction specifically changes it
+- Make edits thorough, specific, and actionable
+- Context: real estate investment, creative finance, seller outreach, title resolution, content marketing`,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      tools: [
+        {
+          name: "update_content",
+          description: "Return the updated content array.",
+          input_schema: EDIT_SCHEMA as unknown as Anthropic.Tool["input_schema"],
+        },
+      ],
+      tool_choice: { type: "tool", name: "update_content" },
+      messages: [
+        {
+          role: "user",
+          content: `Current content:\n${JSON.stringify(currentContent, null, 2)}\n\nEdit instruction: ${prompt}`,
+        },
+      ],
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[sandbox] editModuleWithAI error:", msg);
+    return { ok: false, error: "AI call failed. Try again." };
+  }
+
+  const block = response.content.find(
+    (b) => b.type === "tool_use" && b.name === "update_content",
+  );
+  if (!block || block.type !== "tool_use") {
+    return { ok: false, error: "AI did not return updated content." };
+  }
+
+  const { content: newContent } = block.input as { content: ContentBlock[] };
+
+  const supabase = await createClient();
+  await supabase
+    .from("sandbox_modules")
+    .update({ content: newContent })
+    .eq("id", moduleId);
+
+  return { ok: true, content: newContent };
+}

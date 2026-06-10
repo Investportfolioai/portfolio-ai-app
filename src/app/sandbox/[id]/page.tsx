@@ -6,6 +6,7 @@ import {
   type SandboxFolder,
   type SandboxModule,
 } from "./sandbox-interior";
+import type { ContentBlock } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +55,7 @@ export default async function SandboxDetailPage({
       .order("position", { ascending: true }),
     supabase
       .from("sandbox_modules")
-      .select("id, folder_id, title, description, folder_type, status, created_at")
+      .select("id, folder_id, title, description, folder_type, status, created_at, content")
       .eq("sandbox_id", id)
       .order("created_at", { ascending: false }),
   ]);
@@ -74,6 +75,7 @@ export default async function SandboxDetailPage({
     folder_type: m.folder_type as string | null,
     status: (m.status as string) ?? "draft",
     created_at: m.created_at as string,
+    content: (m.content ?? null) as ContentBlock[] | null,
   }));
 
   const creatorName =
