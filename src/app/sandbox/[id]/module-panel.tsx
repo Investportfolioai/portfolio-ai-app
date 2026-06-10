@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useTransition } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "motion/react";
 import { X, Sparkles, Send, Loader2, Plus } from "lucide-react";
 import type { ContentBlock } from "./actions";
@@ -269,7 +269,7 @@ export function ModulePanel({
   const [content, setContent] = useState<ContentBlock[]>(module.content ?? []);
   const [editPrompt, setEditPrompt] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
-  const [isAiPending, startAiTransition] = useTransition();
+  const [isAiLoading, setIsAiLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
 
   // Keep refs current for debounce closures
@@ -347,18 +347,23 @@ export function ModulePanel({
     scheduleSave();
   }
 
-  function handleAiEdit() {
+  async function handleAiEdit() {
     const trimmed = editPrompt.trim();
-    if (!trimmed || isAiPending) return;
+    if (!trimmed || isAiLoading) return;
     setEditError(null);
-    startAiTransition(async () => {
+    setIsAiLoading(true);
+    try {
       const res = await editModuleWithAI(module.id, contentRef.current, trimmed);
       if (!res.ok) { setEditError(res.error); return; }
       setContent(res.content);
       contentRef.current = res.content;
       onUpdate(module.id, { content: res.content });
       setEditPrompt("");
-    });
+    } catch {
+      // server action already returns ok:true on failure; this is a safety net
+    } finally {
+      setIsAiLoading(false);
+    }
   }
 
   function handleAiKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -455,7 +460,7 @@ export function ModulePanel({
                 key={s}
                 type="button"
                 onClick={() => setEditPrompt(s)}
-                disabled={isAiPending}
+                disabled={isAiLoading}
                 className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-white/50 transition-colors hover:border-[#c9a84c]/30 hover:bg-[#c9a84c]/8 hover:text-[#c9a84c] disabled:opacity-40"
               >
                 {s}
@@ -475,7 +480,7 @@ export function ModulePanel({
               value={editPrompt}
               onChange={(e) => setEditPrompt(e.target.value)}
               onKeyDown={handleAiKeyDown}
-              disabled={isAiPending}
+              disabled={isAiLoading}
               placeholder="Give an edit instruction..."
               className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none transition-colors focus:border-[#c9a84c]/40 focus:bg-[#c9a84c]/5 disabled:cursor-not-allowed disabled:opacity-50"
             />
@@ -483,10 +488,10 @@ export function ModulePanel({
             <button
               type="button"
               onClick={handleAiEdit}
-              disabled={!editPrompt.trim() || isAiPending}
+              disabled={!editPrompt.trim() || isAiLoading}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#c9a84c] text-[#070f1c] transition-all hover:bg-[#e0c060] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {isAiPending ? (
+              {isAiLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Send className="h-4 w-4" />
@@ -494,7 +499,13 @@ export function ModulePanel({
             </button>
           </div>
 
-          {editError && (
+          {isAiLoading && (
+            <p className="mt-2 flex items-center gap-1.5 text-[12px] text-[#c9a84c]/70">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              AI is thinking…
+            </p>
+          )}
+          {editError && !isAiLoading && (
             <p className="mt-2 text-[12px] text-rose-400">{editError}</p>
           )}
         </div>

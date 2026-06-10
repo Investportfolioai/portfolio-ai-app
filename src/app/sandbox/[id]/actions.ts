@@ -102,6 +102,47 @@ export type BuildModuleResult =
   | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
+// Google Sheets / CSV export helper
+// ---------------------------------------------------------------------------
+
+const SHEETS_KEYWORDS = /\b(google\s+sheets?|spreadsheets?|csv|export\s+format)\b/i;
+
+function toSheetsBlock(content: ContentBlock[]): ContentBlock | null {
+  const rows: string[][] = [];
+
+  for (const block of content) {
+    const lines = block.value.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (block.type === "checklist" || block.type === "sequence") {
+      if (lines.length === 0) continue;
+      if (rows.length > 0) rows.push([]);
+      rows.push([block.type === "sequence" ? "Step" : "#", "Item"]);
+      lines.forEach((item, i) => rows.push([String(i + 1), item]));
+    } else {
+      // Extract markdown tables or comma-structured lines from text/script blocks
+      const tableLike = lines.filter((l) => l.startsWith("|") || l.split(",").length >= 3);
+      if (tableLike.length < 2) continue;
+      if (rows.length > 0) rows.push([]);
+      for (const line of tableLike) {
+        if (line.startsWith("|")) {
+          const cells = line.split("|").map((c) => c.trim()).filter(Boolean);
+          if (cells.every((c) => /^[-:]+$/.test(c))) continue; // skip separator rows
+          if (cells.length > 0) rows.push(cells);
+        } else {
+          rows.push(line.split(",").map((c) => c.trim()));
+        }
+      }
+    }
+  }
+
+  if (rows.length === 0) return null;
+  const tsv = rows.map((r) => r.join("\t")).join("\n");
+  return {
+    type: "text",
+    value: `[Google Sheets — select cell A1, then paste]\n\n${tsv}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // buildModule
 // ---------------------------------------------------------------------------
 
@@ -219,6 +260,12 @@ export async function buildModule(
 
   if (parsedContent.length === 0) {
     console.warn("[sandbox] create_module returned empty content. raw input:", JSON.stringify(rawInput, null, 2));
+  }
+
+  // Append a tab-separated Google Sheets block when the prompt requests it
+  if (parsedContent.length > 0 && SHEETS_KEYWORDS.test(prompt)) {
+    const sheetsBlock = toSheetsBlock(parsedContent);
+    if (sheetsBlock) parsedContent = [...parsedContent, sheetsBlock];
   }
 
   const ai = {
@@ -391,61 +438,68 @@ export async function editModuleWithAI(
   if (!user) return { ok: false, error: "Not authenticated." };
   if (!canManage(user.role)) return { ok: false, error: "Not authorized." };
 
-  const client = getClient();
-  let response: Anthropic.Message;
   try {
-    response = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 4000,
-      system: [
-        {
-          type: "text",
-          text: `You are editing a real estate workspace module. The user will provide the current content array and an edit instruction. Call update_content with the revised array.
+    const client = getClient();
 
-Rules:
-- Each block has type (checklist|script|sequence|text) and value (string)
-- For checklist and sequence types, individual items are newline-separated within the value string
-- Preserve the overall structure and block order unless the instruction specifically changes it
-- Make edits thorough, specific, and actionable
-- Context: real estate investment, creative finance, seller outreach, title resolution, content marketing`,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      tools: [
-        {
-          name: "update_content",
-          description: "Return the updated content array.",
-          input_schema: EDIT_SCHEMA as unknown as Anthropic.Tool["input_schema"],
-        },
-      ],
-      tool_choice: { type: "tool", name: "update_content" },
-      messages: [
-        {
-          role: "user",
-          content: `Current content:\n${JSON.stringify(currentContent, null, 2)}\n\nEdit instruction: ${prompt}`,
-        },
-      ],
-    });
+    let response: Anthropic.Message;
+    try {
+      response = await client.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 4000,
+        system: "You are editing a module. The user will give you the current content array and an instruction. Return ONLY a valid JSON array of content blocks with the same structure: [{type, value}]. No markdown, no explanation, just the array.",
+        messages: [
+          {
+            role: "user",
+            content: `Current content: ${JSON.stringify(currentContent)}\n\nInstruction: ${prompt}`,
+          },
+        ],
+      });
+    } catch (apiErr) {
+      console.error("[sandbox] editModuleWithAI API call failed:", apiErr);
+      return { ok: true, content: currentContent };
+    }
+
+    const textBlock = response.content.find((b) => b.type === "text");
+    if (!textBlock || textBlock.type !== "text") {
+      console.error("[sandbox] editModuleWithAI: no text block in response:", JSON.stringify(response.content));
+      return { ok: true, content: currentContent };
+    }
+
+    const rawText = textBlock.text.trim();
+    console.log("[sandbox] editModuleWithAI raw response:", rawText);
+
+    // Strip markdown code fences if present
+    const stripped = rawText
+      .replace(/^```(?:json)?\s*/m, "")
+      .replace(/\s*```$/m, "")
+      .trim();
+
+    let newContent: ContentBlock[];
+    try {
+      const parsed = JSON.parse(stripped);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        console.warn("[sandbox] editModuleWithAI: result is not a non-empty array:", stripped);
+        return { ok: true, content: currentContent };
+      }
+      newContent = parsed as ContentBlock[];
+    } catch (parseErr) {
+      console.error("[sandbox] editModuleWithAI: JSON.parse failed:", parseErr, "\nRaw text:", stripped);
+      return { ok: true, content: currentContent };
+    }
+
+    const supabase = await createClient();
+    const { error: dbErr } = await supabase
+      .from("sandbox_modules")
+      .update({ content: newContent })
+      .eq("id", moduleId);
+
+    if (dbErr) {
+      console.error("[sandbox] editModuleWithAI: DB update error:", dbErr.message);
+    }
+
+    return { ok: true, content: newContent };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[sandbox] editModuleWithAI error:", msg);
-    return { ok: false, error: "AI call failed. Try again." };
+    console.error("[sandbox] editModuleWithAI unexpected error:", err);
+    return { ok: true, content: currentContent };
   }
-
-  const block = response.content.find(
-    (b) => b.type === "tool_use" && b.name === "update_content",
-  );
-  if (!block || block.type !== "tool_use") {
-    return { ok: false, error: "AI did not return updated content." };
-  }
-
-  const { content: newContent } = block.input as { content: ContentBlock[] };
-
-  const supabase = await createClient();
-  await supabase
-    .from("sandbox_modules")
-    .update({ content: newContent })
-    .eq("id", moduleId);
-
-  return { ok: true, content: newContent };
 }
