@@ -69,6 +69,28 @@ const TEMPLATES = [
   { key: "Blank",                desc: "Start from scratch" },
 ];
 
+const CURRENT_QUARTER = Math.ceil((new Date().getMonth() + 1) / 3);
+
+const TEMPLATE_TITLE_DEFAULTS: Record<string, string> = {
+  "Curative Title":       "Title Cure Pipeline",
+  "Wholesale Pipeline":   "Wholesale Outreach System",
+  "Creative Finance":     "Creative Finance Playbook",
+  "Content Strategy":     `Content Strategy — Q${CURRENT_QUARTER}`,
+  "Multifamily Strategy": "Multifamily Acquisition Strategy",
+  "Business Acquisition": "Business Acquisition Pipeline",
+  "Blank":                "",
+};
+
+const DARK_TEMPLATE_PILL: Record<string, string> = {
+  "Curative Title":       "bg-blue-500/15 text-blue-300",
+  "Wholesale Pipeline":   "bg-violet-500/15 text-violet-300",
+  "Creative Finance":     "bg-[#c9a84c]/15 text-[#c9a84c]",
+  "Content Strategy":     "bg-cyan-500/15 text-cyan-300",
+  "Multifamily Strategy": "bg-orange-500/15 text-orange-300",
+  "Business Acquisition": "bg-indigo-500/15 text-indigo-300",
+  "Blank":                "bg-white/8 text-white/30",
+};
+
 // ---------------------------------------------------------------------------
 // Stats bar
 // ---------------------------------------------------------------------------
@@ -222,15 +244,17 @@ function NewSandboxModal({ open, onClose }: { open: boolean; onClose: () => void
     onClose();
   }
 
+  function handleTemplateSelect(key: string) {
+    setTemplate(key);
+    setTitle(TEMPLATE_TITLE_DEFAULTS[key] ?? "");
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     start(async () => {
       const res = await createSandbox({ title, description, template });
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
+      if (!res.ok) { setError(res.error); return; }
       handleClose();
       router.push(`/sandbox/${res.id}`);
     });
@@ -240,28 +264,61 @@ function NewSandboxModal({ open, onClose }: { open: boolean; onClose: () => void
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
-      <div className="absolute inset-0 bg-primary/40 backdrop-blur-[1px]" onClick={handleClose} />
-      <div className="relative w-full max-w-2xl rounded-2xl border border-border bg-card shadow-2xl">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={handleClose} />
+      <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0d1b30] shadow-2xl">
 
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
-          <h2 className="text-lg text-primary">New Sandbox</h2>
+        <div className="flex items-center justify-between border-b border-white/8 px-6 py-4">
+          <h2 className="text-base font-semibold text-white">New Sandbox</h2>
           <button
             type="button"
             onClick={handleClose}
             aria-label="Close"
-            className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-primary"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/8 hover:text-white/70"
           >
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
               <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
-        <form onSubmit={submit} className="px-6 py-5 space-y-5">
-          {/* Title */}
+        <form onSubmit={submit} className="space-y-5 px-6 py-5">
+          {/* Template picker — first so clicking auto-populates title below */}
+          <div>
+            <span className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-white/40">
+              Template
+            </span>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+              {TEMPLATES.map((t) => {
+                const pill = DARK_TEMPLATE_PILL[t.key] ?? DARK_TEMPLATE_PILL["Blank"];
+                const selected = template === t.key;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => handleTemplateSelect(t.key)}
+                    className={
+                      "flex flex-col items-start gap-1.5 rounded-xl border px-3 py-3 text-left transition-all duration-150 " +
+                      (selected
+                        ? "border-[#c9a84c] bg-[#c9a84c]/8 shadow-[0_0_0_1px_rgba(201,168,76,0.2)]"
+                        : "border-white/8 bg-white/3 hover:border-white/15 hover:bg-white/6")
+                    }
+                  >
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${pill}`}>
+                      {t.key}
+                    </span>
+                    <span className={`text-[11px] leading-snug transition-colors ${selected ? "text-white/70" : "text-white/30"}`}>
+                      {t.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Title — auto-populated by template selection, user can override */}
           <label className="block">
-            <span className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+            <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/40">
               Title *
             </span>
             <input
@@ -269,57 +326,26 @@ function NewSandboxModal({ open, onClose }: { open: boolean; onClose: () => void
               onChange={(e) => setTitle(e.target.value)}
               required
               placeholder="e.g. Q3 Wholesale Push"
-              className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none transition-colors focus:border-[#c9a84c]/50 focus:bg-[#c9a84c]/5"
             />
           </label>
 
-          {/* Description */}
+          {/* What are you building? */}
           <label className="block">
-            <span className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-              Description
+            <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/40">
+              What are you building?
             </span>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              placeholder="What is this sandbox for?"
-              className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+              placeholder="Describe your strategy or goal..."
+              className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none transition-colors focus:border-[#c9a84c]/50 focus:bg-[#c9a84c]/5"
             />
           </label>
 
-          {/* Template picker */}
-          <div>
-            <span className="mb-2 block text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-              Template
-            </span>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-              {TEMPLATES.map((t) => {
-                const tplColor = TEMPLATE_COLORS[t.key] ?? TEMPLATE_COLORS["Blank"];
-                const selected = template === t.key;
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => setTemplate(t.key)}
-                    className={
-                      "flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-all duration-150 " +
-                      (selected
-                        ? "border-accent bg-accent/5 shadow-sm"
-                        : "border-border bg-secondary hover:border-border/80 hover:bg-secondary/70")
-                    }
-                  >
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${tplColor.bg} ${tplColor.text}`}>
-                      {t.key}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground leading-snug">{t.desc}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {error && (
-            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive ring-1 ring-destructive/20">
+            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-400 ring-1 ring-rose-500/20">
               {error}
             </p>
           )}
@@ -328,14 +354,14 @@ function NewSandboxModal({ open, onClose }: { open: boolean; onClose: () => void
             <button
               type="button"
               onClick={handleClose}
-              className="rounded-full bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground"
+              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/50 transition-colors hover:bg-white/8 hover:text-white/80"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={pending}
-              className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
+              className="rounded-xl bg-[#c9a84c] px-4 py-2 text-sm font-medium text-[#070f1c] transition-all hover:bg-[#e0c060] disabled:opacity-50"
             >
               {pending ? "Creating…" : "Create Sandbox"}
             </button>
