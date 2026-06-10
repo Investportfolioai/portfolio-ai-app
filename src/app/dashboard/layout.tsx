@@ -7,9 +7,9 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Defense in depth: proxy guards routes, but verify here too (close to data).
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (user.role === "kp" || user.role === "viewer") redirect("/kp/dashboard");
 
   return (
     <div className="flex min-h-screen w-full">

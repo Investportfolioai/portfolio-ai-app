@@ -17,6 +17,38 @@ const TO = "john@investportfolio.ai";
 // (Resend's SDK maps `replyTo` to the `reply_to` API field.)
 const REPLY_TO = ["john@investportfolio.ai", "loa@investportfolio.ai"];
 
+export interface KpInviteEmail {
+  email: string;
+  name: string | null;
+  inviteUrl: string;
+}
+
+/** Send a branded invite email so a KP can set up their account. Best-effort. */
+export async function sendKpInvite(invite: KpInviteEmail): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key || !invite.email) {
+    console.warn("RESEND_API_KEY / email missing — skipping KP invite.");
+    return;
+  }
+  const resend = new Resend(key);
+  const greeting = invite.name ? `Hi ${invite.name} —` : "Hi —";
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0a0a0a;line-height:1.6;max-width:560px">
+      <h2 style="color:#0f1c3f;margin:0 0 4px">You've been invited to Portfolio AI</h2>
+      <p style="color:#6e6e73;margin:0 0 20px">${greeting} you've been added as a Key Principal. Click below to set up your account and access your deal dashboard.</p>
+      <a href="${invite.inviteUrl}" style="background:#0f1c3f;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;display:inline-block">Set up your account</a>
+      <p style="color:#6e6e73;font-size:12px;margin-top:24px">This link expires in 24 hours. If you weren't expecting this, you can safely ignore it.</p>
+    </div>`;
+
+  await resend.emails.send({
+    from: FROM,
+    to: invite.email,
+    replyTo: REPLY_TO,
+    subject: "You've been invited to Portfolio AI",
+    html,
+  });
+}
+
 export interface SubmissionEmail {
   submitterName: string;
   submitterEmail: string;

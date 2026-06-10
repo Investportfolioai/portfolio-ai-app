@@ -46,7 +46,10 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
   if (user && isLogin) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    const role = user.user_metadata?.role as string | undefined;
+    const dest =
+      role === "kp" || role === "viewer" ? "/kp/dashboard" : "/dashboard";
+    return NextResponse.redirect(new URL(dest, request.url));
   }
 
   return response;

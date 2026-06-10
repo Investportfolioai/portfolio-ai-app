@@ -1,7 +1,7 @@
 import { getKeyPrincipals } from "@/lib/deals";
 import { ROLE_LABELS } from "@/lib/types";
 import { money } from "@/lib/format";
-import { AddKpButton } from "./add-kp";
+import { AddKpButton, InviteKpButton } from "./add-kp";
 
 export const metadata = { title: "Key Principals — Portfolio AI" };
 export const dynamic = "force-dynamic";
@@ -26,7 +26,7 @@ export default async function KeyPrincipalsPage() {
       {kps.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-card py-16 text-center">
           <p className="text-sm font-medium text-primary">No Key Principals yet</p>
-          <p className="mt-1 text-xs text-muted-foreground">Use “Add KP” to build the roster.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Use "Add KP" to build the roster.</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-border bg-card">
@@ -38,6 +38,7 @@ export default async function KeyPrincipalsPage() {
                 <th className="px-4 py-3 font-medium">Role</th>
                 <th className="px-4 py-3 text-right font-medium">Deals</th>
                 <th className="px-4 py-3 text-right font-medium">Capital Exposure</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -48,6 +49,9 @@ export default async function KeyPrincipalsPage() {
                   <td className="px-4 py-3 text-muted-foreground">{ROLE_LABELS[kp.role]}</td>
                   <td className="data-number px-4 py-3 text-right tabular-nums text-primary">{kp.deals_count}</td>
                   <td className="data-number px-4 py-3 text-right tabular-nums text-accent">{money(kp.capital_exposure)}</td>
+                  <td className="px-4 py-3 text-right">
+                    {kp.email && <InviteKpButton kpId={kp.id} />}
+                  </td>
                 </tr>
               ))}
             </tbody>
