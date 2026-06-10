@@ -140,15 +140,27 @@ export async function buildModule(
   if (!sandbox) return { ok: false, error: "Sandbox not found." };
 
   // Fetch any YouTube transcripts embedded in the prompt
-  const youtubeUrls = extractYouTubeUrls(prompt);
-  const transcriptText = youtubeUrls.length > 0 ? await fetchTranscripts(youtubeUrls) : "";
+  let transcriptText = "";
+  let transcriptNote = "";
+  try {
+    const youtubeUrls = extractYouTubeUrls(prompt);
+    if (youtubeUrls.length > 0) {
+      transcriptText = await fetchTranscripts(youtubeUrls);
+      if (!transcriptText) {
+        transcriptNote = "Note: YouTube transcript was unavailable — build from the prompt alone.";
+      }
+    }
+  } catch (err) {
+    console.warn("[sandbox] transcript section failed:", (err as Error).message);
+    transcriptNote = "Note: YouTube transcript was unavailable — build from the prompt alone.";
+  }
 
   // Build user message content
-  const userContent = [
-    transcriptText
-      ? `${transcriptText}\n\n---\nSandbox: "${sandbox.title as string}"\nFolder type: ${folderType}\nBuild request: ${prompt}`
-      : `Sandbox: "${sandbox.title as string}"\nFolder type: ${folderType}\nBuild request: ${prompt}`,
-  ].join("");
+  const msgParts: string[] = [];
+  if (transcriptText) msgParts.push(transcriptText);
+  if (transcriptNote) msgParts.push(transcriptNote);
+  msgParts.push(`Sandbox: "${sandbox.title as string}"\nFolder type: ${folderType}\nBuild request: ${prompt}`);
+  const userContent = msgParts.join("\n\n---\n");
 
   const client = getClient();
 
@@ -165,7 +177,7 @@ export async function buildModule(
   try {
     response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 4000,
+      max_tokens: 8000,
       system: [
         {
           type: "text",
@@ -183,19 +195,38 @@ export async function buildModule(
     return { ok: false, error: "AI call failed. Try again." };
   }
 
+  console.log("[sandbox] buildModule raw response:", JSON.stringify(response.content, null, 2));
+
   const block = response.content.find(
     (b) => b.type === "tool_use" && b.name === "create_module",
   );
   if (!block || block.type !== "tool_use") {
+    console.error("[sandbox] No create_module call. stop_reason:", response.stop_reason);
     return { ok: false, error: "AI did not return a module." };
   }
 
-  const ai = block.input as {
-    title: string;
-    description: string;
-    content: ContentBlock[];
-    folder_type: string;
-    status: string;
+  console.log("[sandbox] create_module input:", JSON.stringify(block.input, null, 2));
+
+  const rawInput = block.input as Record<string, unknown>;
+
+  // Handle content in different shapes Claude might return
+  let parsedContent: ContentBlock[] = [];
+  if (Array.isArray(rawInput.content) && (rawInput.content as unknown[]).length > 0) {
+    parsedContent = rawInput.content as ContentBlock[];
+  } else if (Array.isArray(rawInput) && (rawInput as unknown[]).length > 0) {
+    parsedContent = rawInput as unknown as ContentBlock[];
+  }
+
+  if (parsedContent.length === 0) {
+    console.warn("[sandbox] create_module returned empty content. raw input:", JSON.stringify(rawInput, null, 2));
+  }
+
+  const ai = {
+    title: (rawInput.title as string | undefined) || "Untitled Module",
+    description: (rawInput.description as string | undefined) || "",
+    content: parsedContent,
+    folder_type: (rawInput.folder_type as string | undefined) || folderType,
+    status: "draft",
   };
 
   const { data: mod, error: insertErr } = await supabase
@@ -205,8 +236,8 @@ export async function buildModule(
       folder_id: folderId,
       title: ai.title,
       description: ai.description,
-      content: ai.content ?? null,
-      folder_type: ai.folder_type || folderType,
+      content: parsedContent.length > 0 ? parsedContent : null,
+      folder_type: ai.folder_type,
       status: "draft",
       created_by: user.id,
     })
@@ -307,6 +338,22 @@ export async function updateModuleContent(
 
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// fetchModuleContent — lightweight poll used by module panel when content is empty
+// ---------------------------------------------------------------------------
+
+export async function fetchModuleContent(moduleId: string): Promise<ContentBlock[] | null> {
+  const user = await getSessionUser();
+  if (!user) return null;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("sandbox_modules")
+    .select("content")
+    .eq("id", moduleId)
+    .single();
+  return (data?.content as ContentBlock[] | null) ?? null;
 }
 
 // ---------------------------------------------------------------------------

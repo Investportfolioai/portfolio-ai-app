@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useTransition } from "react";
 import { motion } from "motion/react";
 import { X, Sparkles, Send, Loader2, Plus } from "lucide-react";
 import type { ContentBlock } from "./actions";
-import { updateModuleContent, editModuleWithAI } from "./actions";
+import { updateModuleContent, editModuleWithAI, fetchModuleContent } from "./actions";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -270,6 +270,7 @@ export function ModulePanel({
   const [editPrompt, setEditPrompt] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [isAiPending, startAiTransition] = useTransition();
+  const [isPolling, setIsPolling] = useState(false);
 
   // Keep refs current for debounce closures
   const titleRef = useRef(title);
@@ -298,6 +299,31 @@ export function ModulePanel({
     setEditPrompt("");
     setEditError(null);
   }, [module.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll every 3s when content is empty, stop once content arrives
+  useEffect(() => {
+    if (content.length > 0) {
+      setIsPolling(false);
+      return;
+    }
+    setIsPolling(true);
+    let active = true;
+    const timer = setInterval(async () => {
+      try {
+        const fresh = await fetchModuleContent(module.id);
+        if (!active) return;
+        if (fresh && fresh.length > 0) {
+          setContent(fresh);
+          contentRef.current = fresh;
+          onUpdate(module.id, { content: fresh });
+          setIsPolling(false);
+        }
+      } catch {
+        // ignore transient errors
+      }
+    }, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [module.id, content.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Dismiss on Escape
   useEffect(() => {
@@ -389,9 +415,16 @@ export function ModulePanel({
         {/* ── Body ── */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {content.length === 0 && (
-            <p className="text-[13px] text-white/25">
-              No content yet. Use the AI edit bar below.
-            </p>
+            <div className="flex items-center gap-2 text-[13px] text-white/30">
+              {isPolling ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  <span>AI is generating content…</span>
+                </>
+              ) : (
+                <span>No content yet. Use the AI edit bar below.</span>
+              )}
+            </div>
           )}
           <div className="flex flex-col gap-5">
             {content.map((block, i) => {
