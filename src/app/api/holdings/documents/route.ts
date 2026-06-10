@@ -8,6 +8,13 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const BUCKET = "documents";
+const ALLOWED_MIME = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
 
 /** POST multipart { file, holding_id, doc_type } — upload, register, auto-parse. */
 export async function POST(req: Request) {
@@ -27,6 +34,12 @@ export async function POST(req: Request) {
   const docType = String(form.get("doc_type") ?? "other");
   if (!(file instanceof File) || file.size === 0) {
     return NextResponse.json({ error: "A file is required" }, { status: 400 });
+  }
+  if (!ALLOWED_MIME.has(file.type)) {
+    return NextResponse.json({ error: "Only PDF and image files are accepted." }, { status: 400 });
+  }
+  if (file.size > 25 * 1024 * 1024) {
+    return NextResponse.json({ error: "File exceeds the 25 MB limit." }, { status: 400 });
   }
   if (!holdingId) return NextResponse.json({ error: "Missing holding_id" }, { status: 400 });
 

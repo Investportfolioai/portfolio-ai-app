@@ -256,7 +256,7 @@ async function callUnderwriting(
   try {
     response = await client.messages.create({
       model: MODEL,
-      max_tokens: 8000,
+      max_tokens: 5000,
       system: [
         { type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } },
       ],
@@ -408,7 +408,7 @@ export async function extractDocumentUpdates(
   try {
     response = await client.messages.create({
       model: MODEL,
-      max_tokens: 3000,
+      max_tokens: 2000,
       system: [{ type: "text", text: DOC_SYSTEM, cache_control: { type: "ephemeral" } }],
       tools: [
         {

@@ -118,7 +118,15 @@ export interface NewLender {
 export async function createLender(input: NewLender): Promise<Result> {
   const name = input.name.trim();
   if (!name) return { ok: false, error: "Lender name is required." };
+  if (input.rate !== null && (!Number.isFinite(input.rate) || input.rate < 0 || input.rate > 100)) {
+    return { ok: false, error: "Rate must be a number between 0 and 100." };
+  }
+  if (input.max_ltv !== null && (!Number.isFinite(input.max_ltv) || input.max_ltv < 0 || input.max_ltv > 100)) {
+    return { ok: false, error: "Max LTV must be a number between 0 and 100." };
+  }
   const supabase = await createClient();
+  const { data: allowed } = await supabase.rpc("is_owner_or_partner");
+  if (!allowed) return { ok: false, error: "Not authorized." };
   const { error } = await supabase.from("lenders").insert({
     name,
     type: input.type || null,

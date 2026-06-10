@@ -117,7 +117,7 @@ export async function POST(req: Request) {
   try {
     const resp = await client.messages.create({
       model: MODEL,
-      max_tokens: 2000,
+      max_tokens: 1200,
       system: SYSTEM,
       messages: [
         { role: "user", content: [docBlock, { type: "text", text: "Parse this document. Return only the JSON object." }] },
