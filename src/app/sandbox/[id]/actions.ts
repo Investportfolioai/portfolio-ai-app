@@ -134,3 +134,64 @@ Be specific and actionable. Context: real estate investment, creative finance, s
   revalidatePath(`/sandbox/${sandboxId}`);
   return { ok: true, module: mod as BuiltModule };
 }
+
+// ---------------------------------------------------------------------------
+// addFolder
+// ---------------------------------------------------------------------------
+
+export interface AddedFolder {
+  id: string;
+  name: string;
+  folder_type: string;
+  position: number;
+}
+
+export type AddFolderResult =
+  | { ok: true; folder: AddedFolder }
+  | { ok: false; error: string };
+
+export async function addFolder(
+  sandboxId: string,
+  name: string,
+  folderType: string,
+): Promise<AddFolderResult> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Not authenticated." };
+  if (!canManage(user.role)) return { ok: false, error: "Not authorized." };
+
+  const trimmedName = name.trim();
+  if (!trimmedName) return { ok: false, error: "Folder name is required." };
+
+  const supabase = await createClient();
+
+  const { data: sandbox } = await supabase
+    .from("sandboxes")
+    .select("id")
+    .eq("id", sandboxId)
+    .eq("user_id", user.id)
+    .single();
+  if (!sandbox) return { ok: false, error: "Sandbox not found." };
+
+  const { count } = await supabase
+    .from("sandbox_folders")
+    .select("id", { count: "exact", head: true })
+    .eq("sandbox_id", sandboxId);
+
+  const { data: folder, error } = await supabase
+    .from("sandbox_folders")
+    .insert({
+      sandbox_id: sandboxId,
+      name: trimmedName,
+      folder_type: folderType,
+      position: count ?? 0,
+    })
+    .select("id, name, folder_type, position")
+    .single();
+
+  if (error || !folder) {
+    return { ok: false, error: error?.message ?? "Failed to create folder." };
+  }
+
+  revalidatePath(`/sandbox/${sandboxId}`);
+  return { ok: true, folder: folder as AddedFolder };
+}

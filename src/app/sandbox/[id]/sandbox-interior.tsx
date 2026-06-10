@@ -3,7 +3,7 @@
 import { useState, useTransition, useRef, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "motion/react";
-import { buildModule, type BuiltModule } from "./actions";
+import { buildModule, addFolder, type BuiltModule, type AddedFolder } from "./actions";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -34,6 +34,19 @@ export interface SandboxDetail {
 }
 
 // ---------------------------------------------------------------------------
+// Folder type options
+// ---------------------------------------------------------------------------
+
+const FOLDER_TYPES = [
+  { label: "Deals", value: "deals" },
+  { label: "Follow-Up Sequences", value: "follow_up" },
+  { label: "Title Cure", value: "title_cure" },
+  { label: "Documents", value: "documents" },
+  { label: "Cold Call Scripts", value: "cold_call" },
+  { label: "Content", value: "content" },
+];
+
+// ---------------------------------------------------------------------------
 // Inline SVG icons
 // ---------------------------------------------------------------------------
 
@@ -50,6 +63,15 @@ function IconPlus({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="5" x2="12" y2="19" />
       <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function IconX({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
     </svg>
   );
 }
@@ -234,12 +256,140 @@ function EmptyState({ folderName }: { folderName: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Add Folder Modal
+// ---------------------------------------------------------------------------
+
+function AddFolderModal({
+  onClose,
+  onAdd,
+  isPending,
+  error,
+}: {
+  onClose: () => void;
+  onAdd: (name: string, folderType: string) => void;
+  isPending: boolean;
+  error: string | null;
+}) {
+  const [name, setName] = useState("");
+  const [selectedType, setSelectedType] = useState(FOLDER_TYPES[0].value);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || isPending) return;
+    onAdd(name, selectedType);
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[2px]"
+        onClick={onClose}
+      />
+
+      {/* Dialog */}
+      <div className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-white/10 bg-[#0d1b30] p-5 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white">New Folder</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-6 w-6 items-center justify-center rounded text-white/30 transition-colors hover:bg-white/8 hover:text-white/70"
+          >
+            <IconX className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* Name input */}
+          <div>
+            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-white/40">
+              Folder Name
+            </label>
+            <input
+              ref={nameRef}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Q3 Seller Leads"
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-white/25 outline-none transition-colors focus:border-[#c9a84c]/40 focus:bg-[#c9a84c]/5"
+            />
+          </div>
+
+          {/* Folder type selector */}
+          <div>
+            <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-white/40">
+              Type
+            </label>
+            <div className="grid grid-cols-2 gap-1.5">
+              {FOLDER_TYPES.map((ft) => (
+                <button
+                  key={ft.value}
+                  type="button"
+                  onClick={() => setSelectedType(ft.value)}
+                  className={`rounded-lg border px-3 py-2 text-left text-[12px] font-medium transition-colors ${
+                    selectedType === ft.value
+                      ? "border-[#c9a84c]/50 bg-[#c9a84c]/10 text-[#c9a84c]"
+                      : "border-white/8 bg-white/3 text-white/50 hover:border-white/15 hover:text-white/80"
+                  }`}
+                >
+                  {ft.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {error && (
+            <p className="text-[12px] text-rose-400">{error}</p>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 rounded-lg border border-white/10 bg-white/5 py-2 text-sm text-white/50 transition-colors hover:bg-white/8 hover:text-white/80"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!name.trim() || isPending}
+              className="flex flex-1 items-center justify-center rounded-lg bg-[#c9a84c] py-2 text-sm font-medium text-[#070f1c] transition-all hover:bg-[#e0c060] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {isPending ? (
+                <IconLoader className="h-4 w-4 animate-spin" />
+              ) : (
+                "Create"
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
 export function SandboxInterior({
   sandbox,
-  folders,
+  folders: initialFolders,
   modules: initialModules,
   creatorName,
 }: {
@@ -248,19 +398,31 @@ export function SandboxInterior({
   modules: SandboxModule[];
   creatorName: string;
 }) {
+  const [folderList, setFolderList] = useState<SandboxFolder[]>(initialFolders);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(
-    folders[0]?.id ?? null,
+    initialFolders[0]?.id ?? null,
   );
   const [modules, setModules] = useState<(SandboxModule | BuiltModule)[]>(initialModules);
+
+  // AI Builder state
   const [prompt, setPrompt] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [isBuildPending, startBuildTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const activeFolder = folders.find((f) => f.id === activeFolderId) ?? folders[0] ?? null;
+  // Add Folder modal state
+  const [showAddFolder, setShowAddFolder] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [isAddPending, startAddTransition] = useTransition();
+
+  // Sync from server revalidation
+  useEffect(() => { setModules(initialModules); }, [initialModules]);
+  useEffect(() => { setFolderList(initialFolders); }, [initialFolders]);
+
+  const activeFolder = folderList.find((f) => f.id === activeFolderId) ?? folderList[0] ?? null;
   const visibleModules = modules.filter((m) => m.folder_id === activeFolderId);
 
-  const moduleCounts = folders.reduce<Record<string, number>>((acc, f) => {
+  const moduleCounts = folderList.reduce<Record<string, number>>((acc, f) => {
     acc[f.id] = modules.filter((m) => m.folder_id === f.id).length;
     return acc;
   }, {});
@@ -268,27 +430,26 @@ export function SandboxInterior({
   const suggestions =
     SUGGESTED_PROMPTS[activeFolder?.folder_type ?? ""] ?? DEFAULT_PROMPTS;
 
+  // ── AI Builder handlers ──
+
   function handleChip(text: string) {
     setPrompt(text);
     inputRef.current?.focus();
   }
 
-  function handleSubmit() {
+  function handleBuildSubmit() {
     const trimmed = prompt.trim();
-    if (!trimmed || isPending || !activeFolder) return;
-    setError(null);
+    if (!trimmed || isBuildPending || !activeFolder) return;
+    setBuildError(null);
 
-    startTransition(async () => {
+    startBuildTransition(async () => {
       const res = await buildModule(
         sandbox.id,
         activeFolderId,
         activeFolder.folder_type ?? "",
         trimmed,
       );
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
+      if (!res.ok) { setBuildError(res.error); return; }
       setModules((prev) => [res.module, ...prev]);
       setPrompt("");
     });
@@ -297,13 +458,29 @@ export function SandboxInterior({
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      handleBuildSubmit();
     }
   }
 
-  useEffect(() => {
-    setModules(initialModules);
-  }, [initialModules]);
+  // ── Add Folder handler ──
+
+  function handleAddFolder(name: string, folderType: string) {
+    setFolderError(null);
+    startAddTransition(async () => {
+      const res = await addFolder(sandbox.id, name, folderType);
+      if (!res.ok) { setFolderError(res.error); return; }
+      const newFolder: SandboxFolder = {
+        id: (res.folder as AddedFolder).id,
+        name: (res.folder as AddedFolder).name,
+        folder_type: (res.folder as AddedFolder).folder_type,
+        position: (res.folder as AddedFolder).position,
+      };
+      setFolderList((prev) => [...prev, newFolder]);
+      setActiveFolderId(newFolder.id);
+      setShowAddFolder(false);
+      setFolderError(null);
+    });
+  }
 
   const statusDot =
     sandbox.status === "active"
@@ -321,6 +498,18 @@ export function SandboxInterior({
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#070f1c] text-white">
+      {/* Add Folder Modal */}
+      <AnimatePresence>
+        {showAddFolder && (
+          <AddFolderModal
+            onClose={() => { setShowAddFolder(false); setFolderError(null); }}
+            onAdd={handleAddFolder}
+            isPending={isAddPending}
+            error={folderError}
+          />
+        )}
+      </AnimatePresence>
+
       {/* ── Top bar ── */}
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-white/8 bg-[#0a1628] px-4">
         <Link
@@ -373,6 +562,7 @@ export function SandboxInterior({
             <button
               type="button"
               title="Add folder"
+              onClick={() => setShowAddFolder(true)}
               className="flex h-5 w-5 items-center justify-center rounded text-white/30 transition-colors hover:bg-white/8 hover:text-white/70"
             >
               <IconPlus className="h-3.5 w-3.5" />
@@ -380,10 +570,10 @@ export function SandboxInterior({
           </div>
 
           <nav className="flex-1 overflow-y-auto px-2 pb-4">
-            {folders.length === 0 && (
+            {folderList.length === 0 && (
               <p className="px-2 pt-2 text-[12px] text-white/25">No folders yet</p>
             )}
-            {folders.map((folder) => {
+            {folderList.map((folder) => {
               const active = folder.id === activeFolderId;
               const count = moduleCounts[folder.id] ?? 0;
               return (
@@ -455,7 +645,7 @@ export function SandboxInterior({
                   key={s}
                   type="button"
                   onClick={() => handleChip(s)}
-                  disabled={isPending}
+                  disabled={isBuildPending}
                   className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-white/50 transition-colors hover:border-[#c9a84c]/30 hover:bg-[#c9a84c]/8 hover:text-[#c9a84c] disabled:opacity-40"
                 >
                   {s}
@@ -477,7 +667,7 @@ export function SandboxInterior({
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  disabled={isPending || !activeFolder}
+                  disabled={isBuildPending || !activeFolder}
                   placeholder={
                     activeFolder
                       ? `Build something in ${activeFolder.name ?? "this folder"}... (Enter to build)`
@@ -489,11 +679,11 @@ export function SandboxInterior({
 
               <button
                 type="button"
-                onClick={handleSubmit}
-                disabled={!prompt.trim() || isPending || !activeFolder}
+                onClick={handleBuildSubmit}
+                disabled={!prompt.trim() || isBuildPending || !activeFolder}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#c9a84c] text-[#070f1c] transition-all hover:bg-[#e0c060] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {isPending ? (
+                {isBuildPending ? (
                   <IconLoader className="h-4 w-4 animate-spin" />
                 ) : (
                   <IconSend className="h-4 w-4" />
@@ -501,8 +691,8 @@ export function SandboxInterior({
               </button>
             </div>
 
-            {error && (
-              <p className="mt-2 text-[12px] text-rose-400">{error}</p>
+            {buildError && (
+              <p className="mt-2 text-[12px] text-rose-400">{buildError}</p>
             )}
           </div>
         </div>
