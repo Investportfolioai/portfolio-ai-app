@@ -2,9 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import Anthropic from "@anthropic-ai/sdk";
+import { YoutubeTranscript } from "youtube-transcript";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
+
+// ---------------------------------------------------------------------------
+// Anthropic client
+// ---------------------------------------------------------------------------
 
 function getClient(): Anthropic {
   const apiKey = (process.env.ANTHROPIC_API_KEY ?? "").replace(/\s/g, "");
@@ -12,16 +17,74 @@ function getClient(): Anthropic {
   return new Anthropic({ apiKey });
 }
 
+// ---------------------------------------------------------------------------
+// YouTube transcript helpers
+// ---------------------------------------------------------------------------
+
+const YOUTUBE_RE =
+  /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/watch\?(?:\S*&)?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/g;
+
+function extractYouTubeUrls(text: string): string[] {
+  const seen = new Set<string>();
+  const re = new RegExp(YOUTUBE_RE.source, "g");
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    seen.add(match[0]);
+  }
+  return [...seen];
+}
+
+async function fetchTranscripts(urls: string[]): Promise<string> {
+  const parts: string[] = [];
+  for (const url of urls) {
+    try {
+      const segments = await YoutubeTranscript.fetchTranscript(url);
+      const text = segments.map((s) => s.text).join(" ").replace(/\s+/g, " ").trim();
+      if (text) parts.push(`[Transcript: ${url}]\n${text}`);
+    } catch (err) {
+      console.warn("[sandbox] transcript unavailable for", url, (err as Error).message);
+    }
+  }
+  return parts.join("\n\n");
+}
+
+// ---------------------------------------------------------------------------
+// Module schema
+// ---------------------------------------------------------------------------
+
 const MODULE_SCHEMA = {
   type: "object",
   properties: {
     title: { type: "string" },
     description: { type: "string" },
+    content: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            enum: ["checklist", "script", "sequence", "text"],
+          },
+          value: { type: "string" },
+        },
+        required: ["type", "value"],
+      },
+    },
     folder_type: { type: "string" },
     status: { type: "string", enum: ["draft", "live"] },
   },
-  required: ["title", "description", "folder_type", "status"],
+  required: ["title", "description", "content", "folder_type", "status"],
 } as const;
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface ContentBlock {
+  type: "checklist" | "script" | "sequence" | "text";
+  value: string;
+}
 
 export interface BuiltModule {
   id: string;
@@ -31,11 +94,30 @@ export interface BuiltModule {
   status: string;
   created_at: string;
   folder_id: string | null;
+  content: ContentBlock[] | null;
 }
 
 export type BuildModuleResult =
   | { ok: true; module: BuiltModule }
   | { ok: false; error: string };
+
+// ---------------------------------------------------------------------------
+// buildModule
+// ---------------------------------------------------------------------------
+
+const SYSTEM_PROMPT = `You are a real estate and business strategy AI. The user may provide YouTube video transcripts and a build request. Use the transcripts as primary source material, supplement with web research when helpful, and generate a module by calling create_module with these fields:
+- title (string): concise name, 3-6 words
+- description (string): 1-2 sentence summary of what this module does and its value
+- content (array of objects with type and value):
+  - type "checklist": use for step-by-step action items or due diligence lists
+  - type "script": use for call scripts, objection handling, or conversation flows
+  - type "sequence": use for follow-up drip sequences or multi-step outreach
+  - type "text": use for narrative explanations, strategy notes, or templates
+  Generate as many content blocks as needed to be genuinely useful. Each value should be substantial and actionable.
+- folder_type (string): the folder type provided
+- status: always "draft"
+
+Ground everything in the transcripts if provided. Use web_search to fill gaps or verify current market data.`;
 
 export async function buildModule(
   sandboxId: string,
@@ -57,41 +139,43 @@ export async function buildModule(
     .single();
   if (!sandbox) return { ok: false, error: "Sandbox not found." };
 
+  // Fetch any YouTube transcripts embedded in the prompt
+  const youtubeUrls = extractYouTubeUrls(prompt);
+  const transcriptText = youtubeUrls.length > 0 ? await fetchTranscripts(youtubeUrls) : "";
+
+  // Build user message content
+  const userContent = [
+    transcriptText
+      ? `${transcriptText}\n\n---\nSandbox: "${sandbox.title as string}"\nFolder type: ${folderType}\nBuild request: ${prompt}`
+      : `Sandbox: "${sandbox.title as string}"\nFolder type: ${folderType}\nBuild request: ${prompt}`,
+  ].join("");
+
   const client = getClient();
+
+  const tools = [
+    { type: "web_search_20250305", name: "web_search" },
+    {
+      name: "create_module",
+      description: "Create a sandbox module with the specified fields.",
+      input_schema: MODULE_SCHEMA as unknown as Anthropic.Tool["input_schema"],
+    },
+  ] as unknown as Anthropic.MessageCreateParams["tools"];
+
   let response: Anthropic.Message;
   try {
     response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 800,
+      max_tokens: 4000,
       system: [
         {
           type: "text",
-          text: `You are an AI builder inside Portfolio AI's Sandbox workspace. Generate workspace modules — structured tools, templates, trackers, scripts, and workflows — for real estate investors and operators.
-
-Return a module with:
-- title: concise name (3-6 words)
-- description: 1-2 sentence explanation of what this module does and its value
-- folder_type: the folder type provided in the prompt
-- status: always "draft"
-
-Be specific and actionable. Context: real estate investment, creative finance, seller outreach, key principals, lenders, title resolution, content marketing.`,
+          text: SYSTEM_PROMPT,
           cache_control: { type: "ephemeral" },
         },
       ],
-      tools: [
-        {
-          name: "create_module",
-          description: "Create a sandbox module.",
-          input_schema: MODULE_SCHEMA as unknown as Anthropic.Tool["input_schema"],
-        },
-      ],
-      tool_choice: { type: "tool", name: "create_module" },
-      messages: [
-        {
-          role: "user",
-          content: `Sandbox: "${sandbox.title as string}"\nFolder type: ${folderType}\nPrompt: ${prompt}\n\nBuild this module.`,
-        },
-      ],
+      tools,
+      tool_choice: { type: "auto" },
+      messages: [{ role: "user", content: userContent }],
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -109,6 +193,7 @@ Be specific and actionable. Context: real estate investment, creative finance, s
   const ai = block.input as {
     title: string;
     description: string;
+    content: ContentBlock[];
     folder_type: string;
     status: string;
   };
@@ -120,11 +205,12 @@ Be specific and actionable. Context: real estate investment, creative finance, s
       folder_id: folderId,
       title: ai.title,
       description: ai.description,
+      content: ai.content ?? null,
       folder_type: ai.folder_type || folderType,
       status: "draft",
       created_by: user.id,
     })
-    .select("id, title, description, folder_type, status, created_at, folder_id")
+    .select("id, title, description, folder_type, status, created_at, folder_id, content")
     .single();
 
   if (insertErr || !mod) {
