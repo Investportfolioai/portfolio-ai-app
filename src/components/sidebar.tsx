@@ -22,6 +22,7 @@ const NAV: NavItem[] = [
   { label: "Key Principals", href: "/dashboard/kps" },
   { label: "Lenders", href: "/dashboard/lenders" },
   { label: "Documents", href: "/dashboard/documents" },
+  { label: "Sandbox", href: "/sandbox" },
 ];
 
 export function Sidebar({ user }: { user: SidebarUser }) {
