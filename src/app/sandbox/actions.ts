@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
@@ -88,4 +89,33 @@ export async function createSandbox(input: {
   }
 
   return { ok: true, id: sandbox.id };
+}
+
+// ---------------------------------------------------------------------------
+// deleteSandbox
+// ---------------------------------------------------------------------------
+
+export async function deleteSandbox(
+  sandboxId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Not authenticated." };
+  if (!canManage(user.role)) return { ok: false, error: "Not authorized." };
+
+  const supabase = await createClient();
+
+  const { data: sandbox } = await supabase
+    .from("sandboxes")
+    .select("id")
+    .eq("id", sandboxId)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!sandbox) return { ok: false, error: "Sandbox not found." };
+
+  const { error } = await supabase.from("sandboxes").delete().eq("id", sandboxId);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath("/sandbox");
+  return { ok: true };
 }

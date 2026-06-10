@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LayoutGrid } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { logout } from "@/app/login/actions";
 import { ROLE_LABELS, type UserRole } from "@/lib/types";
 
-type NavItem = { label: string; href?: string };
+type NavItem = { label: string; href?: string; icon?: LucideIcon };
 
 export interface SidebarUser {
   email: string | null;
@@ -15,6 +17,7 @@ export interface SidebarUser {
 
 const NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard" },
+  { label: "Sandbox", href: "/sandbox", icon: LayoutGrid },
   { label: "Pipeline", href: "/dashboard/pipeline" },
   { label: "Portfolio", href: "/dashboard/portfolio" },
   { label: "Deals", href: "/dashboard/deals" },
@@ -22,7 +25,6 @@ const NAV: NavItem[] = [
   { label: "Key Principals", href: "/dashboard/kps" },
   { label: "Lenders", href: "/dashboard/lenders" },
   { label: "Documents", href: "/dashboard/documents" },
-  { label: "Sandbox", href: "/sandbox" },
 ];
 
 export function Sidebar({ user }: { user: SidebarUser }) {
@@ -49,7 +51,8 @@ export function Sidebar({ user }: { user: SidebarUser }) {
               : pathname.startsWith(item.href)
             : false;
           const base =
-            "block rounded-md py-2 pl-3 pr-3 text-sm font-medium transition-all duration-150";
+            "flex items-center gap-2 rounded-md py-2 pl-3 pr-3 text-sm font-medium transition-all duration-150";
+          const Icon = item.icon;
 
           if (!item.href) {
             return (
@@ -57,6 +60,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                 key={item.label}
                 className={`${base} cursor-default text-sidebar-foreground/30`}
               >
+                {Icon && <Icon className="h-4 w-4 shrink-0" />}
                 {item.label}
               </span>
             );
@@ -73,6 +77,7 @@ export function Sidebar({ user }: { user: SidebarUser }) {
                   : `${base} text-sidebar-foreground/60 hover:translate-x-0.5 hover:text-accent hover:[text-shadow:0_0_8px_rgba(212,175,55,0.45)]`
               }
             >
+              {Icon && <Icon className="h-4 w-4 shrink-0" />}
               {item.label}
             </Link>
           );

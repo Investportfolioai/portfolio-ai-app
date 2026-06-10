@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { createSandbox } from "./actions";
+import { createSandbox, deleteSandbox } from "./actions";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -121,10 +121,31 @@ function Stat({ label, value }: { label: string; value: string }) {
 // Sandbox card
 // ---------------------------------------------------------------------------
 
-function SandboxCard({ sandbox, onClick }: { sandbox: SandboxRow; onClick: () => void }) {
+function SandboxCard({
+  sandbox,
+  onClick,
+  onDeleteRequest,
+}: {
+  sandbox: SandboxRow;
+  onClick: () => void;
+  onDeleteRequest: (id: string, title: string | null) => void;
+}) {
   const tpl = sandbox.template ?? "Blank";
   const tplColor = TEMPLATE_COLORS[tpl] ?? TEMPLATE_COLORS["Blank"];
   const s = STATUS_CONFIG[sandbox.status] ?? STATUS_CONFIG["idle"];
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [menuOpen]);
 
   return (
     <motion.div
@@ -134,15 +155,45 @@ function SandboxCard({ sandbox, onClick }: { sandbox: SandboxRow; onClick: () =>
       transition={{ duration: 0.2, ease: "easeOut" }}
       className="flex cursor-pointer flex-col rounded-2xl border bg-card p-5 text-left"
     >
-      {/* Top row — category + status */}
+      {/* Top row — category + status + menu */}
       <div className="mb-3 flex items-center justify-between gap-2">
         <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${tplColor.bg} ${tplColor.text}`}>
           {tpl}
         </span>
-        <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 ${s.ring}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-          {s.label}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 ${s.ring}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
+            {s.label}
+          </span>
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/30 transition-colors hover:bg-secondary hover:text-muted-foreground"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <circle cx="8" cy="3" r="1.5"/>
+                <circle cx="8" cy="8" r="1.5"/>
+                <circle cx="8" cy="13" r="1.5"/>
+              </svg>
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-xl border border-border bg-card shadow-lg">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    onDeleteRequest(sandbox.id, sandbox.title);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] text-rose-500 transition-colors hover:bg-rose-50"
+                >
+                  Delete Sandbox
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Title + description */}
@@ -373,6 +424,61 @@ function NewSandboxModal({ open, onClose }: { open: boolean; onClose: () => void
 }
 
 // ---------------------------------------------------------------------------
+// Delete confirm dialog
+// ---------------------------------------------------------------------------
+
+function DeleteConfirmDialog({
+  title,
+  onCancel,
+  onConfirm,
+  isPending,
+}: {
+  title: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onCancel} />
+      <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-[#0d1b30] p-6 shadow-2xl">
+        <h2 className="mb-1 text-base font-semibold text-white">Delete Sandbox</h2>
+        {title && (
+          <p className="mb-3 text-sm font-medium text-white/50">&ldquo;{title}&rdquo;</p>
+        )}
+        <p className="mb-5 text-sm leading-relaxed text-white/40">
+          This will permanently delete this sandbox and all its folders and modules. This cannot be undone.
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isPending}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/50 transition-colors hover:bg-white/8 hover:text-white/80 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isPending}
+            className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-rose-600 disabled:opacity-50"
+          >
+            {isPending ? "Deleting…" : "Delete"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Root
 // ---------------------------------------------------------------------------
 
@@ -386,10 +492,29 @@ export function SandboxBoard({
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState(false);
+  const [sandboxList, setSandboxList] = useState(sandboxes);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string | null } | null>(null);
+  const [isDeleting, startDelete] = useTransition();
 
-  const filtered = sandboxes.filter((s) =>
+  const filtered = sandboxList.filter((s) =>
     !query || (s.title ?? "").toLowerCase().includes(query.toLowerCase()),
   );
+
+  function handleDeleteRequest(id: string, title: string | null) {
+    setDeleteTarget({ id, title });
+  }
+
+  function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    const targetId = deleteTarget.id;
+    startDelete(async () => {
+      const res = await deleteSandbox(targetId);
+      if (res.ok) {
+        setSandboxList((prev) => prev.filter((s) => s.id !== targetId));
+      }
+      setDeleteTarget(null);
+    });
+  }
 
   return (
     <motion.div
@@ -443,6 +568,7 @@ export function SandboxBoard({
               key={sandbox.id}
               sandbox={sandbox}
               onClick={() => router.push(`/sandbox/${sandbox.id}`)}
+              onDeleteRequest={handleDeleteRequest}
             />
           ))}
           <NewSandboxCard onClick={() => setAdding(true)} />
@@ -457,6 +583,15 @@ export function SandboxBoard({
       )}
 
       <NewSandboxModal open={adding} onClose={() => setAdding(false)} />
+
+      {deleteTarget && (
+        <DeleteConfirmDialog
+          title={deleteTarget.title}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={handleConfirmDelete}
+          isPending={isDeleting}
+        />
+      )}
     </motion.div>
   );
 }
