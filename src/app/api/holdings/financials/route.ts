@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
+import { netCashflow } from "@/lib/cashflow";
 
 export const runtime = "nodejs";
 
@@ -16,20 +17,6 @@ const FIELDS = [
 ] as const;
 
 type FinRow = Record<(typeof FIELDS)[number], number | null> & { id: string; holding_id: string };
-
-/** net_cashflow is derived (no column) = income − all outflow. */
-export function netCashflow(f: Partial<Record<(typeof FIELDS)[number], number | null>>): number {
-  const n = (v: number | null | undefined) => Number(v ?? 0);
-  return (
-    n(f.income_rent) +
-    n(f.income_other) -
-    n(f.outflow_mortgage) -
-    n(f.outflow_seller_carry) -
-    n(f.outflow_taxes) -
-    n(f.outflow_hoa) -
-    n(f.outflow_other)
-  );
-}
 
 async function getOrCreate(admin: ReturnType<typeof createAdminClient>, holdingId: string) {
   const { data } = await admin.from("holding_financials").select("*").eq("holding_id", holdingId).maybeSingle();

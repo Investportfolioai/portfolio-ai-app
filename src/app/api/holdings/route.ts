@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
-import { netCashflow } from "./financials/route";
+import { netCashflow } from "@/lib/cashflow";
 import { getZillowAVM } from "@/lib/zillow";
 import { getBalloonStatus } from "@/lib/balloon";
 
@@ -27,48 +27,56 @@ const ALLOWED = new Set([
  * empty if the Phase-3 migration hasn't been applied yet.
  */
 export async function GET() {
-  const user = await getSessionUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  try {
+    const user = await getSessionUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const admin = createAdminClient();
-  const { data: holdings, error } = await admin
-    .from("holdings")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-
-  const ids = (holdings ?? []).map((h) => h.id);
-  const finBy: Record<string, Record<string, unknown>> = {};
-  const docsBy: Record<string, unknown[]> = {};
-  const snapsBy: Record<string, unknown[]> = {};
-
-  if (ids.length) {
-    const { data: fins } = await admin.from("holding_financials").select("*").in("holding_id", ids);
-    for (const f of fins ?? []) finBy[f.holding_id as string] = f;
-
-    const { data: docs } = await admin
-      .from("holding_documents").select("*").in("holding_id", ids)
+    const admin = createAdminClient();
+    const { data: holdings, error } = await admin
+      .from("holdings")
+      .select("*")
       .order("created_at", { ascending: false });
-    for (const d of docs ?? []) (docsBy[d.holding_id as string] ??= []).push(d);
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
-    const cutoff = new Date(Date.now() - 84 * 86_400_000).toISOString().slice(0, 10);
-    const { data: snaps } = await admin
-      .from("holding_snapshots").select("*").in("holding_id", ids)
-      .gte("snapshot_date", cutoff).order("snapshot_date", { ascending: true });
-    for (const s of snaps ?? []) (snapsBy[s.holding_id as string] ??= []).push(s);
+    const ids = (holdings ?? []).map((h) => h.id);
+    const finBy: Record<string, Record<string, unknown>> = {};
+    const docsBy: Record<string, unknown[]> = {};
+    const snapsBy: Record<string, unknown[]> = {};
+
+    if (ids.length) {
+      const { data: fins } = await admin.from("holding_financials").select("*").in("holding_id", ids);
+      for (const f of fins ?? []) finBy[f.holding_id as string] = f;
+
+      const { data: docs } = await admin
+        .from("holding_documents").select("*").in("holding_id", ids)
+        .order("created_at", { ascending: false });
+      for (const d of docs ?? []) (docsBy[d.holding_id as string] ??= []).push(d);
+
+      const cutoff = new Date(Date.now() - 84 * 86_400_000).toISOString().slice(0, 10);
+      const { data: snaps } = await admin
+        .from("holding_snapshots").select("*").in("holding_id", ids)
+        .gte("snapshot_date", cutoff).order("snapshot_date", { ascending: true });
+      for (const s of snaps ?? []) (snapsBy[s.holding_id as string] ??= []).push(s);
+    }
+
+    const enriched = (holdings ?? []).map((h) => ({
+      ...h,
+      balloon_status: getBalloonStatus(h.balloon_date ?? null),
+      financials: finBy[h.id] ?? null,
+      net_cashflow: netCashflow(finBy[h.id]),
+      documents: docsBy[h.id] ?? [],
+      snapshots: snapsBy[h.id] ?? [],
+    }));
+
+    return NextResponse.json({ holdings: enriched });
+  } catch (err) {
+    console.error("[holdings] GET error:", err);
+    return NextResponse.json(
+      { error: "Internal server error", holdings: [] },
+      { status: 500 },
+    );
   }
-
-  const enriched = (holdings ?? []).map((h) => ({
-    ...h,
-    balloon_status: getBalloonStatus(h.balloon_date ?? null),
-    financials: finBy[h.id] ?? null,
-    net_cashflow: netCashflow(finBy[h.id]),
-    documents: docsBy[h.id] ?? [],
-    snapshots: snapsBy[h.id] ?? [],
-  }));
-
-  return NextResponse.json({ holdings: enriched });
 }
 
 /**
