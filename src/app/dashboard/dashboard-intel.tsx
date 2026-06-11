@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { money } from "@/lib/format";
+import { money, moneyCompact } from "@/lib/format";
 import { portfolioAiFee } from "@/lib/types";
 
 interface EscrowDeal {
@@ -36,6 +36,7 @@ interface Intel {
   deals_pending: number;
   escrow_deals: EscrowDeal[];
   pending_deals: PendingDeal[];
+  pending_missing_cashback: number;
 }
 
 const fee = (cashback: number | null, price: number | null) =>
@@ -82,7 +83,15 @@ export function DashboardIntel() {
         <Kpi
           label="Pending"
           big={String(i?.deals_pending ?? 0)}
-          sub={`${money(i?.total_projected_cashback ?? 0)} proj cashback`}
+          sub={
+            i == null
+              ? "loading…"
+              : `${money(i.total_projected_cashback)} proj cashback${
+                  i.pending_missing_cashback > 0
+                    ? ` · ${i.pending_missing_cashback} need data`
+                    : ""
+                }`
+          }
         />
         <Kpi
           label="Buybox Score"
@@ -112,11 +121,19 @@ export function DashboardIntel() {
             (i?.pending_deals ?? []).map((d) => {
               const acq = gradeBadge(d.acquisition_grade);
               const stab = gradeBadge(d.stabilization_grade);
+              const cbPct =
+                d.cashback_at_close != null && d.purchase_price
+                  ? (d.cashback_at_close / d.purchase_price) * 100
+                  : null;
               return (
                 <div key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                   <span className="min-w-0 flex-1 truncate text-sm text-primary">{d.property_address}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${acq.cls}`}>ACQ {acq.letter}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${stab.cls}`}>STAB {stab.letter}</span>
+                  <span className="data-number shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {d.cashback_at_close != null ? moneyCompact(d.cashback_at_close) : "—"}
+                    {cbPct != null ? ` · ${cbPct.toFixed(1)}%` : ""}
+                  </span>
                   <span className="data-number shrink-0 text-xs tabular-nums text-muted-foreground">{daysBetween(d.created_at)}d</span>
                   <span className="data-number shrink-0 text-xs tabular-nums text-accent">{money(fee(d.cashback_at_close, d.purchase_price))}</span>
                 </div>
@@ -160,6 +177,10 @@ function EscrowRow({ deal, onSaved }: { deal: EscrowDeal; onSaved: () => void })
       <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-accent/30">
         {daysBetween(deal.escrow_date)}d
       </span>
+      <span className="data-number shrink-0 text-xs tabular-nums text-muted-foreground">
+        {cbNum != null ? moneyCompact(cbNum) : "—"}
+        {cbPct != null ? ` · ${cbPct.toFixed(1)}%` : ""}
+      </span>
       <span className="data-number shrink-0 text-xs tabular-nums text-accent">{money(fee(cbNum, deal.purchase_price))}</span>
       <div className="flex shrink-0 items-center rounded-md border border-border bg-secondary px-1.5 py-0.5">
         <span className="text-[11px] text-muted-foreground">$</span>
@@ -169,15 +190,10 @@ function EscrowRow({ deal, onSaved }: { deal: EscrowDeal; onSaved: () => void })
           disabled={busy}
           onChange={(e) => setCashback(e.target.value)}
           onBlur={save}
-          placeholder="0"
+          placeholder="—"
           className="w-16 bg-transparent px-1 text-right text-xs text-primary outline-none"
         />
       </div>
-      {cbPct != null && (
-        <span className="data-number shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 ring-1 ring-inset ring-accent/40">
-          {cbPct.toFixed(1)}%
-        </span>
-      )}
     </div>
   );
 }

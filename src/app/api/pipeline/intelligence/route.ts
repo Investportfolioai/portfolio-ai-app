@@ -40,6 +40,18 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
   const deals = (data ?? []) as DealRow[];
+
+  // Diagnostic log — visible in Vercel function logs.
+  console.log(
+    "[intelligence] raw deals sample:",
+    deals.slice(0, 20).map((d) => ({
+      id: d.id,
+      status: d.status,
+      cashback_at_close: d.cashback_at_close,
+      address: d.property_address,
+    })),
+  );
+
   const isEscrow = (d: DealRow) => d.status === "active" && !!d.escrow_date;
   const isPending = (d: DealRow) => d.status === "pending";
   const activeOrPending = (d: DealRow) => d.status === "active" || d.status === "pending";
@@ -109,6 +121,10 @@ export async function GET() {
       cashback_at_close: d.cashback_at_close,
     }));
 
+  const pending_missing_cashback = deals.filter(
+    (d) => isPending(d) && d.cashback_at_close == null,
+  ).length;
+
   return NextResponse.json({
     total_projected_fees,
     total_projected_cashback,
@@ -123,5 +139,6 @@ export async function GET() {
     deals_pending: pending_deals.length,
     escrow_deals,
     pending_deals,
+    pending_missing_cashback,
   });
 }
