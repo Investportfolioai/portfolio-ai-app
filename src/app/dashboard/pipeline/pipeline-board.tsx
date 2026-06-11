@@ -487,16 +487,16 @@ function gradeClasses(v: number): string {
   return "bg-rose-500/10 text-rose-600 ring-rose-400/30";
 }
 
-function GradeBadge({ caption, value }: { caption: string; value: number }) {
+function GradeBadge({ caption, value, dim }: { caption: string; value: number; dim?: boolean }) {
   return (
     <div className="flex flex-col items-center gap-1">
       <span
         className={
           "data-number flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-medium tabular-nums ring-1 " +
-          gradeClasses(value)
+          (dim ? "bg-secondary text-muted-foreground ring-border" : gradeClasses(value))
         }
       >
-        {value}
+        {dim ? "—" : value}
       </span>
       <span className="text-[8px] font-medium uppercase tracking-widest text-muted-foreground">
         {caption}
@@ -607,8 +607,16 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
           <PendingGradeBadge />
         ) : (
           <div className="flex items-center gap-2.5">
-            <GradeBadge caption="Acq" value={deal.acquisition_grade ?? 0} />
-            <GradeBadge caption="Stab" value={deal.stabilization_grade ?? 0} />
+            <GradeBadge
+              caption="Acq"
+              value={deal.acquisition_grade ?? 0}
+              dim={(deal.acquisition_grade == null || deal.acquisition_grade === 0) && deal.cashback_at_close == null}
+            />
+            <GradeBadge
+              caption="Stab"
+              value={deal.stabilization_grade ?? 0}
+              dim={(deal.stabilization_grade == null || deal.stabilization_grade === 0) && deal.cashback_at_close == null}
+            />
           </div>
         )}
       </div>

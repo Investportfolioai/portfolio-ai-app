@@ -44,8 +44,9 @@ const fee = (cashback: number | null, price: number | null) =>
 const daysBetween = (iso: string | null) =>
   iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : 0;
 
-function gradeBadge(n: number | null): { letter: string; cls: string } {
-  if (n == null) return { letter: "—", cls: "bg-secondary text-muted-foreground ring-border" };
+function gradeBadge(n: number | null, cashback?: number | null): { letter: string; cls: string } {
+  if (n == null || (n === 0 && cashback == null))
+    return { letter: "—", cls: "bg-secondary text-muted-foreground ring-border" };
   if (n >= 90) return { letter: "A", cls: "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30" };
   if (n >= 80) return { letter: "B", cls: "bg-accent/15 text-amber-700 ring-accent/40" };
   if (n >= 70) return { letter: "C", cls: "bg-orange-500/15 text-orange-700 ring-orange-500/30" };
@@ -119,8 +120,8 @@ export function DashboardIntel() {
             <Empty>No pending deals.</Empty>
           ) : (
             (i?.pending_deals ?? []).map((d) => {
-              const acq = gradeBadge(d.acquisition_grade);
-              const stab = gradeBadge(d.stabilization_grade);
+              const acq = gradeBadge(d.acquisition_grade, d.cashback_at_close);
+              const stab = gradeBadge(d.stabilization_grade, d.cashback_at_close);
               const cbPct =
                 d.cashback_at_close != null && d.purchase_price
                   ? (d.cashback_at_close / d.purchase_price) * 100

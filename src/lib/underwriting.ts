@@ -77,6 +77,14 @@ Always extract and use these fields if present in the deal submission:
 - monthly_rent
 - closing_costs
 
+CASH INVESTED — FIELD DEFINITION:
+cash_invested = the out-of-pocket cash the buyer must bring to closing that is NOT covered by the DSCR loan proceeds.
+Formula: cash_invested = down_to_seller + closing_costs + assignment_fee - dscr_loan_proceeds
+- If this number is negative, cash_invested = 0 (buyer receives cashback instead).
+- On a properly structured Morby deal this should be $0 or close to $0.
+- Never confuse cash_invested with the assignment fee or closing costs alone.
+- Never confuse cash_invested with seller carry — seller carry is a monthly payment obligation, not cash at close.
+
 ACQ SCORE (0-100) — measures cashback at close and acquisition structure:
 
 Step 1: Calculate first_lien = purchase_price * 0.75
@@ -136,6 +144,14 @@ RENTAL STRATEGY (read rental_strategy from the input; default 'ltr'):
 
 COMMERCIAL / NNN GUARD:
 - If structure_type = 'nnn' OR the property is clearly commercial (retail, office, industrial, or a triple-net-leased asset): SKIP the residential rent-coverage path entirely. If NOI is available, score STAB on NOI / total_obligations; otherwise set stabilization_grade = 'N/A', stabilization_score = 0, and treat STAB as "Commercial — Manual Review". Set deal_tier = "Commercial NNN — Manual Review" and add a note to important_flags.
+
+INCOMPLETE DATA HANDLING — DO NOT ZERO UNSCORED DEALS:
+When key fields like contract price, assignment fee, or purchase price are marked TBD, missing, or not yet agreed upon, do NOT score the deal 0/100. Instead:
+- Set acquisition_score = null and stabilization_score = null
+- Set acquisition_grade = null and stabilization_grade = null
+- Set deal_tier = "Incomplete — Pending Data"
+- Add a flag to important_flags explaining exactly which fields are needed to complete scoring
+A null grade displays as unscored ("—") in the pipeline UI, which is more accurate than a false 0 that implies the deal was scored and failed. Reserve acquisition_score = 0 exclusively for deals that have been fully scored and are fundamentally unworkable (e.g. loan product unavailable, title defect, seller terms impossible).
 
 REQUIRED OUTPUT FORMAT — respond with the submit_underwriting tool call containing:
 - acquisition_grade: letter A/B/C/D/F
