@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
-import type { KpDeal, KpSreo, AssignmentStatus, DealStructure } from "@/lib/types";
-import { KpDashboardClient } from "./kp-dashboard-client";
+import type { KpSreo, AssignmentStatus, DealStructure } from "@/lib/types";
+import { KpDashboardClient, type KpDealRich } from "./kp-dashboard-client";
 
 export const metadata = { title: "My Dashboard — Portfolio AI" };
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export default async function KpDashboardPage() {
     supabase
       .from("deal_kps")
       .select(
-        "id, status, deal:deal_id(id, property_address, structure_type, purchase_price, arv, acquisition_grade, stabilization_grade)",
+        "id, status, deal:deal_id(id, property_address, structure_type, purchase_price, arv, acquisition_grade, stabilization_grade, status, cashback_at_close, escrow_date, created_at)",
       )
       .eq("kp_id", user.id)
       .order("assigned_at", { ascending: false }),
@@ -30,7 +30,7 @@ export default async function KpDashboardPage() {
       .order("created_at", { ascending: false }),
   ]);
 
-  const deals: KpDeal[] = ((assignmentRows ?? []) as unknown as {
+  const deals: KpDealRich[] = ((assignmentRows ?? []) as unknown as {
     id: string;
     status: AssignmentStatus | null;
     deal: {
@@ -41,6 +41,10 @@ export default async function KpDashboardPage() {
       arv: number | null;
       acquisition_grade: number | null;
       stabilization_grade: number | null;
+      status: string | null;
+      cashback_at_close: number | null;
+      escrow_date: string | null;
+      created_at: string | null;
     } | null;
   }[])
     .filter((r) => r.deal)
@@ -54,6 +58,10 @@ export default async function KpDashboardPage() {
       arv: r.deal!.arv,
       acquisition_grade: r.deal!.acquisition_grade,
       stabilization_grade: r.deal!.stabilization_grade,
+      deal_status: r.deal!.status,
+      cashback_at_close: r.deal!.cashback_at_close,
+      escrow_date: r.deal!.escrow_date,
+      deal_created_at: r.deal!.created_at,
     }));
 
   const sreo = (sreoRows ?? []) as KpSreo[];
