@@ -188,7 +188,9 @@ export function PortfolioClient({
 
         <StatsBar holdings={holdings} />
 
-        <nav className="mt-6 flex flex-wrap gap-1 border-b border-white/10">
+        <IntelDashboard holdings={holdings} pending={pending} escrow={escrow} />
+
+        <nav className="mt-8 flex flex-wrap gap-1 border-b border-white/10">
           {TABS.map(([key, label]) => (
             <button
               key={key}
@@ -297,6 +299,466 @@ function StatCard({
       >
         {value}
       </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Portfolio Intelligence Dashboard
+// ---------------------------------------------------------------------------
+
+type IntelTab = "overview" | "returns" | "balloon" | "pipeline";
+
+function IntelDashboard({
+  holdings,
+  pending,
+  escrow,
+}: {
+  holdings: Holding[];
+  pending: PortfolioDeal[];
+  escrow: PortfolioDeal[];
+}) {
+  const [intelTab, setIntelTab] = useState<IntelTab>("overview");
+
+  const chartData = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - 12);
+    const byDate: Record<string, number> = {};
+    for (const h of holdings) {
+      for (const s of h.snapshots ?? []) {
+        if (new Date(s.snapshot_date) < cutoff) continue;
+        byDate[s.snapshot_date] = (byDate[s.snapshot_date] ?? 0) + (s.avm_value ?? 0);
+      }
+    }
+    return Object.entries(byDate)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, value]) => ({
+        date: new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        value,
+      }));
+  }, [holdings]);
+
+  const INTEL_TABS: [IntelTab, string][] = [
+    ["overview", "Overview"],
+    ["returns", "Returns"],
+    ["balloon", "Balloon Risk"],
+    ["pipeline", "Pipeline"],
+  ];
+
+  return (
+    <div className="mt-8">
+      {/* Chart */}
+      <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+        <p className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-white/40">
+          Portfolio Value Over Time
+        </p>
+        {chartData.length === 0 ? (
+          <div className="flex h-44 items-center justify-center">
+            <p className="text-sm text-white/30">Tracking begins once holdings are added.</p>
+          </div>
+        ) : (
+          <div className="h-44 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  stroke="rgba(255,255,255,0.25)"
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="rgba(255,255,255,0.25)"
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={false}
+                  width={76}
+                  tickFormatter={(v) => money(Number(v))}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "#0d1b30",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 12,
+                  }}
+                  formatter={(v) => [money(Number(v)), "Portfolio Value"]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="#c9a84c"
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ fill: "#c9a84c", r: 4, strokeWidth: 0 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+
+      {/* Intel tab row */}
+      <div className="mt-5 flex gap-0.5 border-b border-white/10">
+        {INTEL_TABS.map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setIntelTab(key)}
+            className={`-mb-px border-b-2 px-4 py-2 text-[13px] font-medium transition-colors ${
+              intelTab === key
+                ? "border-[#c9a84c] text-[#c9a84c]"
+                : "border-transparent text-white/40 hover:text-white/70"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Metrics panel */}
+      <div className="mt-4">
+        {intelTab === "overview" && <IntelOverview holdings={holdings} />}
+        {intelTab === "returns" && <IntelReturns holdings={holdings} />}
+        {intelTab === "balloon" && <IntelBalloon holdings={holdings} />}
+        {intelTab === "pipeline" && <IntelPipeline pending={pending} escrow={escrow} />}
+      </div>
+    </div>
+  );
+}
+
+function IntelMetricCard({
+  label,
+  value,
+  cls = "text-white",
+}: {
+  label: string;
+  value: string;
+  cls?: string;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-4">
+      <p className="text-[10px] uppercase tracking-widest text-white/40">{label}</p>
+      <p className={`data-number mt-2 text-xl font-medium tabular-nums ${cls}`}>{value}</p>
+    </div>
+  );
+}
+
+function IntelOverview({ holdings }: { holdings: Holding[] }) {
+  const stats = useMemo(() => {
+    let value = 0, equity = 0, cashflow = 0, avmSum = 0, closeSum = 0;
+    for (const h of holdings) {
+      if (h.zillow_avm != null) value += h.zillow_avm;
+      if (h.zillow_avm != null && h.mortgage_balance != null)
+        equity += h.zillow_avm - h.mortgage_balance;
+      cashflow += h.net_cashflow ?? netOf(h.financials);
+      if (h.zillow_avm != null && h.purchase_close_price) {
+        avmSum += h.zillow_avm;
+        closeSum += h.purchase_close_price;
+      }
+    }
+    const appr = closeSum > 0 ? ((avmSum - closeSum) / closeSum) * 100 : null;
+    return { value, equity, cashflow, appr };
+  }, [holdings]);
+
+  return (
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <IntelMetricCard label="Total Portfolio Value" value={money(stats.value)} cls="text-[#c9a84c]" />
+      <IntelMetricCard label="Total Equity" value={money(stats.equity)} cls={eqColor(stats.equity)} />
+      <IntelMetricCard
+        label="Monthly Net Cashflow"
+        value={money(stats.cashflow)}
+        cls={stats.cashflow >= 0 ? "text-emerald-400" : "text-rose-400"}
+      />
+      <IntelMetricCard
+        label="Portfolio Appreciation"
+        value={
+          stats.appr == null
+            ? "—"
+            : `${stats.appr >= 0 ? "+" : ""}${stats.appr.toFixed(1)}%`
+        }
+        cls={
+          stats.appr == null
+            ? "text-white/60"
+            : stats.appr >= 0
+            ? "text-emerald-400"
+            : "text-rose-400"
+        }
+      />
+    </div>
+  );
+}
+
+type ReturnsSortKey =
+  | "address"
+  | "purchase_close_price"
+  | "zillow_avm"
+  | "equity"
+  | "appreciation_pct"
+  | "days_held"
+  | "net_cashflow";
+
+function SortTh({
+  label,
+  col,
+  activeCol,
+  dir,
+  onSort,
+}: {
+  label: string;
+  col: ReturnsSortKey;
+  activeCol: ReturnsSortKey;
+  dir: "asc" | "desc";
+  onSort: (c: ReturnsSortKey) => void;
+}) {
+  const active = activeCol === col;
+  return (
+    <th
+      className="cursor-pointer select-none whitespace-nowrap px-4 py-3 text-left font-medium transition-colors hover:text-white/70"
+      onClick={() => onSort(col)}
+    >
+      <span className={active ? "text-[#c9a84c]" : ""}>
+        {label}
+        {active && <span className="ml-1 opacity-60">{dir === "asc" ? "↑" : "↓"}</span>}
+      </span>
+    </th>
+  );
+}
+
+function IntelReturns({ holdings }: { holdings: Holding[] }) {
+  const [sortCol, setSortCol] = useState<ReturnsSortKey>("equity");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function handleSort(col: ReturnsSortKey) {
+    if (col === sortCol) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("desc"); }
+  }
+
+  const rows = useMemo(() => {
+    return [...holdings]
+      .map((h) => {
+        const equity =
+          h.zillow_avm != null && h.mortgage_balance != null
+            ? h.zillow_avm - h.mortgage_balance
+            : null;
+        const appr = appreciationPct(h);
+        const net = h.net_cashflow ?? netOf(h.financials);
+        const days = h.acquisition_date ? daysSince(h.acquisition_date) : null;
+        return { h, equity, appr, net, days };
+      })
+      .sort((a, b) => {
+        if (sortCol === "address") {
+          const r = a.h.address.localeCompare(b.h.address);
+          return sortDir === "asc" ? r : -r;
+        }
+        let av: number | null = null, bv: number | null = null;
+        if (sortCol === "purchase_close_price") { av = a.h.purchase_close_price; bv = b.h.purchase_close_price; }
+        else if (sortCol === "zillow_avm") { av = a.h.zillow_avm; bv = b.h.zillow_avm; }
+        else if (sortCol === "equity") { av = a.equity; bv = b.equity; }
+        else if (sortCol === "appreciation_pct") { av = a.appr; bv = b.appr; }
+        else if (sortCol === "days_held") { av = a.days; bv = b.days; }
+        else if (sortCol === "net_cashflow") { av = a.net; bv = b.net; }
+        const diff = (av ?? -Infinity) - (bv ?? -Infinity);
+        return sortDir === "asc" ? diff : -diff;
+      });
+  }, [holdings, sortCol, sortDir]);
+
+  if (holdings.length === 0)
+    return (
+      <div className="rounded-xl border border-dashed border-white/15 py-10 text-center">
+        <p className="text-sm text-white/40">No holdings yet.</p>
+      </div>
+    );
+
+  const thProps = { activeCol: sortCol, dir: sortDir, onSort: handleSort };
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-white/10">
+      <table className="w-full text-[13px]">
+        <thead className="border-b border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-white/40">
+          <tr>
+            <SortTh label="Address" col="address" {...thProps} />
+            <SortTh label="Close Price" col="purchase_close_price" {...thProps} />
+            <SortTh label="Current AVM" col="zillow_avm" {...thProps} />
+            <SortTh label="Equity" col="equity" {...thProps} />
+            <SortTh label="Appreciation" col="appreciation_pct" {...thProps} />
+            <SortTh label="Days Held" col="days_held" {...thProps} />
+            <SortTh label="Net / mo" col="net_cashflow" {...thProps} />
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-white/5">
+          {rows.map(({ h, equity, appr, net, days }) => (
+            <tr key={h.id} className="hover:bg-white/5">
+              <td className="px-4 py-3 text-white">{h.address}</td>
+              <td className="data-number px-4 py-3 tabular-nums text-white/60">
+                {h.purchase_close_price ? money(h.purchase_close_price) : "—"}
+              </td>
+              <td className="data-number px-4 py-3 tabular-nums text-white/60">
+                {h.zillow_avm ? money(h.zillow_avm) : "—"}
+              </td>
+              <td className={`data-number px-4 py-3 tabular-nums ${eqColor(equity)}`}>
+                {equity != null ? money(equity) : "—"}
+              </td>
+              <td
+                className={`data-number px-4 py-3 tabular-nums ${
+                  appr == null ? "text-white/40" : appr >= 0 ? "text-emerald-400" : "text-rose-400"
+                }`}
+              >
+                {appr == null ? "—" : `${appr >= 0 ? "+" : ""}${appr.toFixed(1)}%`}
+              </td>
+              <td className="data-number px-4 py-3 tabular-nums text-white/60">
+                {days != null ? `${days}d` : "—"}
+              </td>
+              <td
+                className={`data-number px-4 py-3 tabular-nums ${net >= 0 ? "text-emerald-400" : "text-rose-400"}`}
+              >
+                {money(net)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function IntelBalloon({ holdings }: { holdings: Holding[] }) {
+  const now = Date.now();
+  const withBalloon = holdings.filter((h) => h.balloon_date);
+  const without = holdings.filter((h) => !h.balloon_date);
+
+  if (holdings.length === 0)
+    return (
+      <div className="rounded-xl border border-dashed border-white/15 py-10 text-center">
+        <p className="text-sm text-white/40">No holdings yet.</p>
+      </div>
+    );
+
+  return (
+    <div className="space-y-2">
+      {withBalloon.map((h) => {
+        const balloonMs = new Date(h.balloon_date!).getTime();
+        const daysRemaining = Math.ceil((balloonMs - now) / 86_400_000);
+        const acqMs = h.acquisition_date ? new Date(h.acquisition_date).getTime() : null;
+        const totalDays = acqMs ? Math.max(1, Math.ceil((balloonMs - acqMs) / 86_400_000)) : null;
+        const elapsed = acqMs ? Math.ceil((now - acqMs) / 86_400_000) : null;
+        const pct =
+          totalDays && elapsed != null
+            ? Math.min(100, Math.max(0, (elapsed / totalDays) * 100))
+            : null;
+
+        const color =
+          daysRemaining > 730 ? "#34d399" : daysRemaining > 365 ? "#fbbf24" : "#f87171";
+        const barCls =
+          daysRemaining > 730
+            ? "bg-emerald-400"
+            : daysRemaining > 365
+            ? "bg-yellow-400"
+            : "bg-rose-400";
+
+        return (
+          <div key={h.id} className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-sm text-white">{h.address}</p>
+              <span
+                className="shrink-0 text-[11px] font-semibold tabular-nums"
+                style={{ color }}
+              >
+                {daysRemaining > 0 ? `${daysRemaining}d remaining` : "Past due"}
+              </span>
+            </div>
+            <p className="mt-0.5 text-[11px] text-white/40">
+              Balloon:{" "}
+              {new Date(h.balloon_date!).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })}
+            </p>
+            {pct != null && (
+              <div className="mt-2.5 h-1 w-full overflow-hidden rounded-full bg-white/10">
+                <div className={`h-full rounded-full ${barCls}`} style={{ width: `${pct}%` }} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {without.map((h) => (
+        <div
+          key={h.id}
+          className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3"
+        >
+          <p className="text-sm text-white/50">{h.address}</p>
+          <span className="text-[11px] text-white/25">No balloon set</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IntelPipeline({
+  pending,
+  escrow,
+}: {
+  pending: PortfolioDeal[];
+  escrow: PortfolioDeal[];
+}) {
+  function PipelineRow({ deal, mode }: { deal: PortfolioDeal; mode: "pending" | "escrow" }) {
+    const days = mode === "escrow" && deal.escrow_date
+      ? daysSince(deal.escrow_date)
+      : daysSince(deal.created_at);
+    const g = letterGrade(deal.acquisition_grade);
+    return (
+      <div className="flex items-center gap-4 border-b border-white/5 px-4 py-3 last:border-0">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-white">{deal.property_address}</p>
+          <p className="mt-0.5 text-[11px] text-white/40">{days}d in pipeline</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ring-1 ring-inset ${g.cls}`}
+          >
+            ACQ {g.letter}
+          </span>
+          <span className="data-number w-24 text-right text-sm tabular-nums text-white/60">
+            {deal.purchase_price ? money(deal.purchase_price) : "—"}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="overflow-hidden rounded-xl border border-white/10">
+        <p className="border-b border-white/10 bg-white/5 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/40">
+          Pending{" "}
+          <span className="ml-1 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px]">
+            {pending.length}
+          </span>
+        </p>
+        {pending.length === 0 ? (
+          <p className="px-4 py-4 text-sm text-white/30">No pending deals.</p>
+        ) : (
+          pending.map((d) => <PipelineRow key={d.id} deal={d} mode="pending" />)
+        )}
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-white/10">
+        <p className="border-b border-white/10 bg-white/5 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-white/40">
+          In Escrow{" "}
+          <span className="ml-1 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px]">
+            {escrow.length}
+          </span>
+        </p>
+        {escrow.length === 0 ? (
+          <p className="px-4 py-4 text-sm text-white/30">No deals in escrow.</p>
+        ) : (
+          escrow.map((d) => <PipelineRow key={d.id} deal={d} mode="escrow" />)
+        )}
+      </div>
     </div>
   );
 }
