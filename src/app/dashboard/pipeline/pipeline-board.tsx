@@ -286,6 +286,8 @@ function AddDealModal({ open, onClose }: { open: boolean; onClose: () => void })
       net_monthly_cashflow: n(fd, "net_monthly_cashflow"),
       annual_gross_revenue: n(fd, "annual_gross_revenue"),
       seller_carry: n(fd, "seller_carry"),
+      assignment_fee: n(fd, "assignment_fee"),
+      wholesaler_fee: n(fd, "wholesaler_fee"),
       notes: String(fd.get("notes") ?? ""),
       status: (String(fd.get("status") ?? "pending") as NewDealInput["status"]),
     };
@@ -329,6 +331,8 @@ function AddDealModal({ open, onClose }: { open: boolean; onClose: () => void })
             <ModalField label="Net monthly cash flow" name="net_monthly_cashflow" type="number" />
             <ModalField label="Annual gross revenue" name="annual_gross_revenue" type="number" />
             <ModalField label="Seller carry" name="seller_carry" type="number" defaultValue="0" />
+            <ModalField label="Assignment fee" name="assignment_fee" type="number" />
+            <ModalField label="Wholesaler fee" name="wholesaler_fee" type="number" />
             <ModalSelect label="Status" name="status" options={["pending", "active"]} />
           </div>
           <label className="block">
@@ -1359,8 +1363,56 @@ function AiTab({
               <span className="data-number">STAB {uw.stabilization_grade} · {uw.stabilization_score}</span>
             </div>
           </div>
+          {/* Cashback at close breakdown */}
+          {(() => {
+            const pp = deal.purchase_price;
+            const dscrLoan = uw.first_lien_amount ?? (pp != null ? pp * 0.75 : null);
+            const sellerCarry = uw.seller_carry_amount ?? deal.seller_note_amount;
+            const downToSeller = pp != null && sellerCarry != null ? pp - sellerCarry : null;
+            const closingCosts = pp != null ? pp * 0.10 : null;
+            const assignFee = deal.assignment_fee ?? 0;
+            const wFee = deal.wholesaler_fee ?? 0;
+            return (
+              <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 text-xs">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  Cashback at Close — Breakdown
+                </p>
+                <div className="space-y-1 text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>DSCR Proceeds</span>
+                    <span className="data-number tabular-nums text-foreground">{money(dscrLoan)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Down to Seller</span>
+                    <span className="data-number tabular-nums text-rose-600">{downToSeller != null ? `–${money(downToSeller)}` : "—"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Closing Costs (10%)</span>
+                    <span className="data-number tabular-nums text-rose-600">{closingCosts != null ? `–${money(closingCosts)}` : "—"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Assignment Fee</span>
+                    <span className="data-number tabular-nums text-rose-600">{assignFee > 0 ? `–${money(assignFee)}` : money(0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Wholesaler Fee</span>
+                    <span className="data-number tabular-nums text-rose-600">{wFee > 0 ? `–${money(wFee)}` : money(0)}</span>
+                  </div>
+                </div>
+                <div className="mt-2 flex justify-between border-t border-border pt-2">
+                  <span className="font-semibold text-foreground">NET TO BUYER</span>
+                  <span className="data-number font-bold tabular-nums text-accent">
+                    {money(uw.cashback_amount ?? null)}
+                    {uw.cashback_pct != null && (
+                      <span className="ml-1.5 font-normal text-muted-foreground">({uw.cashback_pct.toFixed(1)}%)</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="grid grid-cols-2 gap-3">
-            <AiStat label="Cashback" value={`${money(uw.cashback_amount ?? null)}${uw.cashback_pct != null ? ` · ${uw.cashback_pct.toFixed(1)}%` : ""}`} />
             <AiStat label="Total Oblig. / mo" value={money(uw.total_obligations ?? null)} />
             <AiStat label="First Lien / mo" value={money(uw.first_lien_payment ?? null)} />
             <AiStat label="Seller Carry / mo" value={money(uw.seller_carry_payment ?? null)} />

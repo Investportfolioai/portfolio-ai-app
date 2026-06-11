@@ -27,6 +27,8 @@ export interface NewDealInput {
   net_monthly_cashflow: number | null;
   annual_gross_revenue: number | null;
   seller_carry: number | null;
+  assignment_fee: number | null;
+  wholesaler_fee: number | null;
   notes: string;
   status: DealStatus;
 }
@@ -207,12 +209,13 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   if (!allowed) return { ok: false, error: "Not authorized." };
 
   const admin = createAdminClient();
-  const { data: stratRow } = await admin
+  const { data: dealMeta } = await admin
     .from("deals")
-    .select("rental_strategy")
+    .select("rental_strategy, wholesaler_fee")
     .eq("id", dealId)
     .maybeSingle();
-  const rentalStrategy = (stratRow?.rental_strategy as string | null) ?? "ltr";
+  const rentalStrategy = (dealMeta?.rental_strategy as string | null) ?? "ltr";
+  const dealWholesalerFee = (dealMeta?.wholesaler_fee as number | null) ?? 0;
 
   const { data: docs } = await admin
     .from("deal_documents")
@@ -283,9 +286,10 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
     const downToSeller = pp - sellerCarry;
     const closingCosts = pp * 0.1;
     const assignmentFee = (ext.assignment_fee as number | null) ?? 0;
-    cashbackAtClose = dscrLoan - downToSeller - closingCosts - assignmentFee;
+    const wholesalerFee = (ext.wholesaler_fee as number | null) ?? dealWholesalerFee;
+    cashbackAtClose = dscrLoan - downToSeller - closingCosts - assignmentFee - wholesalerFee;
     console.log(
-      `[underwriting] Morby formula: pp=${pp} dscrLoan=${dscrLoan} downToSeller=${downToSeller} closingCosts=${closingCosts} assignmentFee=${assignmentFee} cashback=${cashbackAtClose}`,
+      `[underwriting] Morby formula: pp=${pp} dscrLoan=${dscrLoan} downToSeller=${downToSeller} closingCosts=${closingCosts} assignmentFee=${assignmentFee} wholesalerFee=${wholesalerFee} cashback=${cashbackAtClose}`,
     );
   }
 
@@ -353,6 +357,8 @@ export async function createDeal(
       arv: input.arv,
       loan_amount: input.loan_amount,
       seller_note_amount: input.seller_carry,
+      assignment_fee: input.assignment_fee,
+      wholesaler_fee: input.wholesaler_fee,
       total_cash_invested: input.cash_invested,
       net_monthly_cashflow: input.net_monthly_cashflow,
       annual_gross_revenue: input.annual_gross_revenue,
@@ -371,6 +377,8 @@ export async function createDeal(
       arv: input.arv,
       loan_amount: input.loan_amount,
       seller_note_amount: input.seller_carry,
+      assignment_fee: input.assignment_fee,
+      wholesaler_fee: input.wholesaler_fee,
       notes: input.notes.trim() || null,
       ai_analysis: aiAnalysis,
     })
@@ -423,6 +431,8 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   arv: { label: "ARV", numeric: true },
   loan_amount: { label: "Loan Amount", numeric: true },
   seller_note_amount: { label: "Seller Carry", numeric: true },
+  assignment_fee: { label: "Assignment Fee", numeric: true },
+  wholesaler_fee: { label: "Wholesaler Fee", numeric: true },
   interest_rate: { label: "Interest Rate", numeric: true },
   holdback: { label: "Holdback", numeric: true },
   lender_name: { label: "Lender", numeric: false },

@@ -32,29 +32,35 @@ DEAL STRUCTURE CONTEXT:
 - Seller carry: the gap between purchase price and first lien. Assume 3% IO if terms not stated.
 - Deferred seller carry = $0/month obligations from carry note
 
-MORBY METHOD DEAL MATH — CRITICAL:
+MORBY METHOD DEAL MATH — MANDATORY FORMULA:
 
-When a deal is structured as Morby Method or Creative Finance with a DSCR loan + seller carry, use this exact cashback formula:
+Step 1: down_to_seller_cash = purchase_price - seller_carry_balance
+(This is the actual cash the seller receives at closing. The seller carry is a NOTE they hold, not cash they receive.)
 
-CASHBACK AT CLOSE = DSCR Loan Proceeds - Down Payment to Seller - Closing Costs - Assignment Fee
+Step 2: dscr_loan = purchase_price * ltv (default 0.75)
 
-Rules:
-- DSCR Loan = Purchase Price * LTV (default 75% unless stated)
-- Down Payment to Seller = Purchase Price - Seller Carry Balance (i.e. the cash the seller receives at close)
-- Closing Costs = 10% of Purchase Price unless stated
-- Assignment Fee = stated wholesale/assignment fee, or 0 if not stated
-- Seller Carry is a BACK-END obligation — it is NOT subtracted from cashback proceeds. It is a subordinate note the buyer services monthly after close.
-- Portfolio AI Fee = 10% of Cashback at Close
+Step 3: closing_costs = purchase_price * 0.10 (unless stated)
 
-Example:
-Purchase Price: $770,000
-DSCR Loan (75%): $577,500
-Down to Seller: $308,000
-Closing Costs (10%): $77,000
-Assignment Fee: $65,000
-CASHBACK = $577,500 - $308,000 - $77,000 - $65,000 = $127,500
+Step 4: cashback_at_close = dscr_loan - down_to_seller_cash - closing_costs - assignment_fee - wholesaler_fee
 
-The seller carry ($462,000 in this example) is a monthly payment obligation only — never subtract it from cashback.
+Step 5: portfolio_ai_fee = cashback_at_close * 0.10
+
+EXAMPLE — 830 South Record Ave:
+Purchase: $830,000
+Seller Carry: $498,000
+Down to Seller Cash = $830,000 - $498,000 = $332,000
+DSCR (75%) = $622,500
+Closing Costs (10%) = $83,000
+Assignment Fee = $65,000
+Cashback = $622,500 - $332,000 - $83,000 - $65,000 = $142,500
+
+NEVER subtract seller_carry_balance from DSCR proceeds.
+NEVER treat seller carry as a cash outflow at close.
+The seller carry is a monthly payment obligation only — it appears in monthly_obligations, not in the closing cashback formula.
+
+WHOLESALER FEE:
+If a wholesaler_fee field is present and separate from assignment_fee, subtract it from cashback as well.
+wholesaler_fee defaults to 0 if not provided.
 
 ACQ SCORE — Do NOT zero the ACQ score solely because cashback is negative on a Morby deal. Instead:
 - If cashback is positive: score normally
@@ -73,6 +79,7 @@ Always extract and use these fields if present in the deal submission:
 - seller_carry_term
 - dscr_ltv (default 75%)
 - assignment_fee
+- wholesaler_fee
 - down_payment_to_seller
 - monthly_rent
 - closing_costs
@@ -203,6 +210,7 @@ const TOOL_SCHEMA = {
         seller_note_rate: num,
         balloon_term_months: num,
         assignment_fee: num,
+        wholesaler_fee: num,
         origination_fee: num,
         total_cash_invested: num,
         net_monthly_cashflow: num,
