@@ -122,7 +122,6 @@ export interface Deal {
   seller_note_amount: number | null;
   seller_note_rate: number | null;
   assignment_fee: number | null;
-  wholesaler_fee: number | null;
   origination_fee: number | null;
   ltv_percent: number | null;
 
@@ -239,7 +238,6 @@ export interface ExtractedDealData {
   seller_note_rate: number | null;
   balloon_term_months: number | null;
   assignment_fee: number | null;
-  wholesaler_fee: number | null;
   origination_fee: number | null;
   exit_strategy: ExitStrategy | null;
   lender_name: string | null;

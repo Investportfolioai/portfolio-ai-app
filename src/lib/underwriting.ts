@@ -41,7 +41,7 @@ Step 2: dscr_loan = purchase_price * ltv (default 0.75)
 
 Step 3: closing_costs = purchase_price * 0.10 (unless stated)
 
-Step 4: cashback_at_close = dscr_loan - down_to_seller_cash - closing_costs - assignment_fee - wholesaler_fee
+Step 4: cashback_at_close = dscr_loan - down_to_seller_cash - closing_costs - assignment_fee
 
 Step 5: portfolio_ai_fee = cashback_at_close * 0.10
 
@@ -57,10 +57,6 @@ Cashback = $622,500 - $332,000 - $83,000 - $65,000 = $142,500
 NEVER subtract seller_carry_balance from DSCR proceeds.
 NEVER treat seller carry as a cash outflow at close.
 The seller carry is a monthly payment obligation only — it appears in monthly_obligations, not in the closing cashback formula.
-
-WHOLESALER FEE:
-If a wholesaler_fee field is present and separate from assignment_fee, subtract it from cashback as well.
-wholesaler_fee defaults to 0 if not provided.
 
 ACQ SCORE — Do NOT zero the ACQ score solely because cashback is negative on a Morby deal. Instead:
 - If cashback is positive: score normally
@@ -79,7 +75,6 @@ Always extract and use these fields if present in the deal submission:
 - seller_carry_term
 - dscr_ltv (default 75%)
 - assignment_fee
-- wholesaler_fee
 - down_payment_to_seller
 - monthly_rent
 - closing_costs
@@ -210,7 +205,6 @@ const TOOL_SCHEMA = {
         seller_note_rate: num,
         balloon_term_months: num,
         assignment_fee: num,
-        wholesaler_fee: num,
         origination_fee: num,
         total_cash_invested: num,
         net_monthly_cashflow: num,
@@ -310,6 +304,7 @@ function recommendationFromTier(tier?: string): Recommendation {
  */
 async function callUnderwriting(
   content: Anthropic.ContentBlockParam[],
+  cashbackNote?: string,
 ): Promise<UnderwritingOutput> {
   const client = getClient();
   const tools = [
@@ -331,7 +326,14 @@ async function callUnderwriting(
       ],
       tools,
       tool_choice: { type: "auto" },
-      messages: [{ role: "user", content }],
+      messages: [
+        {
+          role: "user",
+          content: cashbackNote
+            ? [...content, { type: "text" as const, text: cashbackNote }]
+            : content,
+        },
+      ],
     });
   } catch (err) {
     throw wrapApiError("callUnderwriting", err);
@@ -359,7 +361,7 @@ async function callUnderwriting(
 export async function underwriteDeal(
   loi: PdfInput,
   deck?: PdfInput,
-  opts?: { rentalStrategy?: string },
+  opts?: { rentalStrategy?: string; cashbackNote?: string },
 ): Promise<UnderwritingOutput> {
   const content: Anthropic.ContentBlockParam[] = [
     {
@@ -379,21 +381,25 @@ export async function underwriteDeal(
     type: "text",
     text: `Read the attached document(s), extract every deal field, and underwrite this deal. Rental strategy for this underwrite: ${opts?.rentalStrategy ?? "ltr"} (ltr = long-term rental, str = short-term/Airbnb). Call submit_underwriting with your complete analysis.`,
   });
-  return callUnderwriting(content);
+  return callUnderwriting(content, opts?.cashbackNote);
 }
 
 /** Underwrite from a deal's structured data (manual deals / no PDFs on file). */
 export async function underwriteDealData(
   deal: Record<string, unknown>,
+  opts?: { cashbackNote?: string },
 ): Promise<UnderwritingOutput> {
-  return callUnderwriting([
-    {
-      type: "text",
-      text:
-        "Underwrite this deal from its structured data. Read rental_strategy from the data (default ltr). Confirm extracted_deal_data and run the full analysis:\n\n" +
-        JSON.stringify(deal, null, 2),
-    },
-  ]);
+  return callUnderwriting(
+    [
+      {
+        type: "text",
+        text:
+          "Underwrite this deal from its structured data. Read rental_strategy from the data (default ltr). Confirm extracted_deal_data and run the full analysis:\n\n" +
+          JSON.stringify(deal, null, 2),
+      },
+    ],
+    opts?.cashbackNote,
+  );
 }
 
 // ---------------------------------------------------------------------------

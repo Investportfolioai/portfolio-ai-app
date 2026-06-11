@@ -28,7 +28,6 @@ export interface NewDealInput {
   annual_gross_revenue: number | null;
   seller_carry: number | null;
   assignment_fee: number | null;
-  wholesaler_fee: number | null;
   notes: string;
   status: DealStatus;
 }
@@ -209,13 +208,51 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   if (!allowed) return { ok: false, error: "Not authorized." };
 
   const admin = createAdminClient();
+
+  // Fetch all deal fields needed for the server-side cashback formula.
   const { data: dealMeta } = await admin
     .from("deals")
-    .select("rental_strategy, wholesaler_fee")
+    .select("rental_strategy, structure_type, purchase_price, seller_note_amount, ltv_percent, assignment_fee")
     .eq("id", dealId)
     .maybeSingle();
+
   const rentalStrategy = (dealMeta?.rental_strategy as string | null) ?? "ltr";
-  const dealWholesalerFee = (dealMeta?.wholesaler_fee as number | null) ?? 0;
+  const structType = ((dealMeta?.structure_type as string) ?? "").toLowerCase();
+  const isMorby =
+    structType === "morby" || structType === "creative" || structType === "seller_finance";
+
+  // Pre-compute cashback deterministically from DB values — not from AI output.
+  const pp = (dealMeta?.purchase_price as number | null) ?? null;
+  const sellerCarry = (dealMeta?.seller_note_amount as number | null) ?? 0;
+  const ltvPct = (dealMeta?.ltv_percent as number | null) ?? 75;
+  const assignmentFee = (dealMeta?.assignment_fee as number | null) ?? 0;
+
+  let precomputedCashback: number | null = null;
+  let dscrLoan: number | null = null;
+  let downToSeller: number | null = null;
+  let closingCosts: number | null = null;
+
+  if (isMorby && pp != null) {
+    dscrLoan = pp * (ltvPct / 100);
+    downToSeller = pp - sellerCarry;
+    closingCosts = pp * 0.10;
+    precomputedCashback = dscrLoan - downToSeller - closingCosts - assignmentFee;
+    console.log(
+      `[underwriting] Morby formula: pp=${pp} ltv=${ltvPct}% dscr=${dscrLoan} downToSeller=${downToSeller} closing=${closingCosts} assignFee=${assignmentFee} cashback=${precomputedCashback}`,
+    );
+  }
+
+  // Context injected into the AI prompt so it produces consistent numbers.
+  const cashbackNote = precomputedCashback != null
+    ? `\n\nSERVER-COMPUTED CASHBACK (authoritative — use these exact figures in your output):\n` +
+      `- DSCR Proceeds (${ltvPct}% LTV): $${dscrLoan!.toFixed(0)}\n` +
+      `- Down to Seller: $${downToSeller!.toFixed(0)}\n` +
+      `- Closing Costs (10%): $${closingCosts!.toFixed(0)}\n` +
+      `- Assignment Fee: $${assignmentFee.toFixed(0)}\n` +
+      `- NET CASHBACK AT CLOSE: $${precomputedCashback.toFixed(0)}\n` +
+      `- Portfolio AI Fee (10%): $${(precomputedCashback * 0.10).toFixed(0)}\n\n` +
+      `Output cashback_amount = ${precomputedCashback.toFixed(0)} in submit_underwriting. Do NOT recalculate.`
+    : undefined;
 
   const { data: docs } = await admin
     .from("deal_documents")
@@ -237,13 +274,13 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       // Document path — underwrite from the uploaded PDFs.
       const loi = { base64: await download(loiDoc.file_url) };
       const deck = deckDoc ? { base64: await download(deckDoc.file_url) } : undefined;
-      analysis = await underwriteDeal(loi, deck, { rentalStrategy });
+      analysis = await underwriteDeal(loi, deck, { rentalStrategy, cashbackNote });
     } else {
       // No PDFs on file — underwrite from the deal's structured data.
       const { data: deal } = await admin
         .from("deals")
         .select(
-          "property_address, city, state, structure_type, purchase_price, arv, loan_amount, initial_advance, holdback, interest_rate, ltv, seller_note_amount, seller_note_rate, exit_strategy, lender_name, quote_number, notes, ai_analysis",
+          "property_address, city, state, structure_type, purchase_price, arv, loan_amount, initial_advance, holdback, interest_rate, ltv, ltv_percent, seller_note_amount, seller_note_rate, assignment_fee, exit_strategy, lender_name, quote_number, notes, ai_analysis",
         )
         .eq("id", dealId)
         .maybeSingle();
@@ -251,13 +288,16 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       const manual =
         (deal.ai_analysis as UnderwritingOutput | null)?.extracted_deal_data ?? null;
       const { ai_analysis: _drop, ...cols } = deal;
-      analysis = await underwriteDealData({
-        ...cols,
-        rental_strategy: rentalStrategy,
-        property_type: manual?.property_type ?? null,
-        total_cash_invested: manual?.total_cash_invested ?? null,
-        net_monthly_cashflow: manual?.net_monthly_cashflow ?? null,
-      });
+      analysis = await underwriteDealData(
+        {
+          ...cols,
+          rental_strategy: rentalStrategy,
+          property_type: manual?.property_type ?? null,
+          total_cash_invested: manual?.total_cash_invested ?? null,
+          net_monthly_cashflow: manual?.net_monthly_cashflow ?? null,
+        },
+        { cashbackNote },
+      );
     }
   } catch (err) {
     console.error("runUnderwriting failed:", err);
@@ -267,30 +307,15 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   const u = analysis.underwriting;
   if (!u) return { ok: false, error: "Underwriting returned no analysis." };
 
-  // For Morby / creative / seller-finance deals, compute cashback server-side
-  // using the exact formula so the DB value is never dependent solely on AI math.
-  const ext = analysis.extracted_deal_data;
-  const structType = ((ext?.structure_type as string) ?? "").toLowerCase();
-  const isMorby =
-    structType === "morby" || structType === "creative" || structType === "seller_finance";
+  // Override cashback in the analysis object so the AI tab reads the correct value.
+  const cashbackAtClose = isMorby && precomputedCashback != null
+    ? precomputedCashback
+    : (u.cashback_amount ?? null);
 
-  let cashbackAtClose: number | null = u.cashback_amount ?? null;
-  if (isMorby && ext?.purchase_price) {
-    const pp = ext.purchase_price as number;
-    // LTV may be expressed as 75 or 0.75 — normalise to decimal.
-    const rawLtv = (ext.ltv as number | null | undefined) ?? 75;
-    const ltv = rawLtv > 1 ? rawLtv / 100 : rawLtv;
-    const dscrLoan = pp * ltv;
-    // Seller carry = stated seller_note_amount, else infer as pp minus DSCR loan.
-    const sellerCarry = (ext.seller_note_amount as number | null) ?? pp - dscrLoan;
-    const downToSeller = pp - sellerCarry;
-    const closingCosts = pp * 0.1;
-    const assignmentFee = (ext.assignment_fee as number | null) ?? 0;
-    const wholesalerFee = (ext.wholesaler_fee as number | null) ?? dealWholesalerFee;
-    cashbackAtClose = dscrLoan - downToSeller - closingCosts - assignmentFee - wholesalerFee;
-    console.log(
-      `[underwriting] Morby formula: pp=${pp} dscrLoan=${dscrLoan} downToSeller=${downToSeller} closingCosts=${closingCosts} assignmentFee=${assignmentFee} wholesalerFee=${wholesalerFee} cashback=${cashbackAtClose}`,
-    );
+  if (isMorby && precomputedCashback != null) {
+    u.cashback_amount = precomputedCashback;
+    u.cashback_pct = pp != null && pp > 0 ? (precomputedCashback / pp) * 100 : null;
+    if (dscrLoan != null) u.first_lien_amount = dscrLoan;
   }
 
   await admin
@@ -358,7 +383,6 @@ export async function createDeal(
       loan_amount: input.loan_amount,
       seller_note_amount: input.seller_carry,
       assignment_fee: input.assignment_fee,
-      wholesaler_fee: input.wholesaler_fee,
       total_cash_invested: input.cash_invested,
       net_monthly_cashflow: input.net_monthly_cashflow,
       annual_gross_revenue: input.annual_gross_revenue,
@@ -378,7 +402,6 @@ export async function createDeal(
       loan_amount: input.loan_amount,
       seller_note_amount: input.seller_carry,
       assignment_fee: input.assignment_fee,
-      wholesaler_fee: input.wholesaler_fee,
       notes: input.notes.trim() || null,
       ai_analysis: aiAnalysis,
     })
@@ -433,7 +456,6 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   ltv_percent: { label: "LTV %", numeric: true },
   seller_note_amount: { label: "Seller Carry", numeric: true },
   assignment_fee: { label: "Assignment Fee", numeric: true },
-  wholesaler_fee: { label: "Wholesaler Fee", numeric: true },
   interest_rate: { label: "Interest Rate", numeric: true },
   holdback: { label: "Holdback", numeric: true },
   lender_name: { label: "Lender", numeric: false },

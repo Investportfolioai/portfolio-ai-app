@@ -287,7 +287,6 @@ function AddDealModal({ open, onClose }: { open: boolean; onClose: () => void })
       annual_gross_revenue: n(fd, "annual_gross_revenue"),
       seller_carry: n(fd, "seller_carry"),
       assignment_fee: n(fd, "assignment_fee"),
-      wholesaler_fee: n(fd, "wholesaler_fee"),
       notes: String(fd.get("notes") ?? ""),
       status: (String(fd.get("status") ?? "pending") as NewDealInput["status"]),
     };
@@ -332,7 +331,6 @@ function AddDealModal({ open, onClose }: { open: boolean; onClose: () => void })
             <ModalField label="Annual gross revenue" name="annual_gross_revenue" type="number" />
             <ModalField label="Seller carry" name="seller_carry" type="number" defaultValue="0" />
             <ModalField label="Assignment fee" name="assignment_fee" type="number" />
-            <ModalField label="Wholesaler fee" name="wholesaler_fee" type="number" />
             <ModalSelect label="Status" name="status" options={["pending", "active"]} />
           </div>
           <label className="block">
@@ -1010,7 +1008,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
 
 // Fields that auto-trigger re-underwrite when saved from the Overview tab.
 const REUNDERWRITE_ON_SAVE = new Set([
-  "purchase_price", "arv", "seller_note_amount", "ltv_percent", "wholesaler_fee",
+  "purchase_price", "arv", "seller_note_amount", "ltv_percent", "assignment_fee",
 ]);
 
 function OverviewTab({
@@ -1031,7 +1029,6 @@ function OverviewTab({
   const [liveSellerCarry, setLiveSellerCarry] = useState<number | null>(deal.seller_note_amount);
   const [liveLtv, setLiveLtv] = useState<number>(deal.ltv_percent ?? 75);
   const [liveAssignFee, setLiveAssignFee] = useState<number>(deal.assignment_fee ?? 0);
-  const [liveWholesalerFee, setLiveWholesalerFee] = useState<number>(deal.wholesaler_fee ?? 0);
 
   // Reset live state when a different deal is opened
   useEffect(() => {
@@ -1039,7 +1036,6 @@ function OverviewTab({
     setLiveSellerCarry(deal.seller_note_amount);
     setLiveLtv(deal.ltv_percent ?? 75);
     setLiveAssignFee(deal.assignment_fee ?? 0);
-    setLiveWholesalerFee(deal.wholesaler_fee ?? 0);
   }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function makeOnSaved(field: string) {
@@ -1055,7 +1051,7 @@ function OverviewTab({
   const closingCosts = livePp != null ? livePp * 0.10 : null;
   const estCashback =
     dscrLoan != null && downToSeller != null && closingCosts != null
-      ? dscrLoan - downToSeller - closingCosts - liveAssignFee - liveWholesalerFee
+      ? dscrLoan - downToSeller - closingCosts - liveAssignFee
       : null;
 
   return (
@@ -1095,12 +1091,6 @@ function OverviewTab({
           raw={deal.assignment_fee} display={money(deal.assignment_fee)}
           onSaved={makeOnSaved("assignment_fee")}
           onLiveChange={(v) => setLiveAssignFee(v === "" ? 0 : Number(v))}
-        />
-        <EditableRow
-          dealId={deal.id} field="wholesaler_fee" label="Wholesaler Fee" numeric
-          raw={deal.wholesaler_fee} display={money(deal.wholesaler_fee)}
-          onSaved={makeOnSaved("wholesaler_fee")}
-          onLiveChange={(v) => setLiveWholesalerFee(v === "" ? 0 : Number(v))}
         />
         <EditableRow dealId={deal.id} field="total_cash_invested" label="Cash Invested" numeric ai raw={ed?.total_cash_invested ?? null} display={money(ed?.total_cash_invested ?? null)} onSaved={makeOnSaved("total_cash_invested")} />
         <EditableRow dealId={deal.id} field="net_monthly_cashflow" label="Net Monthly" numeric ai raw={ed?.net_monthly_cashflow ?? null} display={money(ed?.net_monthly_cashflow ?? null)} onSaved={makeOnSaved("net_monthly_cashflow")} />
@@ -1508,12 +1498,12 @@ function AiTab({
           {/* Cashback at close breakdown */}
           {(() => {
             const pp = deal.purchase_price;
-            const dscrLoan = uw.first_lien_amount ?? (pp != null ? pp * 0.75 : null);
+            const ltvPct = deal.ltv_percent ?? 75;
+            const dscrLoan = uw.first_lien_amount ?? (pp != null ? pp * (ltvPct / 100) : null);
             const sellerCarry = uw.seller_carry_amount ?? deal.seller_note_amount;
             const downToSeller = pp != null && sellerCarry != null ? pp - sellerCarry : null;
             const closingCosts = pp != null ? pp * 0.10 : null;
             const assignFee = deal.assignment_fee ?? 0;
-            const wFee = deal.wholesaler_fee ?? 0;
             return (
               <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 text-xs">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -1521,7 +1511,7 @@ function AiTab({
                 </p>
                 <div className="space-y-1 text-muted-foreground">
                   <div className="flex justify-between">
-                    <span>DSCR Proceeds</span>
+                    <span>DSCR Proceeds ({ltvPct}% LTV)</span>
                     <span className="data-number tabular-nums text-foreground">{money(dscrLoan)}</span>
                   </div>
                   <div className="flex justify-between">
@@ -1535,10 +1525,6 @@ function AiTab({
                   <div className="flex justify-between">
                     <span>Assignment Fee</span>
                     <span className="data-number tabular-nums text-rose-600">{assignFee > 0 ? `–${money(assignFee)}` : money(0)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Wholesaler Fee</span>
-                    <span className="data-number tabular-nums text-rose-600">{wFee > 0 ? `–${money(wFee)}` : money(0)}</span>
                   </div>
                 </div>
                 <div className="mt-2 flex justify-between border-t border-border pt-2">
