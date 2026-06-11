@@ -954,13 +954,16 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                   type="button"
                   onClick={() => setTab(t)}
                   className={
-                    "-mb-px border-b-2 px-3 py-2.5 text-xs font-medium transition-colors " +
+                    "-mb-px inline-flex items-center gap-1 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors " +
                     (tab === t
                       ? "border-accent text-primary"
                       : "border-transparent text-muted-foreground hover:text-primary")
                   }
                 >
                   {t}
+                  {t === "AI Underwriting" && running && (
+                    <span className="ml-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                  )}
                 </button>
               ))}
             </div>
@@ -1005,24 +1008,56 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   );
 }
 
+// Fields that auto-trigger re-underwrite when saved from the Overview tab.
+const REUNDERWRITE_ON_SAVE = new Set([
+  "purchase_price", "arv", "seller_note_amount", "ltv_percent", "wholesaler_fee",
+]);
+
 function OverviewTab({
   deal,
   onChanged,
   onReunderwrite,
-  reunderwriting,
 }: {
   deal: Deal;
   onChanged: () => void;
   onReunderwrite: () => void;
   reunderwriting: boolean;
 }) {
-  const [dirty, setDirty] = useState(false);
   const ed = deal.ai_analysis?.extracted_deal_data;
   const assetType = ed?.property_type ?? "—";
-  const saved = () => {
-    setDirty(true);
-    onChanged();
-  };
+
+  // Live state for real-time Est. Cashback calculation
+  const [livePp, setLivePp] = useState<number | null>(deal.purchase_price);
+  const [liveSellerCarry, setLiveSellerCarry] = useState<number | null>(deal.seller_note_amount);
+  const [liveLtv, setLiveLtv] = useState<number>(deal.ltv_percent ?? 75);
+  const [liveAssignFee, setLiveAssignFee] = useState<number>(deal.assignment_fee ?? 0);
+  const [liveWholesalerFee, setLiveWholesalerFee] = useState<number>(deal.wholesaler_fee ?? 0);
+
+  // Reset live state when a different deal is opened
+  useEffect(() => {
+    setLivePp(deal.purchase_price);
+    setLiveSellerCarry(deal.seller_note_amount);
+    setLiveLtv(deal.ltv_percent ?? 75);
+    setLiveAssignFee(deal.assignment_fee ?? 0);
+    setLiveWholesalerFee(deal.wholesaler_fee ?? 0);
+  }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function makeOnSaved(field: string) {
+    return () => {
+      onChanged();
+      if (REUNDERWRITE_ON_SAVE.has(field)) onReunderwrite();
+    };
+  }
+
+  // Real-time Morby cashback estimate
+  const dscrLoan = livePp != null ? livePp * (liveLtv / 100) : null;
+  const downToSeller = livePp != null && liveSellerCarry != null ? livePp - liveSellerCarry : null;
+  const closingCosts = livePp != null ? livePp * 0.10 : null;
+  const estCashback =
+    dscrLoan != null && downToSeller != null && closingCosts != null
+      ? dscrLoan - downToSeller - closingCosts - liveAssignFee - liveWholesalerFee
+      : null;
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/40 px-4 py-2.5">
@@ -1033,39 +1068,56 @@ function OverviewTab({
       </div>
 
       <Section title="Overview · click a value to edit">
-        <EditableRow dealId={deal.id} field="property_address" label="Address" raw={deal.property_address} display={deal.property_address} onSaved={saved} />
+        <EditableRow dealId={deal.id} field="property_address" label="Address" raw={deal.property_address} display={deal.property_address} onSaved={makeOnSaved("property_address")} />
         <Row label="Asset Type" value={assetType} mono={false} />
-        <EditableRow dealId={deal.id} field="purchase_price" label="Purchase Price" numeric raw={deal.purchase_price} display={money(deal.purchase_price)} onSaved={saved} />
-        <EditableRow dealId={deal.id} field="arv" label="ARV" numeric raw={deal.arv} display={money(deal.arv)} onSaved={saved} />
-        <EditableRow dealId={deal.id} field="loan_amount" label="Loan Amount" numeric raw={deal.loan_amount} display={money(deal.loan_amount)} onSaved={saved} />
-        <EditableRow dealId={deal.id} field="seller_note_amount" label="Seller Carry" numeric raw={deal.seller_note_amount} display={money(deal.seller_note_amount)} onSaved={saved} />
-        <EditableRow dealId={deal.id} field="total_cash_invested" label="Cash Invested" numeric ai raw={ed?.total_cash_invested ?? null} display={money(ed?.total_cash_invested ?? null)} onSaved={saved} />
-        <EditableRow dealId={deal.id} field="net_monthly_cashflow" label="Net Monthly" numeric ai raw={ed?.net_monthly_cashflow ?? null} display={money(ed?.net_monthly_cashflow ?? null)} onSaved={saved} />
-        <EditableRow dealId={deal.id} field="annual_gross_revenue" label="Annual Revenue" numeric ai raw={ed?.annual_gross_revenue ?? null} display={money(ed?.annual_gross_revenue ?? null)} onSaved={saved} />
+        <EditableRow
+          dealId={deal.id} field="purchase_price" label="Purchase Price" numeric
+          raw={deal.purchase_price} display={money(deal.purchase_price)}
+          onSaved={makeOnSaved("purchase_price")}
+          onLiveChange={(v) => setLivePp(v === "" ? null : Number(v))}
+        />
+        <EditableRow dealId={deal.id} field="arv" label="ARV" numeric raw={deal.arv} display={money(deal.arv)} onSaved={makeOnSaved("arv")} />
+        <LtvRow
+          dealId={deal.id}
+          ltvPct={liveLtv}
+          purchasePrice={livePp}
+          onSaved={makeOnSaved("ltv_percent")}
+          onLiveChange={(ltv) => setLiveLtv(ltv)}
+        />
+        <EditableRow
+          dealId={deal.id} field="seller_note_amount" label="Seller Carry" numeric
+          raw={deal.seller_note_amount} display={money(deal.seller_note_amount)}
+          onSaved={makeOnSaved("seller_note_amount")}
+          onLiveChange={(v) => setLiveSellerCarry(v === "" ? null : Number(v))}
+        />
+        <EditableRow
+          dealId={deal.id} field="assignment_fee" label="Assignment Fee" numeric
+          raw={deal.assignment_fee} display={money(deal.assignment_fee)}
+          onSaved={makeOnSaved("assignment_fee")}
+          onLiveChange={(v) => setLiveAssignFee(v === "" ? 0 : Number(v))}
+        />
+        <EditableRow
+          dealId={deal.id} field="wholesaler_fee" label="Wholesaler Fee" numeric
+          raw={deal.wholesaler_fee} display={money(deal.wholesaler_fee)}
+          onSaved={makeOnSaved("wholesaler_fee")}
+          onLiveChange={(v) => setLiveWholesalerFee(v === "" ? 0 : Number(v))}
+        />
+        <EditableRow dealId={deal.id} field="total_cash_invested" label="Cash Invested" numeric ai raw={ed?.total_cash_invested ?? null} display={money(ed?.total_cash_invested ?? null)} onSaved={makeOnSaved("total_cash_invested")} />
+        <EditableRow dealId={deal.id} field="net_monthly_cashflow" label="Net Monthly" numeric ai raw={ed?.net_monthly_cashflow ?? null} display={money(ed?.net_monthly_cashflow ?? null)} onSaved={makeOnSaved("net_monthly_cashflow")} />
+        <EditableRow dealId={deal.id} field="annual_gross_revenue" label="Annual Revenue" numeric ai raw={ed?.annual_gross_revenue ?? null} display={money(ed?.annual_gross_revenue ?? null)} onSaved={makeOnSaved("annual_gross_revenue")} />
         <Row label="Equity Spread" value={money(equitySpread(deal))} />
         <Row label="ACQ Grade" value={deal.acquisition_grade != null ? `${deal.acquisition_grade} / 100` : "—"} />
         <Row label="STAB Grade" value={deal.stabilization_grade != null ? `${deal.stabilization_grade} / 100` : "—"} />
         <Row label="Capital Runway Multiple" value={capitalRunwayMultiple(deal)} />
+        {estCashback != null && (
+          <div className="flex items-center justify-between gap-4 border-t border-border px-3 py-2.5">
+            <dt className="shrink-0 text-sm text-muted-foreground">Est. Cashback (Morby)</dt>
+            <dd className="data-number text-right text-sm font-bold tabular-nums text-[#D4AF37]">
+              {money(estCashback)}
+            </dd>
+          </div>
+        )}
       </Section>
-
-      {dirty && (
-        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-accent/10 px-4 py-3 ring-1 ring-accent/30">
-          <span className="text-sm text-foreground">
-            Deal terms changed — re-run underwriting to refresh grades.
-          </span>
-          <button
-            type="button"
-            disabled={reunderwriting}
-            onClick={() => {
-              setDirty(false);
-              onReunderwrite();
-            }}
-            className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-          >
-            {reunderwriting ? "Running…" : "Re-run"}
-          </button>
-        </div>
-      )}
 
       <WholesalerActions deal={deal} onChanged={onChanged} />
       <EscrowAction deal={deal} onChanged={onChanged} />
@@ -1253,6 +1305,7 @@ function EditableRow({
   numeric,
   ai,
   onSaved,
+  onLiveChange,
 }: {
   dealId: string;
   field: string;
@@ -1262,6 +1315,7 @@ function EditableRow({
   numeric?: boolean;
   ai?: boolean;
   onSaved: () => void;
+  onLiveChange?: (value: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(raw == null ? "" : String(raw));
@@ -1288,7 +1342,7 @@ function EditableRow({
             autoFocus
             type={numeric ? "number" : "text"}
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => { setValue(e.target.value); onLiveChange?.(e.target.value); }}
             onKeyDown={(e) => {
               if (e.key === "Enter") save();
               if (e.key === "Escape") setEditing(false);
@@ -1317,6 +1371,94 @@ function EditableRow({
           {display}
         </button>
       )}
+    </div>
+  );
+}
+
+/** LTV % row: editable percentage with auto-calculated loan amount displayed below. */
+function LtvRow({
+  dealId,
+  ltvPct,
+  purchasePrice,
+  onSaved,
+  onLiveChange,
+}: {
+  dealId: string;
+  ltvPct: number;
+  purchasePrice: number | null;
+  onSaved: () => void;
+  onLiveChange: (ltv: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(ltvPct));
+  const [saving, startSave] = useTransition();
+
+  const ltvNum = Number(value) || 75;
+  const calcLoan = purchasePrice != null ? purchasePrice * (ltvNum / 100) : null;
+
+  function save() {
+    startSave(async () => {
+      const res = await updateDealField(dealId, "ltv_percent", value);
+      if (res.ok) {
+        // Keep loan_amount in sync so re-underwrite has correct data
+        if (purchasePrice != null) {
+          await updateDealField(dealId, "loan_amount", String(calcLoan));
+        }
+        setEditing(false);
+        onSaved();
+      }
+    });
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-4 px-3 py-2.5">
+      <dt className="shrink-0 text-sm text-muted-foreground">LTV %</dt>
+      <div className="flex flex-col items-end gap-0.5">
+        {editing ? (
+          <div className="flex items-center gap-1">
+            <input
+              autoFocus
+              type="number"
+              value={value}
+              min="0"
+              max="100"
+              step="any"
+              onChange={(e) => {
+                setValue(e.target.value);
+                onLiveChange(Number(e.target.value) || 75);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") save();
+                if (e.key === "Escape") setEditing(false);
+              }}
+              className="w-20 rounded-md border border-border bg-secondary px-2 py-1 text-right text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            <span className="text-sm text-muted-foreground">%</span>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={save}
+              className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-accent-foreground disabled:opacity-60"
+            >
+              {saving ? "…" : "Save"}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => { setValue(String(ltvPct)); setEditing(true); }}
+            className="data-number rounded text-right text-sm font-medium text-primary hover:bg-secondary hover:px-1"
+            title="Click to edit LTV %"
+          >
+            {ltvPct}%
+          </button>
+        )}
+        {calcLoan != null && (
+          <span className="data-number text-[11px] text-muted-foreground tabular-nums">
+            Loan: {money(calcLoan)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

@@ -430,6 +430,7 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   purchase_price: { label: "Purchase Price", numeric: true },
   arv: { label: "ARV", numeric: true },
   loan_amount: { label: "Loan Amount", numeric: true },
+  ltv_percent: { label: "LTV %", numeric: true },
   seller_note_amount: { label: "Seller Carry", numeric: true },
   assignment_fee: { label: "Assignment Fee", numeric: true },
   wholesaler_fee: { label: "Wholesaler Fee", numeric: true },

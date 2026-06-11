@@ -124,6 +124,7 @@ export interface Deal {
   assignment_fee: number | null;
   wholesaler_fee: number | null;
   origination_fee: number | null;
+  ltv_percent: number | null;
 
   /** Underwriting scores, 0–100, nullable (see migration 20260603010003). */
   acquisition_grade: number | null;
