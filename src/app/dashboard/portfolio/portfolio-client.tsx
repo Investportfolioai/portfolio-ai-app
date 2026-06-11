@@ -19,6 +19,11 @@ import { getBalloonStatus, formatBalloonDisplay } from "@/lib/balloon";
 // Types
 // ---------------------------------------------------------------------------
 
+export interface ChartPoint {
+  date: string;   // ISO date e.g. "2024-06-01"
+  value: number;  // sum of avm_value across all holdings that day
+}
+
 export interface PortfolioDeal {
   id: string;
   property_address: string;
@@ -133,9 +138,11 @@ function updatedLabel(iso: string | null): string {
 export function PortfolioClient({
   pending,
   escrow,
+  chartData,
 }: {
   pending: PortfolioDeal[];
   escrow: PortfolioDeal[];
+  chartData: ChartPoint[];
 }) {
   const [tab, setTab] = useState<Tab>("holdings");
   const [holdings, setHoldings] = useState<Holding[]>([]);
@@ -188,7 +195,7 @@ export function PortfolioClient({
 
         <StatsBar holdings={holdings} />
 
-        <IntelDashboard holdings={holdings} pending={pending} escrow={escrow} />
+        <IntelDashboard holdings={holdings} pending={pending} escrow={escrow} chartData={chartData} />
 
         <nav className="mt-8 flex flex-wrap gap-1 border-b border-white/10">
           {TABS.map(([key, label]) => (
@@ -313,30 +320,27 @@ function IntelDashboard({
   holdings,
   pending,
   escrow,
+  chartData: rawChartData,
 }: {
   holdings: Holding[];
   pending: PortfolioDeal[];
   escrow: PortfolioDeal[];
+  chartData: ChartPoint[];
 }) {
   const [intelTab, setIntelTab] = useState<IntelTab>("overview");
 
-  const chartData = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setMonth(cutoff.getMonth() - 12);
-    const byDate: Record<string, number> = {};
-    for (const h of holdings) {
-      for (const s of h.snapshots ?? []) {
-        if (new Date(s.snapshot_date) < cutoff) continue;
-        byDate[s.snapshot_date] = (byDate[s.snapshot_date] ?? 0) + (s.avm_value ?? 0);
-      }
-    }
-    return Object.entries(byDate)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, value]) => ({
-        date: new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-        value,
-      }));
-  }, [holdings]);
+  // Format the server-fetched chart data for recharts
+  const chartData = useMemo(
+    () =>
+      rawChartData.map((p) => ({
+        date: new Date(p.date).toLocaleDateString("en-US", {
+          month: "short",
+          year: "2-digit",
+        }),
+        value: p.value,
+      })),
+    [rawChartData],
+  );
 
   const INTEL_TABS: [IntelTab, string][] = [
     ["overview", "Overview"],
