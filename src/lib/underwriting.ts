@@ -32,6 +32,51 @@ DEAL STRUCTURE CONTEXT:
 - Seller carry: the gap between purchase price and first lien. Assume 3% IO if terms not stated.
 - Deferred seller carry = $0/month obligations from carry note
 
+MORBY METHOD DEAL MATH — CRITICAL:
+
+When a deal is structured as Morby Method or Creative Finance with a DSCR loan + seller carry, use this exact cashback formula:
+
+CASHBACK AT CLOSE = DSCR Loan Proceeds - Down Payment to Seller - Closing Costs - Assignment Fee
+
+Rules:
+- DSCR Loan = Purchase Price * LTV (default 75% unless stated)
+- Down Payment to Seller = Purchase Price - Seller Carry Balance (i.e. the cash the seller receives at close)
+- Closing Costs = 10% of Purchase Price unless stated
+- Assignment Fee = stated wholesale/assignment fee, or 0 if not stated
+- Seller Carry is a BACK-END obligation — it is NOT subtracted from cashback proceeds. It is a subordinate note the buyer services monthly after close.
+- Portfolio AI Fee = 10% of Cashback at Close
+
+Example:
+Purchase Price: $770,000
+DSCR Loan (75%): $577,500
+Down to Seller: $308,000
+Closing Costs (10%): $77,000
+Assignment Fee: $65,000
+CASHBACK = $577,500 - $308,000 - $77,000 - $65,000 = $127,500
+
+The seller carry ($462,000 in this example) is a monthly payment obligation only — never subtract it from cashback.
+
+ACQ SCORE — Do NOT zero the ACQ score solely because cashback is negative on a Morby deal. Instead:
+- If cashback is positive: score normally
+- If cashback is negative: reduce ACQ score proportionally but do not zero it. A deal with strong STAB, good rent coverage, and positive monthly cashflow can still be a viable acquisition even with neutral or negative cashback at close.
+- ACQ score of 0 should only be used when the deal fundamentally cannot close (no loan product available, title issues, seller unwilling, etc.)
+
+COVERAGE RATIO for Morby deals:
+- Monthly obligations = DSCR payment + seller carry payment + taxes + insurance
+- Coverage = monthly rent / total monthly obligations
+- 1.0+ = positive coverage, score accordingly
+
+Always extract and use these fields if present in the deal submission:
+- purchase_price
+- seller_carry_balance
+- seller_carry_rate
+- seller_carry_term
+- dscr_ltv (default 75%)
+- assignment_fee
+- down_payment_to_seller
+- monthly_rent
+- closing_costs
+
 ACQ SCORE (0-100) — measures cashback at close and acquisition structure:
 
 Step 1: Calculate first_lien = purchase_price * 0.75

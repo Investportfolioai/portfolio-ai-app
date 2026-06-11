@@ -263,6 +263,32 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
 
   const u = analysis.underwriting;
   if (!u) return { ok: false, error: "Underwriting returned no analysis." };
+
+  // For Morby / creative / seller-finance deals, compute cashback server-side
+  // using the exact formula so the DB value is never dependent solely on AI math.
+  const ext = analysis.extracted_deal_data;
+  const structType = ((ext?.structure_type as string) ?? "").toLowerCase();
+  const isMorby =
+    structType === "morby" || structType === "creative" || structType === "seller_finance";
+
+  let cashbackAtClose: number | null = u.cashback_amount ?? null;
+  if (isMorby && ext?.purchase_price) {
+    const pp = ext.purchase_price as number;
+    // LTV may be expressed as 75 or 0.75 — normalise to decimal.
+    const rawLtv = (ext.ltv as number | null | undefined) ?? 75;
+    const ltv = rawLtv > 1 ? rawLtv / 100 : rawLtv;
+    const dscrLoan = pp * ltv;
+    // Seller carry = stated seller_note_amount, else infer as pp minus DSCR loan.
+    const sellerCarry = (ext.seller_note_amount as number | null) ?? pp - dscrLoan;
+    const downToSeller = pp - sellerCarry;
+    const closingCosts = pp * 0.1;
+    const assignmentFee = (ext.assignment_fee as number | null) ?? 0;
+    cashbackAtClose = dscrLoan - downToSeller - closingCosts - assignmentFee;
+    console.log(
+      `[underwriting] Morby formula: pp=${pp} dscrLoan=${dscrLoan} downToSeller=${downToSeller} closingCosts=${closingCosts} assignmentFee=${assignmentFee} cashback=${cashbackAtClose}`,
+    );
+  }
+
   await admin
     .from("deals")
     .update({
@@ -270,7 +296,7 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       ai_summary: u.ai_summary,
       acquisition_grade: u.acquisition_score,
       stabilization_grade: u.stabilization_score,
-      cashback_at_close: u.cashback_amount ?? null,
+      cashback_at_close: cashbackAtClose,
     })
     .eq("id", dealId);
 
