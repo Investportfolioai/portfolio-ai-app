@@ -86,6 +86,16 @@ function acqLetter(g: number | null): string {
   return g >= 60 ? "D" : "F";
 }
 
+// shared tab button classes
+function tabCls(active: boolean) {
+  return `
+    -mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors
+    ${active
+      ? "border-[#D4AF37] text-[#D4AF37]"
+      : "border-transparent text-gray-500 hover:text-gray-300"}
+  `.trim();
+}
+
 // ---------------------------------------------------------------------------
 // Root
 // ---------------------------------------------------------------------------
@@ -103,8 +113,9 @@ export function KpDashboardClient({
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-white">
-      <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+      {/* ── Header ── */}
+      <header className="border-b border-white/10 bg-[#0d1117]">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Image
             src="/logo-dark.png"
             alt="Portfolio AI"
@@ -114,11 +125,11 @@ export function KpDashboardClient({
             priority
           />
           <div className="flex items-center gap-4 text-sm">
-            <span className="text-muted-foreground">
+            <span className="text-gray-400">
               {profile.name ?? profile.email ?? "Key Principal"}
             </span>
             <form action={logout}>
-              <button className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-primary">
+              <button className="rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white">
                 Sign out
               </button>
             </form>
@@ -126,17 +137,21 @@ export function KpDashboardClient({
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-6 py-8">
-        <h1 className="text-3xl tracking-tight text-primary">My Dashboard</h1>
-        <p className="mt-2 text-[15px] italic font-light text-muted-foreground">
-          Your deals, your portfolio, your profile.
-        </p>
+      {/* ── Page content ── */}
+      <div className="mx-auto max-w-6xl px-6 py-8">
+        {/* Title block */}
+        <div className="border-b border-white/10 pb-6 mb-6">
+          <h1 className="text-2xl font-bold text-white">My Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-400">
+            Your deals, your portfolio, your profile.
+          </p>
+        </div>
 
-        {/* ── Intelligence section (NEW — sits above existing tabs) ── */}
+        {/* ── Intelligence section ── */}
         <IntelSection deals={deals} />
 
-        {/* ── Existing nav + tabs (unchanged) ── */}
-        <nav className="mt-8 flex gap-1 border-b border-border">
+        {/* ── My Deals / My SREO / Profile tabs ── */}
+        <nav className="mt-10 flex gap-1 border-b border-white/10">
           {(
             [
               ["deals", "My Deals"],
@@ -147,11 +162,7 @@ export function KpDashboardClient({
             <button
               key={key}
               onClick={() => setTab(key)}
-              className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-                tab === key
-                  ? "border-accent text-primary"
-                  : "border-transparent text-muted-foreground hover:text-primary"
-              }`}
+              className={tabCls(tab === key)}
             >
               {label}
             </button>
@@ -175,7 +186,6 @@ export function KpDashboardClient({
 function IntelSection({ deals }: { deals: KpDealRich[] }) {
   const [intelTab, setIntelTab] = useState<IntelTab>("mydeals");
 
-  // KPI computations
   const kpis = useMemo(() => {
     const totalDeals = deals.length;
     const feesEarned = deals
@@ -192,7 +202,6 @@ function IntelSection({ deals }: { deals: KpDealRich[] }) {
     return { totalDeals, feesEarned, inEscrow, avgGrade };
   }, [deals]);
 
-  // Chart: cumulative portfolio exposure over time (by month)
   const chartData = useMemo(() => {
     const byMonth: Record<string, number> = {};
     for (const d of deals) {
@@ -220,7 +229,7 @@ function IntelSection({ deals }: { deals: KpDealRich[] }) {
   ];
 
   return (
-    <div className="mt-8 space-y-5">
+    <div className="space-y-5">
       {/* Section 1 — KPI bar */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard label="Total Deals Assigned" value={String(kpis.totalDeals)} />
@@ -234,12 +243,12 @@ function IntelSection({ deals }: { deals: KpDealRich[] }) {
 
       {/* Section 2 — Exposure chart */}
       <div className="rounded-xl border border-white/10 bg-[#1a1f2e] p-5">
-        <p className="mb-4 text-xs font-semibold uppercase tracking-wider text-gray-400">
+        <p className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase mb-4">
           Portfolio Exposure Over Time
         </p>
         {chartData.length === 0 ? (
           <div className="flex h-[220px] items-center justify-center">
-            <p className="text-sm text-white/30">No deal data yet.</p>
+            <p className="text-sm text-gray-600">No deal data yet.</p>
           </div>
         ) : (
           <div style={{ height: 220 }}>
@@ -287,27 +296,21 @@ function IntelSection({ deals }: { deals: KpDealRich[] }) {
 
       {/* Section 3 — Intelligence tabs */}
       <div>
-        <div className="flex gap-0.5 border-b border-white/10">
+        <div className="flex gap-1 border-b border-white/10 mb-6">
           {INTEL_TABS.map(([key, label]) => (
             <button
               key={key}
               onClick={() => setIntelTab(key)}
-              className={`-mb-px border-b-2 px-4 py-2 text-[13px] font-medium transition-colors ${
-                intelTab === key
-                  ? "border-[#D4AF37] text-[#D4AF37]"
-                  : "border-transparent text-gray-400 hover:text-white/70"
-              }`}
+              className={tabCls(intelTab === key)}
             >
               {label}
             </button>
           ))}
         </div>
 
-        <div className="mt-4">
-          {intelTab === "mydeals" && <IntelDealsTab deals={deals} />}
-          {intelTab === "earnings" && <EarningsTab deals={deals} />}
-          {intelTab === "pipeline" && <PipelineTab deals={deals} />}
-        </div>
+        {intelTab === "mydeals" && <IntelDealsTab deals={deals} />}
+        {intelTab === "earnings" && <EarningsTab deals={deals} />}
+        {intelTab === "pipeline" && <PipelineTab deals={deals} />}
       </div>
     </div>
   );
@@ -323,11 +326,9 @@ function KpiCard({
   gold?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-[#1a1f2e] p-5">
-      <p className="text-xs font-semibold uppercase tracking-wider text-gray-400">{label}</p>
-      <p
-        className={`data-number mt-2 text-2xl font-bold tabular-nums ${gold ? "text-[#D4AF37]" : "text-white"}`}
-      >
+    <div className="rounded-xl bg-[#1a1f2e] border border-white/10 p-5">
+      <p className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase mb-2">{label}</p>
+      <p className={`text-2xl font-bold tabular-nums ${gold ? "text-[#D4AF37]" : "text-white"}`}>
         {value}
       </p>
     </div>
@@ -335,21 +336,21 @@ function KpiCard({
 }
 
 // ---------------------------------------------------------------------------
-// Intel tab 1 — My Deals (with Proj. Fee column)
+// Intel tab 1 — My Deals
 // ---------------------------------------------------------------------------
 
 function IntelDealsTab({ deals }: { deals: KpDealRich[] }) {
   if (deals.length === 0)
     return (
-      <div className="rounded-xl border border-dashed border-white/15 py-10 text-center">
-        <p className="text-sm text-white/50">No deals assigned yet.</p>
+      <div className="rounded-xl bg-[#1a1f2e] border border-white/10 p-8 text-center">
+        <p className="text-sm text-gray-600">No deals assigned yet.</p>
       </div>
     );
 
   return (
     <div className="overflow-x-auto rounded-xl border border-white/10">
       <table className="w-full text-[13px]">
-        <thead className="border-b border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-gray-400">
+        <thead className="border-b border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-gray-500">
           <tr>
             <th className="px-4 py-3 text-left font-medium">Address</th>
             <th className="px-4 py-3 text-left font-medium">Status</th>
@@ -372,16 +373,16 @@ function IntelDealsTab({ deals }: { deals: KpDealRich[] }) {
                   {ASSIGNMENT_STATUS_LABELS[d.status]}
                 </span>
               </td>
-              <td className="data-number px-4 py-3 text-right tabular-nums text-white/70">
+              <td className="px-4 py-3 text-right tabular-nums text-white/70">
                 {d.purchase_price ? money(d.purchase_price) : "—"}
               </td>
-              <td className="data-number px-4 py-3 text-right tabular-nums text-white/70">
+              <td className="px-4 py-3 text-right tabular-nums text-white/70">
                 {d.arv ? money(d.arv) : "—"}
               </td>
-              <td className="data-number px-4 py-3 text-right tabular-nums text-white/70">
+              <td className="px-4 py-3 text-right tabular-nums text-white/70">
                 {d.acquisition_grade ?? "—"}
               </td>
-              <td className="data-number px-4 py-3 text-right tabular-nums text-[#D4AF37]">
+              <td className="px-4 py-3 text-right tabular-nums text-[#D4AF37]">
                 {projFee(d.cashback_at_close)}
               </td>
             </tr>
@@ -401,15 +402,15 @@ function EarningsTab({ deals }: { deals: KpDealRich[] }) {
 
   if (deals.length === 0)
     return (
-      <div className="rounded-xl border border-dashed border-white/15 py-10 text-center">
-        <p className="text-sm text-white/50">No deals yet.</p>
+      <div className="rounded-xl bg-[#1a1f2e] border border-white/10 p-8 text-center">
+        <p className="text-sm text-gray-600">No deals yet.</p>
       </div>
     );
 
   return (
     <div className="overflow-x-auto rounded-xl border border-white/10">
       <table className="w-full text-[13px]">
-        <thead className="border-b border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-gray-400">
+        <thead className="border-b border-white/10 bg-white/5 text-[10px] uppercase tracking-widest text-gray-500">
           <tr>
             <th className="px-4 py-3 text-left font-medium">Address</th>
             <th className="px-4 py-3 text-left font-medium">Status</th>
@@ -437,10 +438,10 @@ function EarningsTab({ deals }: { deals: KpDealRich[] }) {
                     {statusKey}
                   </span>
                 </td>
-                <td className="data-number px-4 py-3 text-right tabular-nums text-[#D4AF37]">
+                <td className="px-4 py-3 text-right tabular-nums text-[#D4AF37]">
                   {projFee(d.cashback_at_close)}
                 </td>
-                <td className="data-number px-4 py-3 text-right tabular-nums text-white/70">
+                <td className="px-4 py-3 text-right tabular-nums text-white/70">
                   {d.escrow_date
                     ? new Date(d.escrow_date).toLocaleDateString("en-US", {
                         month: "short",
@@ -450,7 +451,7 @@ function EarningsTab({ deals }: { deals: KpDealRich[] }) {
                     : "—"}
                 </td>
                 <td
-                  className={`data-number px-4 py-3 text-right tabular-nums ${
+                  className={`px-4 py-3 text-right tabular-nums ${
                     daysToClose == null
                       ? "text-white/40"
                       : daysToClose < 0
@@ -484,8 +485,8 @@ function PipelineTab({ deals }: { deals: KpDealRich[] }) {
 
   if (pipeline.length === 0)
     return (
-      <div className="rounded-xl border border-dashed border-white/15 py-10 text-center">
-        <p className="text-sm text-white/50">No active pipeline deals.</p>
+      <div className="rounded-xl bg-[#1a1f2e] border border-white/10 p-8 text-center">
+        <p className="text-sm text-gray-600">No active pipeline deals.</p>
       </div>
     );
 
@@ -501,9 +502,7 @@ function PipelineTab({ deals }: { deals: KpDealRich[] }) {
             <div className="flex items-start justify-between gap-3">
               <p className="text-sm font-medium text-white leading-snug">{d.property_address}</p>
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ring-1 ring-inset ${
-                  acqBadgeCls(d.acquisition_grade)
-                }`}
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ring-1 ring-inset ${acqBadgeCls(d.acquisition_grade)}`}
               >
                 ACQ {acqLetter(d.acquisition_grade)}
                 {d.acquisition_grade != null && (
@@ -520,7 +519,7 @@ function PipelineTab({ deals }: { deals: KpDealRich[] }) {
               </span>
             </div>
             <div className="mt-2 flex items-center justify-between text-[11px]">
-              <span className="data-number tabular-nums text-white/70">
+              <span className="tabular-nums text-white/70">
                 {d.purchase_price ? money(d.purchase_price) : "—"}
               </span>
               <span
@@ -540,7 +539,7 @@ function PipelineTab({ deals }: { deals: KpDealRich[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Existing DealsTab + DealCard (unchanged)
+// DealsTab + DealCard
 // ---------------------------------------------------------------------------
 
 function DealsTab({ deals }: { deals: KpDeal[] }) {
@@ -549,9 +548,9 @@ function DealsTab({ deals }: { deals: KpDeal[] }) {
 
   if (deals.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-border bg-card py-16 text-center">
-        <p className="text-sm font-medium text-primary">No deals assigned yet</p>
-        <p className="mt-1 text-xs text-muted-foreground">
+      <div className="rounded-xl bg-[#1a1f2e] border border-white/10 p-8 text-center">
+        <p className="text-sm text-gray-600">No deals assigned yet.</p>
+        <p className="mt-1 text-xs text-gray-600">
           You&apos;ll see deals here when the team invites you onto one.
         </p>
       </div>
@@ -562,7 +561,7 @@ function DealsTab({ deals }: { deals: KpDeal[] }) {
     <div className="space-y-8">
       {pending.length > 0 && (
         <section>
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
             Awaiting your response
           </h2>
           <div className="space-y-3">
@@ -574,7 +573,7 @@ function DealsTab({ deals }: { deals: KpDeal[] }) {
       )}
       {decided.length > 0 && (
         <section>
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
             History
           </h2>
           <div className="space-y-3">
@@ -611,11 +610,11 @@ function DealCard({ deal, actionable }: { deal: KpDeal; actionable?: boolean }) 
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
+    <div className="rounded-xl border border-white/10 bg-[#1a1f2e] p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="font-medium text-primary">{deal.property_address}</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="font-medium text-white">{deal.property_address}</p>
+          <p className="mt-0.5 text-xs text-gray-500">
             {STRUCTURE_LABELS[deal.structure_type] ?? deal.structure_type}
           </p>
         </div>
@@ -638,14 +637,14 @@ function DealCard({ deal, actionable }: { deal: KpDeal; actionable?: boolean }) 
           <button
             disabled={pending}
             onClick={() => respond("accepted")}
-            className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-[#D4AF37] px-4 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
           >
             Accept
           </button>
           <button
             disabled={pending}
             onClick={() => respond("declined")}
-            className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-primary disabled:opacity-50"
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-gray-400 hover:text-white disabled:opacity-50"
           >
             Decline
           </button>
@@ -659,14 +658,14 @@ function DealCard({ deal, actionable }: { deal: KpDeal; actionable?: boolean }) 
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{label}</p>
-      <p className="data-number tabular-nums text-primary">{value}</p>
+      <p className="text-[10px] uppercase tracking-widest text-gray-500">{label}</p>
+      <p className="tabular-nums text-white">{value}</p>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Existing SreoTab (unchanged)
+// SreoTab
 // ---------------------------------------------------------------------------
 
 const EMPTY_SREO = {
@@ -714,19 +713,19 @@ function SreoTab({ sreo }: { sreo: KpSreo[] }) {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
           Schedule of Real Estate Owned
         </h2>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+          className="rounded-lg bg-[#D4AF37] px-3 py-1.5 text-xs font-semibold text-black hover:opacity-90"
         >
           {open ? "Cancel" : "Add Property"}
         </button>
       </div>
 
       {open && (
-        <div className="mb-6 rounded-2xl border border-border bg-card p-5">
+        <div className="mb-6 rounded-xl border border-white/10 bg-[#1a1f2e] p-5">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <SreoInput label="Property name *" value={form.property_name} onChange={(v) => setForm({ ...form, property_name: v })} />
             <SreoInput label="Type" value={form.property_type} onChange={(v) => setForm({ ...form, property_type: v })} placeholder="SFR, multifamily…" />
@@ -739,7 +738,7 @@ function SreoTab({ sreo }: { sreo: KpSreo[] }) {
             <button
               disabled={pending}
               onClick={submit}
-              className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:opacity-90 disabled:opacity-50"
+              className="rounded-lg bg-[#D4AF37] px-4 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
             >
               Save Property
             </button>
@@ -749,15 +748,15 @@ function SreoTab({ sreo }: { sreo: KpSreo[] }) {
       )}
 
       {sreo.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card py-16 text-center">
-          <p className="text-sm font-medium text-primary">No properties yet</p>
-          <p className="mt-1 text-xs text-muted-foreground">Add the real estate you own to build your SREO.</p>
+        <div className="rounded-xl bg-[#1a1f2e] border border-white/10 p-8 text-center">
+          <p className="text-sm text-gray-600">No properties yet.</p>
+          <p className="mt-1 text-xs text-gray-600">Add the real estate you own to build your SREO.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+        <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#1a1f2e]">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-border text-left text-[10px] uppercase tracking-widest text-muted-foreground">
+              <tr className="border-b border-white/10 text-left text-[10px] uppercase tracking-widest text-gray-500">
                 <th className="px-4 py-3 font-medium">Property</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Address</th>
@@ -767,20 +766,20 @@ function SreoTab({ sreo }: { sreo: KpSreo[] }) {
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-white/5">
               {sreo.map((p) => (
-                <tr key={p.id} className="hover:bg-secondary/40">
-                  <td className="px-4 py-3 font-medium text-primary">{p.property_name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{p.property_type ?? "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{p.address ?? "—"}</td>
-                  <td className="data-number px-4 py-3 text-right tabular-nums text-primary">{money(p.value)}</td>
-                  <td className="data-number px-4 py-3 text-right tabular-nums text-primary">{money(p.mortgage_balance)}</td>
-                  <td className="data-number px-4 py-3 text-right tabular-nums text-primary">{money(p.monthly_payment)}</td>
+                <tr key={p.id} className="hover:bg-white/5">
+                  <td className="px-4 py-3 font-medium text-white">{p.property_name}</td>
+                  <td className="px-4 py-3 text-gray-400">{p.property_type ?? "—"}</td>
+                  <td className="px-4 py-3 text-gray-400">{p.address ?? "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-white">{money(p.value)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-white">{money(p.mortgage_balance)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-white">{money(p.monthly_payment)}</td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => remove(p.id)}
                       disabled={pending}
-                      className="text-xs text-muted-foreground hover:text-rose-400 disabled:opacity-50"
+                      className="text-xs text-gray-500 hover:text-rose-400 disabled:opacity-50"
                     >
                       Remove
                     </button>
@@ -796,12 +795,12 @@ function SreoTab({ sreo }: { sreo: KpSreo[] }) {
 }
 
 // ---------------------------------------------------------------------------
-// Existing ProfileTab (unchanged)
+// ProfileTab
 // ---------------------------------------------------------------------------
 
 function ProfileTab({ profile }: { profile: Profile }) {
   return (
-    <div className="max-w-md rounded-2xl border border-border bg-card p-6">
+    <div className="max-w-md rounded-xl border border-white/10 bg-[#1a1f2e] p-6">
       <dl className="space-y-4 text-sm">
         <Row label="Name" value={profile.name ?? "—"} />
         <Row label="Email" value={profile.email ?? "—"} />
@@ -814,9 +813,9 @@ function ProfileTab({ profile }: { profile: Profile }) {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between gap-4 border-b border-border pb-3 last:border-0 last:pb-0">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium text-primary">{value}</dd>
+    <div className="flex justify-between gap-4 border-b border-white/10 pb-3 last:border-0 last:pb-0">
+      <dt className="text-gray-400">{label}</dt>
+      <dd className="font-medium text-white">{value}</dd>
     </div>
   );
 }
@@ -838,13 +837,13 @@ function SreoInput({
 }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1 block text-[10px] uppercase tracking-widest text-muted-foreground">{label}</span>
+      <span className="mb-1 block text-[10px] uppercase tracking-widest text-gray-500">{label}</span>
       <input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-primary outline-none focus:border-accent"
+        className="w-full rounded-lg border border-white/10 bg-[#0d1117] px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 focus:border-[#D4AF37]"
       />
     </label>
   );
