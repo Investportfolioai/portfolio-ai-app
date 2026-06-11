@@ -697,7 +697,7 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
               disabled={busy}
               onChange={(e) => setCashback(e.target.value)}
               onBlur={save}
-              placeholder="0"
+              placeholder="—"
               className="w-20 bg-transparent px-1 text-right text-xs text-primary outline-none"
             />
           </div>

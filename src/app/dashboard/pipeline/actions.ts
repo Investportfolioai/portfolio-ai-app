@@ -270,6 +270,7 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       ai_summary: u.ai_summary,
       acquisition_grade: u.acquisition_score,
       stabilization_grade: u.stabilization_score,
+      cashback_at_close: u.cashback_amount ?? null,
     })
     .eq("id", dealId);
 
