@@ -411,6 +411,27 @@ export type EditModuleResult =
   | { ok: true; content: ContentBlock[] }
   | { ok: false; error: string };
 
+// Escapes literal control characters inside JSON string values so JSON.parse
+// doesn't choke on tabs/newlines from Claude's Google Sheets output.
+function sanitizeJsonChars(raw: string): string {
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (esc) { out += ch; esc = false; continue; }
+    if (ch === "\\") { out += ch; esc = true; continue; }
+    if (ch === '"') { out += ch; inStr = !inStr; continue; }
+    if (inStr) {
+      if (ch === "\t") { out += "\\t"; continue; }
+      if (ch === "\n") { out += "\\n"; continue; }
+      if (ch === "\r") { out += "\\r"; continue; }
+    }
+    out += ch;
+  }
+  return out;
+}
+
 export async function editModuleWithAI(
   moduleId: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -454,9 +475,20 @@ export async function editModuleWithAI(
     const text: string = data?.content?.[0]?.text ?? "";
     const start = text.indexOf("[");
     const end = text.lastIndexOf("]");
-    if (start === -1 || end === -1) return { ok: false, error: "No array in response" };
 
-    const newContent = JSON.parse(text.slice(start, end + 1)) as ContentBlock[];
+    let newContent: ContentBlock[];
+    if (start !== -1 && end !== -1) {
+      const sanitized = sanitizeJsonChars(text.slice(start, end + 1));
+      try {
+        newContent = JSON.parse(sanitized) as ContentBlock[];
+      } catch (parseErr) {
+        console.warn("[sandbox] editModuleWithAI JSON.parse failed, using fallback block:", parseErr);
+        newContent = [{ type: "text", value: text.trim() }];
+      }
+    } else {
+      // No array brackets at all — save whatever Claude returned as plain text
+      newContent = [{ type: "text", value: text.trim() }];
+    }
 
     const supabase = await createClient();
     const { error: dbError } = await supabase
