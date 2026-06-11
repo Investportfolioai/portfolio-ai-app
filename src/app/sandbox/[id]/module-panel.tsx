@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion } from "motion/react";
-import { X, Sparkles, Send, Loader2, Plus } from "lucide-react";
+import { X, Sparkles, Send, Loader2, Plus, Copy } from "lucide-react";
 import type { ContentBlock } from "./actions";
 import { updateModuleContent, editModuleWithAI, fetchModuleContent } from "./actions";
 
@@ -255,7 +255,13 @@ function BlockEditor({
       return <TextareaEditor value={block.value} onChange={onChange} placeholder="Script content..." />;
     case "text":
     default:
-      return <TextareaEditor value={block.value} onChange={onChange} placeholder="Text content..." />;
+      return (
+        <TextareaEditor
+          value={block.value.replace(/\\n/g, "\n").replace(/\\t/g, "\t")}
+          onChange={onChange}
+          placeholder="Text content..."
+        />
+      );
   }
 }
 
@@ -297,6 +303,8 @@ export function ModulePanel({
   const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [promptHistory, setPromptHistory] = useState<{ text: string; ts: Date }[]>([]);
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // If content is null on open, fetch fresh from DB immediately
   useEffect(() => {
@@ -376,6 +384,14 @@ export function ModulePanel({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  function handleCopyForSheets() {
+    const val = content[0].value.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
+    navigator.clipboard.writeText(val).catch(console.error);
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    setCopied(true);
+    copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
+  }
 
   function handleTitleChange(val: string) {
     setTitle(val);
@@ -479,6 +495,16 @@ export function ModulePanel({
           </div>
           <div className="flex shrink-0 items-center gap-2 pt-0.5">
             <StatusBadge status={module.status} />
+            {content.length === 1 && content[0].type === "text" && (
+              <button
+                type="button"
+                onClick={handleCopyForSheets}
+                className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] text-white/40 transition-colors hover:border-[#c9a84c]/30 hover:text-[#c9a84c]"
+              >
+                <Copy className="h-3 w-3" />
+                {copied ? "Copied!" : "Copy for Sheets"}
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
