@@ -146,19 +146,9 @@ function toSheetsBlock(content: ContentBlock[]): ContentBlock | null {
 // buildModule
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You are a real estate and business strategy AI. The user may provide YouTube video transcripts and a build request. Use the transcripts as primary source material, supplement with web research when helpful, and generate a module by calling create_module with these fields:
-- title (string): concise name, 3-6 words
-- description (string): 1-2 sentence summary of what this module does and its value
-- content (array of objects with type and value):
-  - type "checklist": use for step-by-step action items or due diligence lists
-  - type "script": use for call scripts, objection handling, or conversation flows
-  - type "sequence": use for follow-up drip sequences or multi-step outreach
-  - type "text": use for narrative explanations, strategy notes, or templates
-  Generate as many content blocks as needed to be genuinely useful. Each value should be substantial and actionable.
-- folder_type (string): the folder type provided
-- status: always "draft"
+const SYSTEM_PROMPT = `You are a real estate and business strategy AI. You must respond with ONLY a raw JSON object. No markdown. No explanation. No backticks. Start your response with { and end with }. The JSON must have these exact fields: title (string), description (string), content (array of objects where each object has type (string) and value (string)), folder_type (string), status (string set to draft).
 
-Ground everything in the transcripts if provided. Use web_search to fill gaps or verify current market data.`;
+Content block types for the content array: "checklist" for action items/due diligence lists, "script" for call scripts/objection handling, "sequence" for follow-up drip steps, "text" for strategy notes/templates. Generate as many blocks as needed to be genuinely useful. Each value must be substantial and actionable. For checklist and sequence types, separate individual items with newlines within the value string.`;
 
 export async function buildModule(
   sandboxId: string,
@@ -205,61 +195,53 @@ export async function buildModule(
 
   const client = getClient();
 
-  const tools = [
-    { type: "web_search_20250305", name: "web_search" },
-    {
-      name: "create_module",
-      description: "Create a sandbox module with the specified fields.",
-      input_schema: MODULE_SCHEMA as unknown as Anthropic.Tool["input_schema"],
-    },
-  ] as unknown as Anthropic.MessageCreateParams["tools"];
-
   let response: Anthropic.Message;
   try {
     response = await client.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 8000,
-      system: [
-        {
-          type: "text",
-          text: SYSTEM_PROMPT,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      tools,
-      tool_choice: { type: "auto" },
+      max_tokens: 4000,
+      system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: userContent }],
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[sandbox] buildModule error:", msg);
+    console.error("[sandbox] buildModule API error:", msg);
     return { ok: false, error: "AI call failed. Try again." };
   }
 
-  console.log("[sandbox] buildModule raw response:", JSON.stringify(response.content, null, 2));
-
-  const block = response.content.find(
-    (b) => b.type === "tool_use" && b.name === "create_module",
-  );
-  if (!block || block.type !== "tool_use") {
-    console.error("[sandbox] No create_module call. stop_reason:", response.stop_reason);
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    console.error("[sandbox] buildModule: no text block. stop_reason:", response.stop_reason, JSON.stringify(response.content));
     return { ok: false, error: "AI did not return a module." };
   }
 
-  console.log("[sandbox] create_module input:", JSON.stringify(block.input, null, 2));
+  const fullText = textBlock.text;
+  console.log("[sandbox] buildModule raw response:", fullText);
 
-  const rawInput = block.input as Record<string, unknown>;
+  // Extract the JSON object — find first { and last } to strip any surrounding text
+  const start = fullText.indexOf("{");
+  const end = fullText.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    console.error("[sandbox] buildModule: no JSON object found in response:", fullText);
+    return { ok: false, error: "AI did not return a module." };
+  }
+  const jsonStr = fullText.slice(start, end + 1);
 
-  // Handle content in different shapes Claude might return
+  let rawInput: Record<string, unknown>;
+  try {
+    rawInput = JSON.parse(jsonStr) as Record<string, unknown>;
+  } catch (parseErr) {
+    console.error("[sandbox] buildModule JSON.parse failed:", parseErr, "\nExtracted:", jsonStr);
+    return { ok: false, error: "AI returned an invalid response." };
+  }
+
   let parsedContent: ContentBlock[] = [];
-  if (Array.isArray(rawInput.content) && (rawInput.content as unknown[]).length > 0) {
+  if (Array.isArray(rawInput.content)) {
     parsedContent = rawInput.content as ContentBlock[];
-  } else if (Array.isArray(rawInput) && (rawInput as unknown[]).length > 0) {
-    parsedContent = rawInput as unknown as ContentBlock[];
   }
 
   if (parsedContent.length === 0) {
-    console.warn("[sandbox] create_module returned empty content. raw input:", JSON.stringify(rawInput, null, 2));
+    console.warn("[sandbox] buildModule: empty content. rawInput:", JSON.stringify(rawInput));
   }
 
   // Append a tab-separated Google Sheets block when the prompt requests it
@@ -431,75 +413,65 @@ export type EditModuleResult =
 
 export async function editModuleWithAI(
   moduleId: string,
-  currentContent: ContentBlock[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  currentContent: any,
   prompt: string,
-): Promise<EditModuleResult> {
-  const user = await getSessionUser();
-  if (!user) return { ok: false, error: "Not authenticated." };
-  if (!canManage(user.role)) return { ok: false, error: "Not authorized." };
-
+) {
   try {
-    const client = getClient();
+    const user = await getSessionUser();
+    if (!user) return { ok: false, error: "Not authenticated" };
 
-    let response: Anthropic.Message;
-    try {
-      response = await client.messages.create({
+    const apiKey = (process.env.ANTHROPIC_API_KEY ?? "").replace(/\s/g, "");
+    if (!apiKey) return { ok: false, error: "No API key" };
+
+    const contentStr = currentContent && Array.isArray(currentContent) && currentContent.length > 0
+      ? JSON.stringify(currentContent)
+      : "(empty)";
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 4000,
-        system: "You are editing a module. The user will give you the current content array and an instruction. Return ONLY a valid JSON array of content blocks with the same structure: [{type, value}]. No markdown, no explanation, just the array.",
-        messages: [
-          {
-            role: "user",
-            content: `Current content: ${JSON.stringify(currentContent)}\n\nInstruction: ${prompt}`,
-          },
-        ],
-      });
-    } catch (apiErr) {
-      console.error("[sandbox] editModuleWithAI API call failed:", apiErr);
-      return { ok: true, content: currentContent };
-    }
+        max_tokens: 2000,
+        system: "You are editing a module. Return ONLY a valid JSON array. No markdown. No explanation. No backticks. Just a raw JSON array like [{\"type\":\"text\",\"value\":\"content here\"}]. The array must contain objects with type and value fields. When the user asks for a Google Sheets calculator, format the output as tab-separated rows where column B contains actual Excel/Sheets formulas starting with = that reference other cells. For example: row 17 should have =B15*B16 in column B, not the word Auto-calculated. Every numeric calculation must be a real formula.",
+        messages: [{
+          role: "user",
+          content: `Current content: ${contentStr}\n\nInstruction: ${prompt}`,
+        }],
+      }),
+    });
 
-    const textBlock = response.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      console.error("[sandbox] editModuleWithAI: no text block in response:", JSON.stringify(response.content));
-      return { ok: true, content: currentContent };
-    }
+    const data = await res.json();
+    console.log("[sandbox] editModuleWithAI raw response:", JSON.stringify(data));
 
-    const rawText = textBlock.text.trim();
-    console.log("[sandbox] editModuleWithAI raw response:", rawText);
+    if (!res.ok) return { ok: false, error: (data.error as { message?: string } | undefined)?.message ?? "API error" };
 
-    // Strip markdown code fences if present
-    const stripped = rawText
-      .replace(/^```(?:json)?\s*/m, "")
-      .replace(/\s*```$/m, "")
-      .trim();
+    const text: string = data?.content?.[0]?.text ?? "";
+    const start = text.indexOf("[");
+    const end = text.lastIndexOf("]");
+    if (start === -1 || end === -1) return { ok: false, error: "No array in response" };
 
-    let newContent: ContentBlock[];
-    try {
-      const parsed = JSON.parse(stripped);
-      if (!Array.isArray(parsed) || parsed.length === 0) {
-        console.warn("[sandbox] editModuleWithAI: result is not a non-empty array:", stripped);
-        return { ok: true, content: currentContent };
-      }
-      newContent = parsed as ContentBlock[];
-    } catch (parseErr) {
-      console.error("[sandbox] editModuleWithAI: JSON.parse failed:", parseErr, "\nRaw text:", stripped);
-      return { ok: true, content: currentContent };
-    }
+    const newContent = JSON.parse(text.slice(start, end + 1)) as ContentBlock[];
 
     const supabase = await createClient();
-    const { error: dbErr } = await supabase
+    const { error: dbError } = await supabase
       .from("sandbox_modules")
-      .update({ content: newContent })
+      .update({ content: newContent, updated_at: new Date().toISOString() })
       .eq("id", moduleId);
 
-    if (dbErr) {
-      console.error("[sandbox] editModuleWithAI: DB update error:", dbErr.message);
+    if (dbError) {
+      console.error("[sandbox] DB update error:", dbError);
+      return { ok: false, error: dbError.message };
     }
 
     return { ok: true, content: newContent };
   } catch (err) {
-    console.error("[sandbox] editModuleWithAI unexpected error:", err);
-    return { ok: true, content: currentContent };
+    console.error("[sandbox] editModuleWithAI crashed:", err);
+    return { ok: false, error: String(err) };
   }
 }

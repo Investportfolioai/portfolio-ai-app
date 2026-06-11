@@ -7,6 +7,29 @@ import type { ContentBlock } from "./actions";
 import { updateModuleContent, editModuleWithAI, fetchModuleContent } from "./actions";
 
 // ---------------------------------------------------------------------------
+// Markdown stripper — cleans AI-generated text/script blocks before display
+// ---------------------------------------------------------------------------
+
+function stripMarkdown(value: string): string {
+  return value
+    .replace(/^#{1,3}\s+/gm, "")         // ### headings
+    .replace(/\*\*(.+?)\*\*/g, "$1")     // **bold**
+    .replace(/\*(.+?)\*/g, "$1")         // *italic*
+    .replace(/^--+\s*/gm, "")            // -- list markers
+    .replace(/^>\s*/gm, "")              // > blockquotes
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1") // [link](url) → link text
+    .trim();
+}
+
+function stripBlocksMarkdown(blocks: ContentBlock[]): ContentBlock[] {
+  return blocks.map((b) =>
+    b.type === "text" || b.type === "script"
+      ? { ...b, value: stripMarkdown(b.value) }
+      : b,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -271,6 +294,23 @@ export function ModulePanel({
   const [editError, setEditError] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
+  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [promptHistory, setPromptHistory] = useState<{ text: string; ts: Date }[]>([]);
+
+  // If content is null on open, fetch fresh from DB immediately
+  useEffect(() => {
+    if (module.content !== null && module.content !== undefined) return;
+    let active = true;
+    fetchModuleContent(module.id).then((fresh) => {
+      if (!active || !fresh || fresh.length === 0) return;
+      const cleaned = stripBlocksMarkdown(fresh);
+      setContent(cleaned);
+      contentRef.current = cleaned;
+      onUpdate(module.id, { content: cleaned });
+    }).catch(() => { /* ignore */ });
+    return () => { active = false; };
+  }, [module.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep refs current for debounce closures
   const titleRef = useRef(title);
@@ -298,6 +338,8 @@ export function ModulePanel({
     setContent(module.content ?? []);
     setEditPrompt("");
     setEditError(null);
+    setPromptHistory([]);
+    setToast(null);
   }, [module.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll every 3s when content is empty, stop once content arrives
@@ -313,9 +355,10 @@ export function ModulePanel({
         const fresh = await fetchModuleContent(module.id);
         if (!active) return;
         if (fresh && fresh.length > 0) {
-          setContent(fresh);
-          contentRef.current = fresh;
-          onUpdate(module.id, { content: fresh });
+          const cleaned = stripBlocksMarkdown(fresh);
+          setContent(cleaned);
+          contentRef.current = cleaned;
+          onUpdate(module.id, { content: cleaned });
           setIsPolling(false);
         }
       } catch {
@@ -347,20 +390,36 @@ export function ModulePanel({
     scheduleSave();
   }
 
+  function showToast(text: string, ok: boolean) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ text, ok });
+    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
+  }
+
   async function handleAiEdit() {
     const trimmed = editPrompt.trim();
     if (!trimmed || isAiLoading) return;
     setEditError(null);
     setIsAiLoading(true);
+    setPromptHistory((prev) => {
+      const next = [{ text: trimmed, ts: new Date() }, ...prev].slice(0, 3);
+      return next;
+    });
     try {
       const res = await editModuleWithAI(module.id, contentRef.current, trimmed);
-      if (!res.ok) { setEditError(res.error); return; }
-      setContent(res.content);
-      contentRef.current = res.content;
-      onUpdate(module.id, { content: res.content });
+      if (!res.ok) {
+        showToast("Edit failed", false);
+        setEditError(res.error ?? "AI edit failed");
+        return;
+      }
+      const cleaned = stripBlocksMarkdown(res.content ?? []);
+      setContent(cleaned);
+      contentRef.current = cleaned;
+      onUpdate(module.id, { content: cleaned });
       setEditPrompt("");
+      showToast("Updated", true);
     } catch {
-      // server action already returns ok:true on failure; this is a safety net
+      showToast("Edit failed", false);
     } finally {
       setIsAiLoading(false);
     }
@@ -394,6 +453,19 @@ export function ModulePanel({
         exit={{ x: 480 }}
         transition={{ type: "spring", damping: 28, stiffness: 320 }}
       >
+        {/* ── Toast ── */}
+        {toast && (
+          <div
+            className={`absolute left-4 right-4 top-4 z-10 rounded-xl px-4 py-2.5 text-[13px] font-medium shadow-lg ${
+              toast.ok
+                ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/30"
+                : "bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/30"
+            }`}
+          >
+            {toast.text}
+          </div>
+        )}
+
         {/* ── Header ── */}
         <div className="flex shrink-0 items-start gap-3 border-b border-white/8 px-5 py-4">
           <div className="min-w-0 flex-1">
@@ -453,6 +525,20 @@ export function ModulePanel({
 
         {/* ── AI edit bar ── */}
         <div className="shrink-0 border-t border-white/8 bg-[#0a1628] px-5 py-4">
+          {/* Prompt history */}
+          {promptHistory.length > 0 && (
+            <div className="mb-3 flex flex-col gap-1">
+              {promptHistory.map((h, i) => (
+                <div key={i} className="flex items-start gap-2 text-[11px] text-white/30">
+                  <span className="shrink-0 tabular-nums">
+                    {h.ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                  <span className="truncate">{h.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Chips */}
           <div className="mb-3 flex flex-wrap gap-2">
             {suggestions.map((s) => (
