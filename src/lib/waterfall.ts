@@ -4,35 +4,29 @@ export function calculateMorbyWaterfall(input: WaterfallInput): WaterfallResult 
   const contractPrice = input.purchase_price;
   const ltv = (input.ltv_percent ?? 75) / 100;
   const dscrLoan = contractPrice * ltv;
-  const sellerNote = input.seller_note_amount ?? 0;
-  const dpts = contractPrice - sellerNote; // cash to seller at close
-  const assignmentFee = input.assignment_fee ?? 0;
-  const realtorCommission = input.realtor_commission ?? 0;
+  const fundingGap = contractPrice - dscrLoan; // TL funds this as a pass-through; only the fee is a real cost
+  const tlFee = fundingGap * 0.035;
 
   const closingCosts = contractPrice * 0.025;
   const prepaidInsurance = input.insurance_annual ?? contractPrice * 0.006;
   const prepaidTaxes = input.taxes_annual ?? contractPrice * 0.012;
+  const realtorCommission = input.realtor_commission ?? 0;
+  const dpts = input.seller_note_amount ?? 0; // cash to seller at close
+  const assignmentFee = input.assignment_fee ?? 0;
 
-  const totalTLAdvance =
-    contractPrice - dscrLoan + closingCosts + prepaidInsurance + prepaidTaxes + realtorCommission;
-  const tlFee = totalTLAdvance * 0.035;
-  const tlRepayment = totalTLAdvance + tlFee;
-
-  const afterTL = dscrLoan - tlRepayment;
-  const afterDPTS = afterTL - dpts;
-  const afterAssignment = afterDPTS - assignmentFee;
-  const creditPartnerFee = Math.max(0, afterAssignment) * 0.05;
-  const netToBuyer = afterAssignment - creditPartnerFee;
-  const portfolioAIFee = Math.max(0, netToBuyer) * 0.1;
+  const preCreditPartner = dscrLoan - tlFee - closingCosts - prepaidInsurance - prepaidTaxes - realtorCommission - dpts - assignmentFee;
+  const creditPartnerFee = preCreditPartner > 0 ? preCreditPartner * 0.05 : 0;
+  const netToBuyer = preCreditPartner - creditPartnerFee;
+  const portfolioAIFee = netToBuyer > 0 ? netToBuyer * 0.10 : 0;
 
   return {
     dscrLoan,
-    totalTLAdvance,
+    fundingGap,
     tlFee,
-    tlRepayment,
     closingCosts,
     prepaidInsurance,
     prepaidTaxes,
+    realtorCommission,
     dpts,
     assignmentFee,
     creditPartnerFee,

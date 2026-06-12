@@ -1507,9 +1507,7 @@ function WaterfallBreakdown({ w, ltvPct }: { w: WaterfallResult; ltvPct: number 
   const neg = (v: number) => (
     <span className="data-number tabular-nums text-rose-500">–{money(v)}</span>
   );
-  const pos = (v: number, accent = false) => (
-    <span className={`data-number tabular-nums ${accent ? "text-[#D4AF37] font-bold" : "text-foreground"}`}>{money(v)}</span>
-  );
+  const netColor = w.netToBuyer >= 0 ? "text-[#D4AF37] font-bold" : "text-rose-500 font-bold";
   return (
     <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 text-xs">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -1518,28 +1516,30 @@ function WaterfallBreakdown({ w, ltvPct }: { w: WaterfallResult; ltvPct: number 
       <div className="space-y-1 text-muted-foreground">
         <div className="flex justify-between">
           <span>DSCR Loan ({ltvPct}% LTV)</span>
-          {pos(w.dscrLoan)}
+          <span className="data-number tabular-nums text-foreground">{money(w.dscrLoan)}</span>
         </div>
         <div className="flex justify-between">
-          <span>TL Advance (gap + costs)</span>
-          {neg(w.totalTLAdvance)}
-        </div>
-        <div className="ml-3 flex justify-between text-[11px]">
-          <span>· Closing Costs (2.5%)</span>
-          <span className="data-number tabular-nums">{money(w.closingCosts)}</span>
-        </div>
-        <div className="ml-3 flex justify-between text-[11px]">
-          <span>· Prepaid Insurance</span>
-          <span className="data-number tabular-nums">{money(w.prepaidInsurance)}</span>
-        </div>
-        <div className="ml-3 flex justify-between text-[11px]">
-          <span>· Prepaid Taxes</span>
-          <span className="data-number tabular-nums">{money(w.prepaidTaxes)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span>TL Fee (3.5%)</span>
+          <span>TL Fee (3.5% of gap)</span>
           {neg(w.tlFee)}
         </div>
+        <div className="flex justify-between">
+          <span>Closing Costs (2.5%)</span>
+          {neg(w.closingCosts)}
+        </div>
+        <div className="flex justify-between">
+          <span>Prepaid Insurance</span>
+          {neg(w.prepaidInsurance)}
+        </div>
+        <div className="flex justify-between">
+          <span>Prepaid Taxes</span>
+          {neg(w.prepaidTaxes)}
+        </div>
+        {w.realtorCommission > 0 && (
+          <div className="flex justify-between">
+            <span>Realtor Commission</span>
+            {neg(w.realtorCommission)}
+          </div>
+        )}
         <div className="flex justify-between">
           <span>DPTS — Cash to Seller</span>
           {neg(w.dpts)}
@@ -1560,7 +1560,7 @@ function WaterfallBreakdown({ w, ltvPct }: { w: WaterfallResult; ltvPct: number 
       <div className="mt-2 flex justify-between border-t border-border pt-2">
         <span className="font-semibold text-foreground">NET TO BUYER</span>
         <span>
-          {pos(w.netToBuyer, true)}
+          <span className={`data-number tabular-nums ${netColor}`}>{money(w.netToBuyer)}</span>
           <span className="ml-1.5 font-normal text-muted-foreground">({w.cashbackPct.toFixed(1)}%)</span>
         </span>
       </div>

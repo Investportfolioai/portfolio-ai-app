@@ -246,12 +246,12 @@ export interface WaterfallInput {
 
 export interface WaterfallResult {
   dscrLoan: number;
-  totalTLAdvance: number;
+  fundingGap: number;
   tlFee: number;
-  tlRepayment: number;
   closingCosts: number;
   prepaidInsurance: number;
   prepaidTaxes: number;
+  realtorCommission: number;
   dpts: number;
   assignmentFee: number;
   creditPartnerFee: number;

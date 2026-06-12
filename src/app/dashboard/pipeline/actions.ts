@@ -255,9 +255,13 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   const cashbackNote = waterfall != null
     ? `\n\nSERVER-COMPUTED FACTS (authoritative — use these exact figures in your output):\n` +
       `- DSCR Loan (${ltvPct}% LTV): $${waterfall.dscrLoan.toFixed(0)}\n` +
-      `- TL Advance (bridge capital for gap + costs): $${waterfall.totalTLAdvance.toFixed(0)}\n` +
-      `- TL Repayment (advance + 3.5% fee): $${waterfall.tlRepayment.toFixed(0)}\n` +
-      `- DPTS — Cash to Seller at Close: $${waterfall.dpts.toFixed(0)}\n` +
+      `- Funding Gap (pass-through): $${waterfall.fundingGap.toFixed(0)}\n` +
+      `- TL Fee (3.5% of gap): $${waterfall.tlFee.toFixed(0)}\n` +
+      `- Closing Costs (2.5%): $${waterfall.closingCosts.toFixed(0)}\n` +
+      `- Prepaid Insurance: $${waterfall.prepaidInsurance.toFixed(0)}\n` +
+      `- Prepaid Taxes: $${waterfall.prepaidTaxes.toFixed(0)}\n` +
+      (waterfall.realtorCommission > 0 ? `- Realtor Commission: $${waterfall.realtorCommission.toFixed(0)}\n` : "") +
+      `- DPTS — Cash to Seller: $${waterfall.dpts.toFixed(0)}\n` +
       `- Assignment Fee: $${waterfall.assignmentFee.toFixed(0)}\n` +
       `- Credit Partner Fee (5%): $${waterfall.creditPartnerFee.toFixed(0)}\n` +
       `- NET TO BUYER: $${waterfall.netToBuyer.toFixed(0)}\n` +
@@ -356,7 +360,7 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       stabilization_grade: u.stabilization_score,
       cashback_at_close: cashbackAtClose,
       tl_fee: waterfall?.tlFee ?? null,
-      tl_repayment: waterfall?.tlRepayment ?? null,
+      tl_repayment: waterfall != null ? waterfall.fundingGap + waterfall.tlFee : null,
       credit_partner_fee: waterfall?.creditPartnerFee ?? null,
       portfolio_ai_fee: waterfall?.portfolioAIFee ?? null,
     })
