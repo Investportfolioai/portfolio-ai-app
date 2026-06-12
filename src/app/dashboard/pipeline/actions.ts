@@ -696,7 +696,9 @@ export async function uploadDealDocument(
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { ok: false, error: "No file selected." };
-  if (file.type !== "application/pdf") return { ok: false, error: "PDF files only." };
+  const isImage = file.type.startsWith("image/");
+  if (file.type !== "application/pdf" && !isImage)
+    return { ok: false, error: "PDF or image files only." };
 
   const admin = createAdminClient();
   const buf = Buffer.from(await file.arrayBuffer());
@@ -705,16 +707,22 @@ export async function uploadDealDocument(
 
   const up = await admin.storage
     .from(BUCKET)
-    .upload(path, buf, { contentType: "application/pdf", upsert: false });
+    .upload(path, buf, { contentType: file.type, upsert: false });
   if (up.error) return { ok: false, error: up.error.message };
 
   await admin.from("deal_documents").insert({
     deal_id: dealId,
     file_name: file.name,
     file_url: path,
-    file_type: "application/pdf",
+    file_type: file.type,
   });
   await logActivity(dealId, "document_uploaded", file.name);
+
+  // Images are stored as-is; skip AI text extraction.
+  if (isImage) {
+    revalidatePath("/dashboard/pipeline");
+    return { ok: true, extraction: { summary: "", milestones: [], term_changes: [] } };
+  }
 
   let extraction: DocExtraction;
   try {

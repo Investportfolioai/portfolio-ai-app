@@ -1859,13 +1859,12 @@ function DocumentsTab({
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, startUpload] = useTransition();
+  const [dragOver, setDragOver] = useState(false);
   const [extraction, setExtraction] = useState<Extraction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const docs = detail?.documents ?? [];
 
-  function onUpload() {
-    const f = fileRef.current?.files?.[0];
-    if (!f) return;
+  function handleFile(f: File) {
     const fd = new FormData();
     fd.append("file", f);
     setError(null);
@@ -1884,22 +1883,34 @@ function DocumentsTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <label
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const f = e.dataTransfer.files?.[0];
+          if (f) handleFile(f);
+        }}
+        className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-8 text-center transition-colors ${
+          dragOver
+            ? "border-[#D4AF37] bg-[#D4AF37]/5"
+            : "border-white/20 bg-[#1a1f2e] hover:border-white/40"
+        } ${uploading ? "pointer-events-none opacity-60" : ""}`}
+      >
+        <span className="text-sm text-gray-400">
+          {uploading ? "Uploading…" : "Drop files here or click to upload"}
+        </span>
+        <span className="mt-1 text-xs text-gray-600">PDF or image — stored to deal documents</span>
         <input
           ref={fileRef}
           type="file"
-          accept="application/pdf"
-          className="min-w-0 flex-1 text-xs text-foreground file:mr-2 file:rounded-full file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-xs file:font-medium file:text-secondary-foreground"
-        />
-        <button
-          type="button"
+          accept="application/pdf,image/*"
+          className="hidden"
           disabled={uploading}
-          onClick={onUpload}
-          className="shrink-0 rounded-full bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
-        >
-          {uploading ? "Reading…" : "Upload"}
-        </button>
-      </div>
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+      </label>
       {error && <p className="text-xs text-destructive">{error}</p>}
 
       {extraction && (
