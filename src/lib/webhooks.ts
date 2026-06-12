@@ -1,6 +1,7 @@
 import { createAdminClient } from "./supabase/admin";
 
 export function fireWebhook(event: string, deal: Record<string, unknown>): Promise<void> {
+  console.log("Webhook firing to:", process.env.MAKE_WEBHOOK_URL ? "URL set" : "URL MISSING");
   const webhookUrl = process.env.MAKE_WEBHOOK_URL;
   if (!webhookUrl) return Promise.resolve();
 
