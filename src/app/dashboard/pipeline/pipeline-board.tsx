@@ -332,7 +332,7 @@ function AddDealModal({ open, onClose }: { open: boolean; onClose: () => void })
             <ModalField label="Cash invested" name="cash_invested" type="number" />
             <ModalField label="Net monthly cash flow" name="net_monthly_cashflow" type="number" />
             <ModalField label="Annual gross revenue" name="annual_gross_revenue" type="number" />
-            <ModalField label="Seller carry" name="seller_carry" type="number" defaultValue="0" />
+            <ModalField label="Seller note balance" name="seller_carry" type="number" defaultValue="0" />
             <ModalField label="Assignment fee" name="assignment_fee" type="number" />
             <ModalSelect label="Status" name="status" options={["pending", "active"]} />
           </div>
@@ -1094,11 +1094,19 @@ function OverviewTab({
           onLiveChange={(ltv) => setLiveLtv(ltv)}
         />
         <EditableRow
-          dealId={deal.id} field="seller_note_amount" label="Seller Carry" numeric
+          dealId={deal.id} field="seller_note_amount" label="Seller Note Balance" numeric
           raw={deal.seller_note_amount} display={money(deal.seller_note_amount)}
           onSaved={makeOnSaved("seller_note_amount")}
           onLiveChange={(v) => setLiveSellerCarry(v === "" ? null : Number(v))}
         />
+        {liveWaterfall != null && (
+          <div className="flex items-center justify-between gap-4 px-3 py-2.5">
+            <dt className="shrink-0 text-sm text-muted-foreground">DPTS — Cash to Seller</dt>
+            <dd className="data-number text-right text-sm font-medium tabular-nums text-[#D4AF37]">
+              {money(liveWaterfall.dpts)}
+            </dd>
+          </div>
+        )}
         <EditableRow
           dealId={deal.id} field="assignment_fee" label="Assignment Fee" numeric
           raw={deal.assignment_fee} display={money(deal.assignment_fee)}

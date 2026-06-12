@@ -31,7 +31,12 @@ DEAL STRUCTURE CONTEXT:
 - Primary strategy: Morby Method — institutional first lien at LTV% + seller carry second
 - The server computes the full waterfall: DSCR loan → TL repayment → DPTS (down to seller) → assignment fee → credit partner 5% = Net to Buyer
 - Monthly obligations = first_lien_monthly + seller_carry_monthly (provided in the deal data)
-- Seller carry is a monthly payment obligation only — it is NOT a cash outflow at closing
+
+CRITICAL — SELLER NOTE BALANCE vs DPTS:
+- seller_note_amount (seller note balance) is the balance of the seller's subordinate note — it is NOT a closing cost and NOT subtracted directly from cashback.
+- DPTS (Down Payment To Seller) = purchase_price − seller_note_amount. This is the actual cash the seller receives at close and IS subtracted in the waterfall.
+- Never list seller_note_amount as a negative line item. Only DPTS appears as a deduction.
+- The seller carry note creates monthly payment obligations (seller_carry_monthly), not a lump-sum cash outflow at closing.
 
 ACQ SCORE (0-100) — measures cashback at close and acquisition structure quality.
 Base score on the pre-computed cashback_pct provided in SERVER-COMPUTED FACTS:

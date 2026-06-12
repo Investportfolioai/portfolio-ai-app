@@ -11,7 +11,8 @@ export function calculateMorbyWaterfall(input: WaterfallInput): WaterfallResult 
   const prepaidInsurance = input.insurance_annual ?? contractPrice * 0.006;
   const prepaidTaxes = input.taxes_annual ?? contractPrice * 0.012;
   const realtorCommission = input.realtor_commission ?? 0;
-  const dpts = input.seller_note_amount ?? 0; // cash to seller at close
+  const sellerNoteBalance = input.seller_note_amount ?? 0;
+  const dpts = contractPrice - sellerNoteBalance; // DPTS = cash to seller = purchase_price − seller note balance
   const assignmentFee = input.assignment_fee ?? 0;
 
   const preCreditPartner = dscrLoan - tlFee - closingCosts - prepaidInsurance - prepaidTaxes - realtorCommission - dpts - assignmentFee;

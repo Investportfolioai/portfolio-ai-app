@@ -491,7 +491,7 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   arv: { label: "ARV", numeric: true },
   loan_amount: { label: "Loan Amount", numeric: true },
   ltv_percent: { label: "LTV %", numeric: true },
-  seller_note_amount: { label: "Seller Carry", numeric: true },
+  seller_note_amount: { label: "Seller Note Balance", numeric: true },
   assignment_fee: { label: "Assignment Fee", numeric: true },
   interest_rate: { label: "Interest Rate", numeric: true },
   holdback: { label: "Holdback", numeric: true },
