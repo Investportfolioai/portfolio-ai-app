@@ -488,10 +488,13 @@ export async function markDealDead(
   return { ok: true };
 }
 
-/** Mark a deal closed — sets status = 'closed' and records closed_at. */
-export async function markDealClosed(dealId: string): Promise<ActionState> {
+/** Mark a deal closed — sets status = 'closed', records closed_at, and auto-creates a holding. */
+export async function markDealClosed(
+  dealId: string,
+): Promise<{ ok: true; holdingCreated: boolean } | { ok: false; error: string }> {
   const user = await getSessionUser();
   if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
+
   const supabase = await createClient();
   const now = new Date().toISOString();
   const { error } = await supabase
@@ -499,10 +502,66 @@ export async function markDealClosed(dealId: string): Promise<ActionState> {
     .update({ status: "closed", closed_at: now, status_changed_at: now })
     .eq("id", dealId);
   if (error) return { ok: false, error: error.message };
+
   await logActivity(dealId, "closed", "Deal marked as closed.");
   fireWebhookById("deal.closed", dealId);
+
+  // Auto-create a holding from the deal data.
+  let holdingCreated = false;
+  try {
+    const admin = createAdminClient();
+    const { data: deal } = await admin
+      .from("deals")
+      .select(
+        "owner_id, property_address, purchase_price, arv, structure_type, first_lien_monthly, seller_carry_monthly, seller_note_amount, ai_analysis",
+      )
+      .eq("id", dealId)
+      .maybeSingle();
+
+    if (deal) {
+      // Dedup: skip if a holding is already linked to this deal or shares the address.
+      const { data: existing } = await admin
+        .from("holdings")
+        .select("id")
+        .or(`linked_deal_id.eq.${dealId},address.eq.${deal.property_address}`)
+        .maybeSingle();
+
+      if (!existing) {
+        // Compute balloon_date from balloon_term_months in AI analysis if present.
+        const ai = deal.ai_analysis as { extracted_deal_data?: { balloon_term_months?: number } } | null;
+        const balloonMonths = ai?.extracted_deal_data?.balloon_term_months ?? null;
+        let balloonDate: string | null = null;
+        if (typeof balloonMonths === "number" && balloonMonths > 0) {
+          const d = new Date(now);
+          d.setMonth(d.getMonth() + balloonMonths);
+          balloonDate = d.toISOString().slice(0, 10);
+        }
+
+        await admin.from("holdings").insert({
+          owner_id: deal.owner_id ?? user.id,
+          address: deal.property_address,
+          purchase_close_price: deal.purchase_price ?? null,
+          purchase_price: deal.purchase_price ?? null,
+          acquisition_date: now.slice(0, 10),
+          zillow_avm: deal.arv ?? null,
+          property_type: deal.structure_type ?? null,
+          status: "active",
+          linked_deal_id: dealId,
+          monthly_payment: deal.first_lien_monthly ?? null,
+          seller_carry_payment: deal.seller_carry_monthly ?? null,
+          seller_carry_balance: deal.seller_note_amount ?? null,
+          balloon_date: balloonDate,
+        });
+        holdingCreated = true;
+      }
+    }
+  } catch (e) {
+    console.warn("[markDealClosed] holding auto-create skipped:", (e as Error).message);
+  }
+
   revalidatePath("/dashboard/pipeline");
-  return { ok: true };
+  revalidatePath("/dashboard/portfolio");
+  return { ok: true, holdingCreated };
 }
 
 /** Item 4 — inline field edit on the Overview tab. */

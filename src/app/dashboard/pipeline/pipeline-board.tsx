@@ -789,6 +789,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   const [intentionalPass, setIntentionalPass] = useState(false);
   const [markingClosed, startMarkClosed] = useTransition();
   const [confirmingClosed, setConfirmingClosed] = useState(false);
+  const [closedToast, setClosedToast] = useState<string | null>(null);
 
   const reloadDetail = () => {
     if (deal) getDealDetail(deal.id).then(setDetail);
@@ -974,8 +975,15 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                   disabled={markingClosed}
                   onClick={() =>
                     startMarkClosed(async () => {
-                      await markDealClosed(deal.id);
+                      const result = await markDealClosed(deal.id);
                       setConfirmingClosed(false);
+                      if (result.ok) {
+                        const msg = result.holdingCreated
+                          ? "Deal closed and added to Portfolio"
+                          : "Deal marked as closed";
+                        setClosedToast(msg);
+                        setTimeout(() => setClosedToast(null), 5000);
+                      }
                       router.refresh();
                     })
                   }
@@ -990,6 +998,13 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                 >
                   Cancel
                 </button>
+              </div>
+            )}
+
+            {closedToast && (
+              <div className="flex items-center gap-2 border-b border-emerald-500/20 bg-emerald-500/10 px-4 py-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                <span className="text-xs font-medium text-emerald-700">{closedToast}</span>
               </div>
             )}
 
