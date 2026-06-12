@@ -1,0 +1,12 @@
+alter table deals add column if not exists realtor_commission numeric default 0;
+alter table deals add column if not exists insurance_annual numeric;
+alter table deals add column if not exists taxes_annual numeric;
+alter table deals add column if not exists hoa_monthly numeric default 0;
+alter table deals add column if not exists first_lien_monthly numeric;
+alter table deals add column if not exists seller_carry_monthly numeric;
+alter table deals add column if not exists gator_amount numeric default 0;
+alter table deals add column if not exists gator_return_pct numeric default 30;
+alter table deals add column if not exists credit_partner_fee numeric;
+alter table deals add column if not exists tl_fee numeric;
+alter table deals add column if not exists tl_repayment numeric;
+alter table deals add column if not exists portfolio_ai_fee numeric;

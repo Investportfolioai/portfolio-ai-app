@@ -125,6 +125,19 @@ export interface Deal {
   origination_fee: number | null;
   ltv_percent: number | null;
 
+  realtor_commission: number | null;
+  insurance_annual: number | null;
+  taxes_annual: number | null;
+  hoa_monthly: number | null;
+  first_lien_monthly: number | null;
+  seller_carry_monthly: number | null;
+  gator_amount: number | null;
+  gator_return_pct: number | null;
+  credit_partner_fee: number | null;
+  tl_fee: number | null;
+  tl_repayment: number | null;
+  portfolio_ai_fee: number | null;
+
   /** Underwriting scores, 0–100, nullable (see migration 20260603010003). */
   acquisition_grade: number | null;
   stabilization_grade: number | null;
@@ -218,6 +231,61 @@ export function deadDaysRemaining(
 }
 
 // ---------------------------------------------------------------------------
+// Waterfall / cashflow calculation types (mirrored from waterfall.ts)
+// ---------------------------------------------------------------------------
+
+export interface WaterfallInput {
+  purchase_price: number;
+  ltv_percent: number | null;
+  seller_note_amount: number | null;
+  assignment_fee: number | null;
+  realtor_commission: number | null;
+  insurance_annual: number | null;
+  taxes_annual: number | null;
+}
+
+export interface WaterfallResult {
+  dscrLoan: number;
+  totalTLAdvance: number;
+  tlFee: number;
+  tlRepayment: number;
+  closingCosts: number;
+  prepaidInsurance: number;
+  prepaidTaxes: number;
+  dpts: number;
+  assignmentFee: number;
+  creditPartnerFee: number;
+  netToBuyer: number;
+  portfolioAIFee: number;
+  cashbackPct: number;
+}
+
+export interface CashflowInput {
+  purchase_price: number;
+  insurance_annual: number | null;
+  taxes_annual: number | null;
+  hoa_monthly: number | null;
+  first_lien_monthly: number | null;
+  seller_carry_monthly: number | null;
+}
+
+export interface CashflowResult {
+  grossAnnualRent: number;
+  vacancy: number;
+  capex: number;
+  management: number;
+  insurance: number;
+  taxes: number;
+  hoa: number;
+  totalOpEx: number;
+  noi: number;
+  annualDebtService: number;
+  annualCashflow: number;
+  monthlyCashflow: number;
+  dscr: number | null;
+}
+
+// ---------------------------------------------------------------------------
 // AI underwriting output (shared client/server shape; stored in deals.ai_analysis)
 // ---------------------------------------------------------------------------
 
@@ -288,6 +356,10 @@ export interface UnderwritingOutput {
   extracted_deal_data: ExtractedDealData;
   /** Null until underwriting has been run (manual deals start un-underwritten). */
   underwriting: UnderwritingAnalysis | null;
+  /** Server-computed Morby waterfall (set by runUnderwriting, not the AI). */
+  waterfall?: WaterfallResult | null;
+  /** Server-computed cashflow using AI's rent estimate (set by runUnderwriting). */
+  cashflow?: CashflowResult | null;
 }
 
 export const RECOMMENDATION_LABELS: Record<Recommendation, string> = {

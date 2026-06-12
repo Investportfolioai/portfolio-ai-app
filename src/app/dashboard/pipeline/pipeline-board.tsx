@@ -12,6 +12,8 @@ import {
   type AssignmentStatus,
   type KpAssignment,
   type AvailableKp,
+  type WaterfallResult,
+  type CashflowResult,
   ASSIGNMENT_STATUS_LABELS,
   MILESTONE_LABELS,
   STATUS_LABELS,
@@ -23,6 +25,7 @@ import {
   equitySpread,
   portfolioAiFee,
 } from "@/lib/types";
+import { calculateMorbyWaterfall } from "@/lib/waterfall";
 import { money, moneyCompact, updatedLabel } from "@/lib/format";
 import {
   acceptDeal,
@@ -1008,7 +1011,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
 
 // Fields that auto-trigger re-underwrite when saved from the Overview tab.
 const REUNDERWRITE_ON_SAVE = new Set([
-  "purchase_price", "arv", "seller_note_amount", "ltv_percent", "assignment_fee",
+  "purchase_price", "arv", "seller_note_amount", "ltv_percent", "assignment_fee", "realtor_commission",
 ]);
 
 function OverviewTab({
@@ -1024,11 +1027,14 @@ function OverviewTab({
   const ed = deal.ai_analysis?.extracted_deal_data;
   const assetType = ed?.property_type ?? "—";
 
-  // Live state for real-time Est. Cashback calculation
+  // Live state for real-time waterfall preview
   const [livePp, setLivePp] = useState<number | null>(deal.purchase_price);
   const [liveSellerCarry, setLiveSellerCarry] = useState<number | null>(deal.seller_note_amount);
   const [liveLtv, setLiveLtv] = useState<number>(deal.ltv_percent ?? 75);
   const [liveAssignFee, setLiveAssignFee] = useState<number>(deal.assignment_fee ?? 0);
+  const [liveRealtor, setLiveRealtor] = useState<number | null>(deal.realtor_commission ?? null);
+  const [liveInsurance, setLiveInsurance] = useState<number | null>(deal.insurance_annual ?? null);
+  const [liveTaxes, setLiveTaxes] = useState<number | null>(deal.taxes_annual ?? null);
 
   // Reset live state when a different deal is opened
   useEffect(() => {
@@ -1036,6 +1042,9 @@ function OverviewTab({
     setLiveSellerCarry(deal.seller_note_amount);
     setLiveLtv(deal.ltv_percent ?? 75);
     setLiveAssignFee(deal.assignment_fee ?? 0);
+    setLiveRealtor(deal.realtor_commission ?? null);
+    setLiveInsurance(deal.insurance_annual ?? null);
+    setLiveTaxes(deal.taxes_annual ?? null);
   }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function makeOnSaved(field: string) {
@@ -1045,14 +1054,18 @@ function OverviewTab({
     };
   }
 
-  // Real-time Morby cashback estimate
-  const dscrLoan = livePp != null ? livePp * (liveLtv / 100) : null;
-  const downToSeller = livePp != null && liveSellerCarry != null ? livePp - liveSellerCarry : null;
-  const closingCosts = livePp != null ? livePp * 0.10 : null;
-  const estCashback =
-    dscrLoan != null && downToSeller != null && closingCosts != null
-      ? dscrLoan - downToSeller - closingCosts - liveAssignFee
-      : null;
+  // Real-time Morby waterfall using pure deterministic function
+  const liveWaterfall = livePp != null
+    ? calculateMorbyWaterfall({
+        purchase_price: livePp,
+        ltv_percent: liveLtv,
+        seller_note_amount: liveSellerCarry,
+        assignment_fee: liveAssignFee,
+        realtor_commission: liveRealtor,
+        insurance_annual: liveInsurance,
+        taxes_annual: liveTaxes,
+      })
+    : null;
 
   return (
     <div>
@@ -1099,14 +1112,51 @@ function OverviewTab({
         <Row label="ACQ Grade" value={deal.acquisition_grade != null ? `${deal.acquisition_grade} / 100` : "—"} />
         <Row label="STAB Grade" value={deal.stabilization_grade != null ? `${deal.stabilization_grade} / 100` : "—"} />
         <Row label="Capital Runway Multiple" value={capitalRunwayMultiple(deal)} />
-        {estCashback != null && (
+        {liveWaterfall != null && (
           <div className="flex items-center justify-between gap-4 border-t border-border px-3 py-2.5">
-            <dt className="shrink-0 text-sm text-muted-foreground">Est. Cashback (Morby)</dt>
-            <dd className="data-number text-right text-sm font-bold tabular-nums text-[#D4AF37]">
-              {money(estCashback)}
+            <dt className="shrink-0 text-sm text-muted-foreground">Est. Net to Buyer</dt>
+            <dd className={`data-number text-right text-sm font-bold tabular-nums ${liveWaterfall.netToBuyer >= 0 ? "text-[#D4AF37]" : "text-rose-500"}`}>
+              {money(liveWaterfall.netToBuyer)}
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">({liveWaterfall.cashbackPct.toFixed(1)}%)</span>
             </dd>
           </div>
         )}
+      </Section>
+
+      <Section title="Cost Inputs · click to edit">
+        <EditableRow
+          dealId={deal.id} field="realtor_commission" label="Realtor Commission" numeric
+          raw={deal.realtor_commission ?? null} display={money(deal.realtor_commission)}
+          onSaved={makeOnSaved("realtor_commission")}
+          onLiveChange={(v) => setLiveRealtor(v === "" ? null : Number(v))}
+        />
+        <EditableRow
+          dealId={deal.id} field="insurance_annual" label="Insurance / yr" numeric
+          raw={deal.insurance_annual ?? null} display={money(deal.insurance_annual)}
+          onSaved={makeOnSaved("insurance_annual")}
+          onLiveChange={(v) => setLiveInsurance(v === "" ? null : Number(v))}
+        />
+        <EditableRow
+          dealId={deal.id} field="taxes_annual" label="Taxes / yr" numeric
+          raw={deal.taxes_annual ?? null} display={money(deal.taxes_annual)}
+          onSaved={makeOnSaved("taxes_annual")}
+          onLiveChange={(v) => setLiveTaxes(v === "" ? null : Number(v))}
+        />
+        <EditableRow
+          dealId={deal.id} field="hoa_monthly" label="HOA / mo" numeric
+          raw={deal.hoa_monthly ?? null} display={money(deal.hoa_monthly)}
+          onSaved={makeOnSaved("hoa_monthly")}
+        />
+        <EditableRow
+          dealId={deal.id} field="first_lien_monthly" label="First Lien / mo" numeric
+          raw={deal.first_lien_monthly ?? null} display={money(deal.first_lien_monthly)}
+          onSaved={makeOnSaved("first_lien_monthly")}
+        />
+        <EditableRow
+          dealId={deal.id} field="seller_carry_monthly" label="Seller Carry / mo" numeric
+          raw={deal.seller_carry_monthly ?? null} display={money(deal.seller_carry_monthly)}
+          onSaved={makeOnSaved("seller_carry_monthly")}
+        />
       </Section>
 
       <WholesalerActions deal={deal} onChanged={onChanged} />
@@ -1453,6 +1503,143 @@ function LtvRow({
   );
 }
 
+function WaterfallBreakdown({ w, ltvPct }: { w: WaterfallResult; ltvPct: number }) {
+  const neg = (v: number) => (
+    <span className="data-number tabular-nums text-rose-500">–{money(v)}</span>
+  );
+  const pos = (v: number, accent = false) => (
+    <span className={`data-number tabular-nums ${accent ? "text-[#D4AF37] font-bold" : "text-foreground"}`}>{money(v)}</span>
+  );
+  return (
+    <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 text-xs">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        Morby Waterfall
+      </p>
+      <div className="space-y-1 text-muted-foreground">
+        <div className="flex justify-between">
+          <span>DSCR Loan ({ltvPct}% LTV)</span>
+          {pos(w.dscrLoan)}
+        </div>
+        <div className="flex justify-between">
+          <span>TL Advance (gap + costs)</span>
+          {neg(w.totalTLAdvance)}
+        </div>
+        <div className="ml-3 flex justify-between text-[11px]">
+          <span>· Closing Costs (2.5%)</span>
+          <span className="data-number tabular-nums">{money(w.closingCosts)}</span>
+        </div>
+        <div className="ml-3 flex justify-between text-[11px]">
+          <span>· Prepaid Insurance</span>
+          <span className="data-number tabular-nums">{money(w.prepaidInsurance)}</span>
+        </div>
+        <div className="ml-3 flex justify-between text-[11px]">
+          <span>· Prepaid Taxes</span>
+          <span className="data-number tabular-nums">{money(w.prepaidTaxes)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>TL Fee (3.5%)</span>
+          {neg(w.tlFee)}
+        </div>
+        <div className="flex justify-between">
+          <span>DPTS — Cash to Seller</span>
+          {neg(w.dpts)}
+        </div>
+        {w.assignmentFee > 0 && (
+          <div className="flex justify-between">
+            <span>Assignment Fee</span>
+            {neg(w.assignmentFee)}
+          </div>
+        )}
+        {w.creditPartnerFee > 0 && (
+          <div className="flex justify-between">
+            <span>Credit Partner (5%)</span>
+            {neg(w.creditPartnerFee)}
+          </div>
+        )}
+      </div>
+      <div className="mt-2 flex justify-between border-t border-border pt-2">
+        <span className="font-semibold text-foreground">NET TO BUYER</span>
+        <span>
+          {pos(w.netToBuyer, true)}
+          <span className="ml-1.5 font-normal text-muted-foreground">({w.cashbackPct.toFixed(1)}%)</span>
+        </span>
+      </div>
+      {w.portfolioAIFee > 0 && (
+        <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
+          <span>Portfolio AI Fee (10%)</span>
+          <span className="data-number tabular-nums">{money(w.portfolioAIFee)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CashflowBreakdown({ c }: { c: CashflowResult }) {
+  const neg = (v: number) => (
+    <span className="data-number tabular-nums text-rose-500">–{money(v)}</span>
+  );
+  const cashColor = c.monthlyCashflow >= 0 ? "text-emerald-400 font-bold" : "text-rose-500 font-bold";
+  return (
+    <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 text-xs">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+        Cashflow Analysis
+      </p>
+      <div className="space-y-1 text-muted-foreground">
+        <div className="flex justify-between">
+          <span>Gross Annual Rent</span>
+          <span className="data-number tabular-nums text-foreground">{money(c.grossAnnualRent)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span>Vacancy (8%)</span>
+          {neg(c.vacancy)}
+        </div>
+        <div className="flex justify-between">
+          <span>CapEx (20%)</span>
+          {neg(c.capex)}
+        </div>
+        <div className="flex justify-between">
+          <span>Management (8%)</span>
+          {neg(c.management)}
+        </div>
+        <div className="flex justify-between">
+          <span>Insurance</span>
+          {neg(c.insurance)}
+        </div>
+        <div className="flex justify-between">
+          <span>Taxes</span>
+          {neg(c.taxes)}
+        </div>
+        {c.hoa > 0 && (
+          <div className="flex justify-between">
+            <span>HOA</span>
+            {neg(c.hoa)}
+          </div>
+        )}
+        <div className="flex justify-between border-t border-border pt-1">
+          <span className="text-foreground">NOI</span>
+          <span className={`data-number tabular-nums ${c.noi >= 0 ? "text-foreground" : "text-rose-500"}`}>{money(c.noi)}</span>
+        </div>
+        {c.annualDebtService > 0 && (
+          <div className="flex justify-between">
+            <span>Annual Debt Service</span>
+            {neg(c.annualDebtService)}
+          </div>
+        )}
+      </div>
+      <div className="mt-2 flex justify-between border-t border-border pt-2">
+        <span className="font-semibold text-foreground">Monthly Cashflow</span>
+        <span className={`data-number tabular-nums ${cashColor}`}>{money(c.monthlyCashflow)}</span>
+      </div>
+      {c.dscr != null && (
+        <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
+          <span>DSCR</span>
+          <span className={`data-number tabular-nums ${c.dscr >= 1 ? "text-emerald-400" : "text-rose-500"}`}>{c.dscr.toFixed(2)}x</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AiTab({
   deal,
   running,
@@ -1463,6 +1650,8 @@ function AiTab({
   onRun: () => void;
 }) {
   const uw = deal.ai_analysis?.underwriting ?? null;
+  const waterfall = deal.ai_analysis?.waterfall ?? null;
+  const cashflow = deal.ai_analysis?.cashflow ?? null;
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -1495,50 +1684,24 @@ function AiTab({
               <span className="data-number">STAB {uw.stabilization_grade} · {uw.stabilization_score}</span>
             </div>
           </div>
-          {/* Cashback at close breakdown */}
-          {(() => {
-            const pp = deal.purchase_price;
-            const ltvPct = deal.ltv_percent ?? 75;
-            const dscrLoan = uw.first_lien_amount ?? (pp != null ? pp * (ltvPct / 100) : null);
-            const sellerCarry = uw.seller_carry_amount ?? deal.seller_note_amount;
-            const downToSeller = pp != null && sellerCarry != null ? pp - sellerCarry : null;
-            const closingCosts = pp != null ? pp * 0.10 : null;
-            const assignFee = deal.assignment_fee ?? 0;
-            return (
+
+          {waterfall != null
+            ? <WaterfallBreakdown w={waterfall} ltvPct={deal.ltv_percent ?? 75} />
+            : uw.cashback_amount != null && (
               <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 text-xs">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                  Cashback at Close — Breakdown
-                </p>
-                <div className="space-y-1 text-muted-foreground">
-                  <div className="flex justify-between">
-                    <span>DSCR Proceeds ({ltvPct}% LTV)</span>
-                    <span className="data-number tabular-nums text-foreground">{money(dscrLoan)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Down to Seller</span>
-                    <span className="data-number tabular-nums text-rose-600">{downToSeller != null ? `–${money(downToSeller)}` : "—"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Closing Costs (10%)</span>
-                    <span className="data-number tabular-nums text-rose-600">{closingCosts != null ? `–${money(closingCosts)}` : "—"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Assignment Fee</span>
-                    <span className="data-number tabular-nums text-rose-600">{assignFee > 0 ? `–${money(assignFee)}` : money(0)}</span>
-                  </div>
-                </div>
-                <div className="mt-2 flex justify-between border-t border-border pt-2">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Net to Buyer</p>
+                <div className="flex justify-between">
                   <span className="font-semibold text-foreground">NET TO BUYER</span>
-                  <span className="data-number font-bold tabular-nums text-accent">
-                    {money(uw.cashback_amount ?? null)}
-                    {uw.cashback_pct != null && (
-                      <span className="ml-1.5 font-normal text-muted-foreground">({uw.cashback_pct.toFixed(1)}%)</span>
-                    )}
+                  <span className="data-number font-bold tabular-nums text-[#D4AF37]">
+                    {money(uw.cashback_amount)}
+                    {uw.cashback_pct != null && <span className="ml-1.5 font-normal text-muted-foreground">({uw.cashback_pct.toFixed(1)}%)</span>}
                   </span>
                 </div>
               </div>
-            );
-          })()}
+            )
+          }
+
+          {cashflow != null && <CashflowBreakdown c={cashflow} />}
 
           <div className="grid grid-cols-2 gap-3">
             <AiStat label="Total Oblig. / mo" value={money(uw.total_obligations ?? null)} />

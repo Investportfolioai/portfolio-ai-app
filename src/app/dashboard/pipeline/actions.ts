@@ -13,7 +13,8 @@ import {
   extractDocumentUpdates,
   type DocExtraction,
 } from "@/lib/underwriting";
-import type { DealStatus, UnderwritingOutput, DealMilestone } from "@/lib/types";
+import type { DealStatus, UnderwritingOutput, DealMilestone, WaterfallInput, CashflowInput } from "@/lib/types";
+import { calculateMorbyWaterfall, calculateCashflow } from "@/lib/waterfall";
 
 export type ActionState = { ok: true } | { ok: false; error: string };
 
@@ -209,10 +210,12 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
 
   const admin = createAdminClient();
 
-  // Fetch all deal fields needed for the server-side cashback formula.
+  // Fetch all deal fields needed for the server-side waterfall and cashflow formulas.
   const { data: dealMeta } = await admin
     .from("deals")
-    .select("rental_strategy, structure_type, purchase_price, seller_note_amount, ltv_percent, assignment_fee")
+    .select(
+      "rental_strategy, structure_type, purchase_price, seller_note_amount, ltv_percent, assignment_fee, realtor_commission, insurance_annual, taxes_annual, hoa_monthly, first_lien_monthly, seller_carry_monthly",
+    )
     .eq("id", dealId)
     .maybeSingle();
 
@@ -221,37 +224,46 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   const isMorby =
     structType === "morby" || structType === "creative" || structType === "seller_finance";
 
-  // Pre-compute cashback deterministically from DB values — not from AI output.
   const pp = (dealMeta?.purchase_price as number | null) ?? null;
-  const sellerCarry = (dealMeta?.seller_note_amount as number | null) ?? 0;
   const ltvPct = (dealMeta?.ltv_percent as number | null) ?? 75;
-  const assignmentFee = (dealMeta?.assignment_fee as number | null) ?? 0;
+  const realtorCommission = (dealMeta?.realtor_commission as number | null) ?? null;
+  const insuranceAnnual = (dealMeta?.insurance_annual as number | null) ?? null;
+  const taxesAnnual = (dealMeta?.taxes_annual as number | null) ?? null;
+  const hoaMonthly = (dealMeta?.hoa_monthly as number | null) ?? null;
+  const firstLienMonthly = (dealMeta?.first_lien_monthly as number | null) ?? null;
+  const sellerCarryMonthly = (dealMeta?.seller_carry_monthly as number | null) ?? null;
 
-  let precomputedCashback: number | null = null;
-  let dscrLoan: number | null = null;
-  let downToSeller: number | null = null;
-  let closingCosts: number | null = null;
-
+  // Compute full Morby waterfall server-side (authoritative — injected into AI prompt).
+  let waterfall: ReturnType<typeof calculateMorbyWaterfall> | null = null;
   if (isMorby && pp != null) {
-    dscrLoan = pp * (ltvPct / 100);
-    downToSeller = pp - sellerCarry;
-    closingCosts = pp * 0.10;
-    precomputedCashback = dscrLoan - downToSeller - closingCosts - assignmentFee;
+    const waterfallInput: WaterfallInput = {
+      purchase_price: pp,
+      ltv_percent: ltvPct,
+      seller_note_amount: (dealMeta?.seller_note_amount as number | null) ?? null,
+      assignment_fee: (dealMeta?.assignment_fee as number | null) ?? null,
+      realtor_commission: realtorCommission,
+      insurance_annual: insuranceAnnual,
+      taxes_annual: taxesAnnual,
+    };
+    waterfall = calculateMorbyWaterfall(waterfallInput);
     console.log(
-      `[underwriting] Morby formula: pp=${pp} ltv=${ltvPct}% dscr=${dscrLoan} downToSeller=${downToSeller} closing=${closingCosts} assignFee=${assignmentFee} cashback=${precomputedCashback}`,
+      `[underwriting] Waterfall: pp=${pp} ltv=${ltvPct}% dscr=${waterfall.dscrLoan.toFixed(0)} netToBuyer=${waterfall.netToBuyer.toFixed(0)} (${waterfall.cashbackPct.toFixed(1)}%)`,
     );
   }
 
-  // Context injected into the AI prompt so it produces consistent numbers.
-  const cashbackNote = precomputedCashback != null
-    ? `\n\nSERVER-COMPUTED CASHBACK (authoritative — use these exact figures in your output):\n` +
-      `- DSCR Proceeds (${ltvPct}% LTV): $${dscrLoan!.toFixed(0)}\n` +
-      `- Down to Seller: $${downToSeller!.toFixed(0)}\n` +
-      `- Closing Costs (10%): $${closingCosts!.toFixed(0)}\n` +
-      `- Assignment Fee: $${assignmentFee.toFixed(0)}\n` +
-      `- NET CASHBACK AT CLOSE: $${precomputedCashback.toFixed(0)}\n` +
-      `- Portfolio AI Fee (10%): $${(precomputedCashback * 0.10).toFixed(0)}\n\n` +
-      `Output cashback_amount = ${precomputedCashback.toFixed(0)} in submit_underwriting. Do NOT recalculate.`
+  // Context injected into the AI prompt — AI should NOT recalculate any of these numbers.
+  const cashbackNote = waterfall != null
+    ? `\n\nSERVER-COMPUTED FACTS (authoritative — use these exact figures in your output):\n` +
+      `- DSCR Loan (${ltvPct}% LTV): $${waterfall.dscrLoan.toFixed(0)}\n` +
+      `- TL Advance (bridge capital for gap + costs): $${waterfall.totalTLAdvance.toFixed(0)}\n` +
+      `- TL Repayment (advance + 3.5% fee): $${waterfall.tlRepayment.toFixed(0)}\n` +
+      `- DPTS — Cash to Seller at Close: $${waterfall.dpts.toFixed(0)}\n` +
+      `- Assignment Fee: $${waterfall.assignmentFee.toFixed(0)}\n` +
+      `- Credit Partner Fee (5%): $${waterfall.creditPartnerFee.toFixed(0)}\n` +
+      `- NET TO BUYER: $${waterfall.netToBuyer.toFixed(0)}\n` +
+      `- Cashback %: ${waterfall.cashbackPct.toFixed(2)}%\n` +
+      `- Portfolio AI Fee (10%): $${waterfall.portfolioAIFee.toFixed(0)}\n\n` +
+      `Set cashback_amount = ${waterfall.netToBuyer.toFixed(0)} and cashback_pct = ${waterfall.cashbackPct.toFixed(2)} in submit_underwriting. Do NOT recalculate.`
     : undefined;
 
   const { data: docs } = await admin
@@ -307,16 +319,33 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   const u = analysis.underwriting;
   if (!u) return { ok: false, error: "Underwriting returned no analysis." };
 
-  // Override cashback in the analysis object so the AI tab reads the correct value.
-  const cashbackAtClose = isMorby && precomputedCashback != null
-    ? precomputedCashback
+  // Override cashback with server-computed waterfall values (authoritative).
+  if (isMorby && waterfall != null) {
+    u.cashback_amount = waterfall.netToBuyer;
+    u.cashback_pct = waterfall.cashbackPct;
+    u.first_lien_amount = waterfall.dscrLoan;
+  }
+  const cashbackAtClose = isMorby && waterfall != null
+    ? waterfall.netToBuyer
     : (u.cashback_amount ?? null);
 
-  if (isMorby && precomputedCashback != null) {
-    u.cashback_amount = precomputedCashback;
-    u.cashback_pct = pp != null && pp > 0 ? (precomputedCashback / pp) * 100 : null;
-    if (dscrLoan != null) u.first_lien_amount = dscrLoan;
+  // Compute cashflow post-AI using the AI's rent estimate + deal cost inputs.
+  let cashflowResult: ReturnType<typeof calculateCashflow> | null = null;
+  if (u.current_rent && pp != null) {
+    const cashflowInput: CashflowInput = {
+      purchase_price: pp,
+      insurance_annual: insuranceAnnual,
+      taxes_annual: taxesAnnual,
+      hoa_monthly: hoaMonthly,
+      first_lien_monthly: firstLienMonthly,
+      seller_carry_monthly: sellerCarryMonthly,
+    };
+    cashflowResult = calculateCashflow(cashflowInput, u.current_rent);
   }
+
+  // Attach server-computed waterfall and cashflow to the JSONB for display.
+  analysis.waterfall = waterfall ?? undefined;
+  analysis.cashflow = cashflowResult ?? undefined;
 
   await admin
     .from("deals")
@@ -326,6 +355,10 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       acquisition_grade: u.acquisition_score,
       stabilization_grade: u.stabilization_score,
       cashback_at_close: cashbackAtClose,
+      tl_fee: waterfall?.tlFee ?? null,
+      tl_repayment: waterfall?.tlRepayment ?? null,
+      credit_partner_fee: waterfall?.creditPartnerFee ?? null,
+      portfolio_ai_fee: waterfall?.portfolioAIFee ?? null,
     })
     .eq("id", dealId);
 
@@ -461,6 +494,13 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   lender_name: { label: "Lender", numeric: false },
   quote_number: { label: "Quote #", numeric: false },
   notes: { label: "Notes", numeric: false },
+  // Cost inputs for waterfall / cashflow underwriting
+  realtor_commission: { label: "Realtor Commission", numeric: true },
+  insurance_annual: { label: "Insurance (Annual)", numeric: true },
+  taxes_annual: { label: "Taxes (Annual)", numeric: true },
+  hoa_monthly: { label: "HOA (Monthly)", numeric: true },
+  first_lien_monthly: { label: "First Lien / mo", numeric: true },
+  seller_carry_monthly: { label: "Seller Carry / mo", numeric: true },
 };
 
 export async function updateDealField(
