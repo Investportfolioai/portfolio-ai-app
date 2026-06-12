@@ -184,7 +184,7 @@ export async function POST(req: Request) {
     stabilization_grade: u.stabilization_score,
     structure_type: insertRow.structure_type,
     created_at: new Date().toISOString(),
-  });
+  }).catch((err) => console.error("Webhook failed silently:", err));
 
   // Store the submitter's email so the wholesaler-response emails can reach
   // them. Separate best-effort write: the submitter_email column may not exist

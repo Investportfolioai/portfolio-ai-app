@@ -1,12 +1,16 @@
 import { createAdminClient } from "./supabase/admin";
 
-export function fireWebhook(event: string, deal: Record<string, unknown>): void {
+export function fireWebhook(event: string, deal: Record<string, unknown>): Promise<void> {
   const webhookUrl = process.env.MAKE_WEBHOOK_URL;
-  if (!webhookUrl) return;
+  if (!webhookUrl) return Promise.resolve();
 
-  fetch(webhookUrl, {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  return fetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    signal: controller.signal,
     body: JSON.stringify({
       event,
       deal_id: deal.id,
@@ -20,7 +24,9 @@ export function fireWebhook(event: string, deal: Record<string, unknown>): void 
       submitted_at: deal.submitted_at ?? deal.created_at,
       timestamp: new Date().toISOString(),
     }),
-  }).catch((err) => console.error("Webhook failed:", err));
+  })
+    .then(() => undefined)
+    .finally(() => clearTimeout(timeout));
 }
 
 export function fireWebhookById(event: string, dealId: string): void {
