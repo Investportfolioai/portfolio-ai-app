@@ -27,16 +27,19 @@ export function fireWebhookById(event: string, dealId: string): void {
   const webhookUrl = process.env.MAKE_WEBHOOK_URL;
   if (!webhookUrl) return;
 
-  const admin = createAdminClient();
-  admin
-    .from("deals")
-    .select(
-      "id, property_address, status, purchase_price, cashback_at_close, acquisition_grade, stabilization_grade, structure_type, created_at",
-    )
-    .eq("id", dealId)
-    .maybeSingle()
-    .then(({ data }) => {
+  void (async () => {
+    try {
+      const admin = createAdminClient();
+      const { data } = await admin
+        .from("deals")
+        .select(
+          "id, property_address, status, purchase_price, cashback_at_close, acquisition_grade, stabilization_grade, structure_type, created_at",
+        )
+        .eq("id", dealId)
+        .maybeSingle();
       if (data) fireWebhook(event, data as Record<string, unknown>);
-    })
-    .catch((err) => console.error("Webhook fetch failed:", err));
+    } catch (err) {
+      console.error("Webhook fetch failed:", err);
+    }
+  })();
 }
