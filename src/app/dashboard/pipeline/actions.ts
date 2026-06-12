@@ -495,13 +495,19 @@ export async function markDealClosed(
   const user = await getSessionUser();
   if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
 
-  const supabase = await createClient();
+  // Use the admin client for the status update so RLS never blocks it and we
+  // get a clear error if the enum value is missing rather than a silent fail.
+  const admin = createAdminClient();
   const now = new Date().toISOString();
-  const { error } = await supabase
+
+  const { error: updateError } = await admin
     .from("deals")
     .update({ status: "closed", closed_at: now, status_changed_at: now })
     .eq("id", dealId);
-  if (error) return { ok: false, error: error.message };
+  if (updateError) {
+    console.error("[markDealClosed] deal update failed:", updateError.message);
+    return { ok: false, error: updateError.message };
+  }
 
   await logActivity(dealId, "closed", "Deal marked as closed.");
   fireWebhookById("deal.closed", dealId);
@@ -509,7 +515,6 @@ export async function markDealClosed(
   // Auto-create a holding from the deal data.
   let holdingCreated = false;
   try {
-    const admin = createAdminClient();
     const { data: deal } = await admin
       .from("deals")
       .select(
@@ -519,14 +524,23 @@ export async function markDealClosed(
       .maybeSingle();
 
     if (deal) {
-      // Dedup: skip if a holding is already linked to this deal or shares the address.
-      const { data: existing } = await admin
+      // Dedup: two separate queries to avoid interpolating the address into the
+      // filter string (spaces in addresses break the .or() syntax).
+      const { data: byLink } = await admin
         .from("holdings")
         .select("id")
-        .or(`linked_deal_id.eq.${dealId},address.eq.${deal.property_address}`)
+        .eq("linked_deal_id", dealId)
         .maybeSingle();
 
-      if (!existing) {
+      const { data: byAddr } = !byLink
+        ? await admin
+            .from("holdings")
+            .select("id")
+            .eq("address", deal.property_address)
+            .maybeSingle()
+        : { data: null };
+
+      if (!byLink && !byAddr) {
         // Compute balloon_date from balloon_term_months in AI analysis if present.
         const ai = deal.ai_analysis as { extracted_deal_data?: { balloon_term_months?: number } } | null;
         const balloonMonths = ai?.extracted_deal_data?.balloon_term_months ?? null;
@@ -537,7 +551,7 @@ export async function markDealClosed(
           balloonDate = d.toISOString().slice(0, 10);
         }
 
-        await admin.from("holdings").insert({
+        const { error: insertError } = await admin.from("holdings").insert({
           owner_id: deal.owner_id ?? user.id,
           address: deal.property_address,
           purchase_close_price: deal.purchase_price ?? null,
@@ -552,7 +566,12 @@ export async function markDealClosed(
           seller_carry_balance: deal.seller_note_amount ?? null,
           balloon_date: balloonDate,
         });
-        holdingCreated = true;
+
+        if (insertError) {
+          console.warn("[markDealClosed] holding insert failed:", insertError.message);
+        } else {
+          holdingCreated = true;
+        }
       }
     }
   } catch (e) {

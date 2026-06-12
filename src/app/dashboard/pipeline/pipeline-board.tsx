@@ -790,6 +790,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   const [markingClosed, startMarkClosed] = useTransition();
   const [confirmingClosed, setConfirmingClosed] = useState(false);
   const [closedToast, setClosedToast] = useState<string | null>(null);
+  const [closedError, setClosedError] = useState<string | null>(null);
 
   const reloadDetail = () => {
     if (deal) getDealDetail(deal.id).then(setDetail);
@@ -975,16 +976,19 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                   disabled={markingClosed}
                   onClick={() =>
                     startMarkClosed(async () => {
+                      setClosedError(null);
                       const result = await markDealClosed(deal.id);
-                      setConfirmingClosed(false);
                       if (result.ok) {
+                        setConfirmingClosed(false);
                         const msg = result.holdingCreated
                           ? "Deal closed and added to Portfolio"
                           : "Deal marked as closed";
                         setClosedToast(msg);
                         setTimeout(() => setClosedToast(null), 5000);
+                        router.refresh();
+                      } else {
+                        setClosedError(result.error);
                       }
-                      router.refresh();
                     })
                   }
                   className="shrink-0 rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
@@ -993,11 +997,14 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConfirmingClosed(false)}
+                  onClick={() => { setConfirmingClosed(false); setClosedError(null); }}
                   className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
                 >
                   Cancel
                 </button>
+                {closedError && (
+                  <span className="ml-auto text-xs text-red-600">{closedError}</span>
+                )}
               </div>
             )}
 
