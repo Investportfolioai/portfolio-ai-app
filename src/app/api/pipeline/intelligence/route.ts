@@ -54,11 +54,10 @@ export async function GET() {
 
   const isEscrow = (d: DealRow) => d.status === "active" && !!d.escrow_date;
   const isPending = (d: DealRow) => d.status === "pending";
-  const activeOrPending = (d: DealRow) => d.status === "active" || d.status === "pending";
 
-  // Portfolio AI fees: escrow + pending deals, 10% of cashback at close.
+  // Portfolio AI fees: escrow deals only (the ones actually closing) — 10% of cashback.
   const total_projected_fees = deals
-    .filter((d) => isEscrow(d) || isPending(d))
+    .filter(isEscrow)
     .reduce(
       (s, d) =>
         s +
@@ -70,15 +69,16 @@ export async function GET() {
       0,
     );
 
+  // Projected cashback: pending deals only — never include escrow or active.
   const total_projected_cashback = deals
-    .filter((d) => activeOrPending(d) && d.cashback_at_close != null)
+    .filter((d) => isPending(d) && d.cashback_at_close != null)
     .reduce((s, d) => s + (d.cashback_at_close ?? 0), 0);
 
   const avg_acq_grade = avg(
-    deals.filter(activeOrPending).map((d) => d.acquisition_grade).filter((g): g is number => g != null),
+    deals.filter(isPending).map((d) => d.acquisition_grade).filter((g): g is number => g != null),
   );
   const avg_stab_grade = avg(
-    deals.filter(activeOrPending).map((d) => d.stabilization_grade).filter((g): g is number => g != null),
+    deals.filter(isPending).map((d) => d.stabilization_grade).filter((g): g is number => g != null),
   );
 
   const closedCount = deals.filter((d) => d.escrow_date != null).length;
