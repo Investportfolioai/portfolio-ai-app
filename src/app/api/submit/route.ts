@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { underwriteDeal, type UnderwritingOutput } from "@/lib/underwriting";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendSubmissionNotification } from "@/lib/email";
+import { fireWebhook } from "@/lib/webhooks";
 
 // Node runtime: needs Buffer + the Anthropic SDK. 60s is the Hobby-plan ceiling
 // (values above the plan max are rejected/clamped by Vercel).
@@ -171,6 +172,19 @@ export async function POST(req: Request) {
     })
     .eq("id", dealId);
   if (enrich.error) console.warn("analysis/grade write skipped:", enrich.error.message);
+
+  // Fire webhook (fire-and-forget — never blocks the submission response).
+  fireWebhook("deal.submitted", {
+    id: dealId,
+    property_address: insertRow.property_address,
+    status: "pending",
+    purchase_price: insertRow.purchase_price ?? null,
+    cashback_at_close: null,
+    acquisition_grade: u.acquisition_score,
+    stabilization_grade: u.stabilization_score,
+    structure_type: insertRow.structure_type,
+    created_at: new Date().toISOString(),
+  });
 
   // Store the submitter's email so the wholesaler-response emails can reach
   // them. Separate best-effort write: the submitter_email column may not exist

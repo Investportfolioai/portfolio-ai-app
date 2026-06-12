@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
 import { sendKpDealBrief } from "@/lib/email";
+import { fireWebhookById } from "@/lib/webhooks";
 import type {
   AssignmentStatus,
   AvailableKp,
@@ -161,6 +162,7 @@ export async function respondToAssignment(
     action: action === "accepted" ? "kp_accepted" : "kp_declined",
     note: null,
   });
+  fireWebhookById(action === "accepted" ? "kp.accepted" : "kp.declined", data.deal_id);
   revalidatePath("/dashboard/pipeline");
   revalidatePath("/kp/dashboard");
   return { ok: true };

@@ -15,6 +15,7 @@ import {
 } from "@/lib/underwriting";
 import type { DealStatus, UnderwritingOutput, DealMilestone, WaterfallInput, CashflowInput } from "@/lib/types";
 import { calculateMorbyWaterfall, calculateCashflow } from "@/lib/waterfall";
+import { fireWebhookById } from "@/lib/webhooks";
 
 export type ActionState = { ok: true } | { ok: false; error: string };
 
@@ -123,6 +124,7 @@ export async function rejectDeal(dealId: string): Promise<ActionState> {
 
   await notifyWholesaler(supabase, dealId, "rejected");
   await logActivity(dealId, "rejected", "Rejected — wholesaler notified we're passing.");
+  fireWebhookById("deal.dead", dealId);
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
 }
@@ -367,6 +369,7 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
     .eq("id", dealId);
 
   await logActivity(dealId, "underwriting_run", `Tier: ${u.deal_tier ?? "—"}.`);
+  fireWebhookById("deal.underwritten", dealId);
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
 }
@@ -480,6 +483,7 @@ export async function markDealDead(
     "marked_dead",
     `${reason || "No reason"}${intentionalPass ? " (intentional pass — outside buybox)" : ""} — auto-deletes in 120 days.`,
   );
+  fireWebhookById("deal.dead", dealId);
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
 }

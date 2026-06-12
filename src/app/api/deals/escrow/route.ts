@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
+import { fireWebhookById } from "@/lib/webhooks";
 
 export const runtime = "nodejs";
 
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
     .update({ escrow_date: new Date().toISOString(), status: "active" })
     .eq("id", body.deal_id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  fireWebhookById("deal.escrow", body.deal_id);
   return NextResponse.json({ ok: true });
 }
 
