@@ -163,6 +163,16 @@ export async function POST(req: Request) {
   // pending migrations are applied; failures here never undo the deal.
   const dealId = data.id;
 
+  // Fire webhook immediately after deal exists in DB — before enrichment so a
+  // Make.com/Zapier flow can act on the record even if enrichment fails.
+  fireWebhook("deal.submitted", {
+    id: dealId,
+    property_address: insertRow.property_address,
+    status: "pending",
+    purchase_price: insertRow.purchase_price ?? null,
+    created_at: new Date().toISOString(),
+  }).catch((err) => console.error("Webhook failed silently:", err));
+
   const enrich = await supabase
     .from("deals")
     .update({
@@ -172,19 +182,6 @@ export async function POST(req: Request) {
     })
     .eq("id", dealId);
   if (enrich.error) console.warn("analysis/grade write skipped:", enrich.error.message);
-
-  // Fire webhook (fire-and-forget — never blocks the submission response).
-  fireWebhook("deal.submitted", {
-    id: dealId,
-    property_address: insertRow.property_address,
-    status: "pending",
-    purchase_price: insertRow.purchase_price ?? null,
-    cashback_at_close: null,
-    acquisition_grade: u.acquisition_score,
-    stabilization_grade: u.stabilization_score,
-    structure_type: insertRow.structure_type,
-    created_at: new Date().toISOString(),
-  }).catch((err) => console.error("Webhook failed silently:", err));
 
   // Store the submitter's email so the wholesaler-response emails can reach
   // them. Separate best-effort write: the submitter_email column may not exist
