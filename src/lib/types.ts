@@ -178,13 +178,14 @@ export interface Deal {
 }
 
 /** Deal workflow status (enum `public.deal_status`). */
-export type DealStatus = "pending" | "active" | "passed" | "dead";
+export type DealStatus = "pending" | "active" | "passed" | "dead" | "closed";
 
 export const STATUS_LABELS: Record<DealStatus, string> = {
   pending: "Pending",
   active: "Active",
   passed: "Passed",
   dead: "Dead",
+  closed: "Closed",
 };
 
 /** Dead deals auto-delete this many days after they were marked dead. */

@@ -36,6 +36,7 @@ import {
   getDealDetail,
   createDeal,
   markDealDead,
+  markDealClosed,
   updateDealField,
   updateDealAiField,
   createMilestone,
@@ -69,6 +70,7 @@ const STATUS_TABS: { key: DealStatus | "all" | "escrow"; label: string }[] = [
   { key: "pending", label: "Pending" },
   { key: "escrow", label: "Escrow" },
   { key: "passed", label: "Passed" },
+  { key: "closed", label: "Closed" },
   { key: "dead", label: "Dead" },
 ];
 
@@ -151,12 +153,13 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
 
   // All = active + pending (excludes dead/passed); Escrow = active w/ escrow_date.
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: 0, escrow: 0, pending: 0, passed: 0, dead: 0 };
+    const c: Record<string, number> = { all: 0, escrow: 0, pending: 0, passed: 0, closed: 0, dead: 0 };
     for (const d of deals) {
       if (d.status === "active" || d.status === "pending") c.all += 1;
       if (d.status === "active" && d.escrow_date) c.escrow += 1;
       if (d.status === "pending") c.pending += 1;
       if (d.status === "passed") c.passed += 1;
+      if (d.status === "closed") c.closed += 1;
       if (d.status === "dead") c.dead += 1;
     }
     return c;
@@ -472,7 +475,7 @@ function StructureBadge({
 
 function StatusBadge({ status }: { status: DealStatus }) {
   const tone =
-    status === "active"
+    status === "active" || status === "closed"
       ? "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30"
       : status === "passed"
         ? "bg-rose-500/10 text-rose-600 ring-rose-400/20"
@@ -602,11 +605,15 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
           <StatusBadge status={deal.status} />
-          {deal.escrow_date && (
+          {deal.status === "closed" ? (
+            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-500/30">
+              Closed
+            </span>
+          ) : deal.escrow_date ? (
             <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-accent ring-1 ring-inset ring-accent/40">
               In Escrow
             </span>
-          )}
+          ) : null}
         </div>
         {deal.acquisition_grade == null && deal.stabilization_grade == null ? (
           <PendingGradeBadge />
@@ -780,6 +787,8 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   const [confirmingDead, setConfirmingDead] = useState(false);
   const [deadReason, setDeadReason] = useState(DEAD_REASONS[0]);
   const [intentionalPass, setIntentionalPass] = useState(false);
+  const [markingClosed, startMarkClosed] = useTransition();
+  const [confirmingClosed, setConfirmingClosed] = useState(false);
 
   const reloadDetail = () => {
     if (deal) getDealDetail(deal.id).then(setDetail);
@@ -794,6 +803,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
     if (open) {
       setTab("Overview");
       setConfirmingDead(false);
+      setConfirmingClosed(false);
     }
   }, [deal?.id, open]);
 
@@ -875,7 +885,16 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                {deal.status !== "dead" && (
+                {deal.status !== "dead" && deal.status !== "closed" && deal.status !== "passed" && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingClosed(true)}
+                    className="rounded-full border border-emerald-400/40 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20"
+                  >
+                    Mark Closed
+                  </button>
+                )}
+                {deal.status !== "dead" && deal.status !== "closed" && (
                   <button
                     type="button"
                     onClick={() => setConfirmingDead(true)}
@@ -944,6 +963,33 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                   />
                   Intentional Pass — outside buybox, exclude from close rate
                 </label>
+              </div>
+            )}
+
+            {confirmingClosed && (
+              <div className="flex items-center gap-2 border-b border-border bg-secondary px-4 py-2">
+                <span className="text-xs text-muted-foreground">Mark this deal as closed?</span>
+                <button
+                  type="button"
+                  disabled={markingClosed}
+                  onClick={() =>
+                    startMarkClosed(async () => {
+                      await markDealClosed(deal.id);
+                      setConfirmingClosed(false);
+                      router.refresh();
+                    })
+                  }
+                  className="shrink-0 rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {markingClosed ? "…" : "Confirm Closed"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingClosed(false)}
+                  className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
+                >
+                  Cancel
+                </button>
               </div>
             )}
 

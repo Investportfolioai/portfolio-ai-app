@@ -69,9 +69,9 @@ export async function GET() {
       0,
     );
 
-  // Projected cashback: pending deals only — never include escrow or active.
+  // Projected cashback: pending + escrow deals (not yet closed or dead).
   const total_projected_cashback = deals
-    .filter((d) => isPending(d) && d.cashback_at_close != null)
+    .filter((d) => (isPending(d) || isEscrow(d)) && d.cashback_at_close != null)
     .reduce((s, d) => s + (d.cashback_at_close ?? 0), 0);
 
   const avg_acq_grade = avg(
@@ -81,9 +81,11 @@ export async function GET() {
     deals.filter(isPending).map((d) => d.stabilization_grade).filter((g): g is number => g != null),
   );
 
-  const closedCount = deals.filter((d) => d.escrow_date != null).length;
-  const workedCount = deals.filter((d) => d.status !== "dead" && d.intentional_pass !== true).length;
-  const close_rate = workedCount > 0 ? (closedCount / workedCount) * 100 : 0;
+  const closedCount = deals.filter((d) => d.status === "closed").length;
+  const resolvedCount = deals.filter(
+    (d) => d.status === "closed" || d.status === "dead" || d.status === "passed",
+  ).length;
+  const close_rate = resolvedCount > 0 ? (closedCount / resolvedCount) * 100 : 0;
 
   const avg_days_to_escrow = avg(
     deals
@@ -132,7 +134,7 @@ export async function GET() {
     avg_stab_grade,
     close_rate,
     closed_count: closedCount,
-    worked_count: workedCount,
+    resolved_count: resolvedCount,
     avg_days_to_escrow,
     buybox_score,
     deals_in_escrow: escrow_deals.length,

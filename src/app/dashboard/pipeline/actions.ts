@@ -488,6 +488,23 @@ export async function markDealDead(
   return { ok: true };
 }
 
+/** Mark a deal closed — sets status = 'closed' and records closed_at. */
+export async function markDealClosed(dealId: string): Promise<ActionState> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
+  const supabase = await createClient();
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("deals")
+    .update({ status: "closed", closed_at: now, status_changed_at: now })
+    .eq("id", dealId);
+  if (error) return { ok: false, error: error.message };
+  await logActivity(dealId, "closed", "Deal marked as closed.");
+  fireWebhookById("deal.closed", dealId);
+  revalidatePath("/dashboard/pipeline");
+  return { ok: true };
+}
+
 /** Item 4 — inline field edit on the Overview tab. */
 const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   property_address: { label: "Address", numeric: false },
