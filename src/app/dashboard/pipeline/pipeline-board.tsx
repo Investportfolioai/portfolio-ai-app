@@ -1155,6 +1155,9 @@ function OverviewTab({
   const [liveRealtor, setLiveRealtor] = useState<number | null>(deal.realtor_commission ?? null);
   const [liveInsurance, setLiveInsurance] = useState<number | null>(deal.insurance_annual ?? null);
   const [liveTaxes, setLiveTaxes] = useState<number | null>(deal.taxes_annual ?? null);
+  const [liveTcFee, setLiveTcFee] = useState<number>(deal.tc_fee ?? 0);
+  const [liveAttorneyFee, setLiveAttorneyFee] = useState<number>(deal.attorney_fee ?? 0);
+  const [livePmFee, setLivePmFee] = useState<number>(deal.pm_fee ?? 0);
 
   // Reset live state when a different deal is opened
   useEffect(() => {
@@ -1165,6 +1168,9 @@ function OverviewTab({
     setLiveRealtor(deal.realtor_commission ?? null);
     setLiveInsurance(deal.insurance_annual ?? null);
     setLiveTaxes(deal.taxes_annual ?? null);
+    setLiveTcFee(deal.tc_fee ?? 0);
+    setLiveAttorneyFee(deal.attorney_fee ?? 0);
+    setLivePmFee(deal.pm_fee ?? 0);
   }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function makeOnSaved(field: string) {
@@ -1184,6 +1190,9 @@ function OverviewTab({
         realtor_commission: liveRealtor,
         insurance_annual: liveInsurance,
         taxes_annual: liveTaxes,
+        tc_fee: liveTcFee,
+        attorney_fee: liveAttorneyFee,
+        pm_fee: livePmFee,
       })
     : null;
 
@@ -1198,6 +1207,7 @@ function OverviewTab({
 
       <Section title="Overview · click a value to edit">
         <EditableRow dealId={deal.id} field="property_address" label="Address" raw={deal.property_address} display={deal.property_address} onSaved={makeOnSaved("property_address")} />
+        <EditableRow dealId={deal.id} field="wholesaler_name" label="Wholesaler" raw={deal.wholesaler_name ?? null} display={deal.wholesaler_name ?? "—"} onSaved={makeOnSaved("wholesaler_name")} />
         <Row label="Asset Type" value={assetType} mono={false} />
         <EditableRow
           dealId={deal.id} field="purchase_price" label="Purchase Price" numeric
@@ -1284,6 +1294,24 @@ function OverviewTab({
           dealId={deal.id} field="seller_carry_monthly" label="Seller Carry / mo" numeric
           raw={deal.seller_carry_monthly ?? null} display={money(deal.seller_carry_monthly)}
           onSaved={makeOnSaved("seller_carry_monthly")}
+        />
+        <EditableRow
+          dealId={deal.id} field="tc_fee" label="TC Fee" numeric
+          raw={deal.tc_fee ?? null} display={money(deal.tc_fee)}
+          onSaved={makeOnSaved("tc_fee")}
+          onLiveChange={(v) => setLiveTcFee(v === "" ? 0 : Number(v))}
+        />
+        <EditableRow
+          dealId={deal.id} field="attorney_fee" label="Attorney Fee" numeric
+          raw={deal.attorney_fee ?? null} display={money(deal.attorney_fee)}
+          onSaved={makeOnSaved("attorney_fee")}
+          onLiveChange={(v) => setLiveAttorneyFee(v === "" ? 0 : Number(v))}
+        />
+        <EditableRow
+          dealId={deal.id} field="pm_fee" label="PM Fee" numeric
+          raw={deal.pm_fee ?? null} display={money(deal.pm_fee)}
+          onSaved={makeOnSaved("pm_fee")}
+          onLiveChange={(v) => setLivePmFee(v === "" ? 0 : Number(v))}
         />
       </Section>
 

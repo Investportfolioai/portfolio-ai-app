@@ -137,6 +137,10 @@ export interface Deal {
   tl_fee: number | null;
   tl_repayment: number | null;
   portfolio_ai_fee: number | null;
+  tc_fee: number | null;
+  attorney_fee: number | null;
+  pm_fee: number | null;
+  wholesaler_name: string | null;
 
   /** Underwriting scores, 0–100, nullable (see migration 20260603010003). */
   acquisition_grade: number | null;
@@ -243,6 +247,9 @@ export interface WaterfallInput {
   realtor_commission: number | null;
   insurance_annual: number | null;
   taxes_annual: number | null;
+  tc_fee?: number | null;
+  attorney_fee?: number | null;
+  pm_fee?: number | null;
 }
 
 export interface WaterfallResult {

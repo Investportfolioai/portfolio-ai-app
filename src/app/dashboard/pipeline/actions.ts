@@ -629,6 +629,11 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   hoa_monthly: { label: "HOA (Monthly)", numeric: true },
   first_lien_monthly: { label: "First Lien / mo", numeric: true },
   seller_carry_monthly: { label: "Seller Carry / mo", numeric: true },
+  // Closing cost fees (subtracted before credit partner split)
+  tc_fee: { label: "TC Fee", numeric: true },
+  attorney_fee: { label: "Attorney Fee", numeric: true },
+  pm_fee: { label: "PM Fee", numeric: true },
+  wholesaler_name: { label: "Wholesaler Name", numeric: false },
 };
 
 export async function updateDealField(
