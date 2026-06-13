@@ -97,12 +97,12 @@ export async function PATCH(req: Request) {
   if (url.searchParams.get("action") === "refresh") {
     const { data: h, error: fErr } = await admin.from("holdings").select("address").eq("id", id).maybeSingle();
     if (fErr || !h) return NextResponse.json({ error: "Holding not found" }, { status: 404 });
-    const avm = await getZillowAVM(h.address);
-    if (avm == null) return NextResponse.json({ ok: false, error: "Couldn't fetch a Zillow estimate." });
+    const avmResult = await getZillowAVM(h.address);
+    if (avmResult == null) return NextResponse.json({ ok: false, error: "Couldn't fetch a Zillow estimate." });
     const stamp = new Date().toISOString();
-    const { error } = await admin.from("holdings").update({ zillow_avm: avm, zillow_last_pulled: stamp }).eq("id", id);
+    const { error } = await admin.from("holdings").update({ zillow_avm: avmResult.value, zillow_last_pulled: stamp }).eq("id", id);
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 400 });
-    return NextResponse.json({ ok: true, zillow_avm: avm, zillow_last_pulled: stamp });
+    return NextResponse.json({ ok: true, zillow_avm: avmResult.value, avm_source: avmResult.source, zillow_last_pulled: stamp });
   }
 
   // Manual field override.

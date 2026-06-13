@@ -4,9 +4,8 @@ import "server-only";
  * Zillow AVM via RapidAPI (zillow-property-data1). This API is asynchronous:
  *   1. POST /v1/properties { search, type, max_items }  ->  { job_id, status }
  *   2. GET  /v1/results/{job_id}  (poll until status === "complete")
- *      ->  results[0].property.zestimate
- * Jobs typically complete in ~30s. Returns the zestimate as a number, or null
- * on ANY failure/timeout — this must never throw or break the UI.
+ *      ->  results[0].property.zestimate (or list price / price history as fallback)
+ * Jobs typically complete in ~30s. Returns { value, source } or null on failure.
  */
 
 const HOST = "zillow-property-data1.p.rapidapi.com";
@@ -24,14 +23,48 @@ function toNum(v: unknown): number | null {
   return null;
 }
 
+interface PropertyData {
+  zestimate?: number | null;
+  zestimateAmount?: number | null;
+  price?: number | null;
+  listPrice?: number | null;
+  listing_price?: number | null;
+  lastSoldPrice?: number | null;
+  priceHistory?: { price?: number | null; event?: string }[];
+  price_history?: { price?: number | null; event?: string }[];
+}
+
 interface JobResponse {
   job_id?: string;
   status?: string;
-  results?: { property?: { zestimate?: number | null } }[];
+  results?: { property?: PropertyData }[];
 }
 
-function zestimateFrom(data: JobResponse): number | null {
-  return toNum(data?.results?.[0]?.property?.zestimate ?? null);
+export interface AVMResult {
+  value: number;
+  source: "Zestimate" | "List Price" | "Price History";
+}
+
+function extractPrice(data: JobResponse): AVMResult | null {
+  const prop = data?.results?.[0]?.property;
+  if (!prop) return null;
+
+  // 1. Zestimate — most accurate AVM.
+  const zestimate = toNum(prop.zestimate ?? prop.zestimateAmount);
+  if (zestimate != null) return { value: zestimate, source: "Zestimate" };
+
+  // 2. Active listing price.
+  const listPrice = toNum(prop.listPrice ?? prop.price ?? prop.listing_price);
+  if (listPrice != null) return { value: listPrice, source: "List Price" };
+
+  // 3. Most recent price history entry.
+  const history = prop.priceHistory ?? prop.price_history ?? [];
+  for (const entry of history) {
+    const hp = toNum(entry.price);
+    if (hp != null) return { value: hp, source: "Price History" };
+  }
+
+  return null;
 }
 
 async function runJob(
@@ -39,7 +72,7 @@ async function runJob(
   type: string,
   headers: Record<string, string>,
   label: string,
-): Promise<number | null> {
+): Promise<AVMResult | null> {
   const startRes = await fetch(`https://${HOST}/v1/properties`, {
     method: "POST",
     headers,
@@ -56,7 +89,7 @@ async function runJob(
   const start: JobResponse = await startRes.json();
   console.log(`[zillow] ${label} start response:`, JSON.stringify(start));
 
-  const immediate = zestimateFrom(start);
+  const immediate = extractPrice(start);
   if (immediate != null) return immediate;
 
   const jobId = start.job_id;
@@ -79,11 +112,13 @@ async function runJob(
     const data: JobResponse = await res.json();
 
     if (data.status && data.status !== "processing") {
-      const value = zestimateFrom(data);
-      if (value == null) {
-        console.error(`[zillow] ${label} job complete but no zestimate — full result:`, JSON.stringify(data));
+      const result = extractPrice(data);
+      if (result == null) {
+        console.error(`[zillow] ${label} job complete but no price found — full result:`, JSON.stringify(data));
+      } else {
+        console.log(`[zillow] ${label} found via ${result.source}: ${result.value}`);
       }
-      return value;
+      return result;
     }
   }
 
@@ -91,7 +126,7 @@ async function runJob(
   return null;
 }
 
-export async function getZillowAVM(address: string): Promise<number | null> {
+export async function getZillowAVM(address: string): Promise<AVMResult | null> {
   const key = process.env.RAPIDAPI_KEY?.replace(/\s/g, "");
   if (!key || !address?.trim()) return null;
 
