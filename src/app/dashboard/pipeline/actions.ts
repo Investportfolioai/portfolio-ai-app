@@ -17,7 +17,7 @@ import type { DealStatus, UnderwritingOutput, DealMilestone, WaterfallInput, Cas
 import { calculateMorbyWaterfall, calculateCashflow } from "@/lib/waterfall";
 import { fireWebhookById } from "@/lib/webhooks";
 
-export type ActionState = { ok: true } | { ok: false; error: string };
+export type ActionState = { ok: true; waterfallUpdated?: boolean } | { ok: false; error: string };
 
 export interface NewDealInput {
   property_address: string;
@@ -667,12 +667,14 @@ export async function updateDealField(
   if (error) return { ok: false, error: error.message };
   await logActivity(dealId, "field_edited", `${meta.label} → ${value.trim() || "—"}`);
 
+  let waterfallUpdated = false;
   if (WATERFALL_RECALC_FIELDS.has(field)) {
     await recalcAndWriteWaterfall(dealId);
+    waterfallUpdated = true;
   }
 
   revalidatePath("/dashboard/pipeline");
-  return { ok: true };
+  return { ok: true, waterfallUpdated };
 }
 
 async function recalcAndWriteWaterfall(dealId: string): Promise<void> {

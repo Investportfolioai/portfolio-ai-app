@@ -724,14 +724,13 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
 function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
   const router = useRouter();
   const [busy, start] = useTransition();
-  const [cashback, setCashback] = useState(
-    deal.cashback_at_close != null ? String(deal.cashback_at_close) : "",
-  );
-  // Sync when the parent deal refreshes (e.g. after a waterfall recalc write-back).
-  useEffect(() => {
-    setCashback(deal.cashback_at_close != null ? String(deal.cashback_at_close) : "");
-  }, [deal.cashback_at_close]);
-  const cbNum = cashback === "" ? null : Number(cashback);
+  // null = idle (read from prop); string = user is actively editing.
+  // This eliminates stale initial state: when idle, the displayed value is
+  // always derived from deal.cashback_at_close on every render.
+  const [editValue, setEditValue] = useState<string | null>(null);
+
+  const cbStr = editValue ?? (deal.cashback_at_close != null ? String(deal.cashback_at_close) : "");
+  const cbNum = cbStr === "" ? null : Number(cbStr);
   const cbPct = cbNum != null && deal.purchase_price ? (cbNum / deal.purchase_price) * 100 : null;
   const aiFee = portfolioAiFee({
     cashback_at_close: cbNum,
@@ -740,12 +739,15 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
   });
 
   function save() {
+    if (editValue === null) return;
+    const num = editValue === "" ? null : Number(editValue);
     start(async () => {
       await fetch("/api/deals/escrow", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deal_id: deal.id, cashback_at_close: cashback === "" ? null : cbNum }),
+        body: JSON.stringify({ deal_id: deal.id, cashback_at_close: num }),
       });
+      setEditValue(null); // exit edit mode → display reverts to prop
       router.refresh();
     });
   }
@@ -769,9 +771,10 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
             <span className="text-muted-foreground">$</span>
             <input
               type="number"
-              value={cashback}
+              value={cbStr}
               disabled={busy}
-              onChange={(e) => setCashback(e.target.value)}
+              onFocus={() => setEditValue(deal.cashback_at_close != null ? String(deal.cashback_at_close) : "")}
+              onChange={(e) => setEditValue(e.target.value)}
               onBlur={save}
               placeholder="—"
               className="w-20 bg-transparent px-1 text-right text-xs text-primary outline-none"
@@ -1517,6 +1520,7 @@ function EditableRow({
   onSaved: () => void;
   onLiveChange?: (value: string) => void;
 }) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(raw == null ? "" : String(raw));
   const [saving, startSave] = useTransition();
@@ -1529,6 +1533,9 @@ function EditableRow({
       if (res.ok) {
         setEditing(false);
         onSaved();
+        // Waterfall write-back happened server-side; force a second refresh so
+        // the card picks up the new cashback_at_close from the DB.
+        if (!ai && res.waterfallUpdated) router.refresh();
       }
     });
   }
