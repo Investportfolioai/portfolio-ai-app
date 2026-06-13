@@ -724,19 +724,40 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
 function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
   const router = useRouter();
   const [busy, start] = useTransition();
-  // null = idle (read from prop); string = user is actively editing.
-  // This eliminates stale initial state: when idle, the displayed value is
-  // always derived from deal.cashback_at_close on every render.
   const [editValue, setEditValue] = useState<string | null>(null);
 
-  const cbStr = editValue ?? (deal.cashback_at_close != null ? String(deal.cashback_at_close) : "");
+  // Live waterfall from current deal fields — always agrees with the Overview tab.
+  const liveWaterfall = deal.purchase_price != null
+    ? calculateMorbyWaterfall({
+        purchase_price: deal.purchase_price,
+        ltv_percent: deal.ltv_percent,
+        seller_note_amount: deal.seller_note_amount,
+        assignment_fee: deal.assignment_fee,
+        realtor_commission: deal.realtor_commission,
+        insurance_annual: deal.insurance_annual,
+        taxes_annual: deal.taxes_annual,
+        tc_fee: deal.tc_fee,
+        attorney_fee: deal.attorney_fee,
+        pm_fee: deal.pm_fee,
+      })
+    : null;
+
+  // Display priority: user is editing > live waterfall > stored DB fallback
+  const idleValue = liveWaterfall != null
+    ? String(Math.round(liveWaterfall.netToBuyer))
+    : deal.cashback_at_close != null
+    ? String(deal.cashback_at_close)
+    : "";
+  const cbStr = editValue ?? idleValue;
   const cbNum = cbStr === "" ? null : Number(cbStr);
-  const cbPct = cbNum != null && deal.purchase_price ? (cbNum / deal.purchase_price) * 100 : null;
-  const aiFee = portfolioAiFee({
-    cashback_at_close: cbNum,
-    purchase_price: deal.purchase_price,
-    seller_carry_amount: deal.ai_analysis?.underwriting?.seller_carry_amount ?? deal.seller_note_amount,
-  });
+  const cbPct = liveWaterfall != null
+    ? liveWaterfall.cashbackPct
+    : cbNum != null && deal.purchase_price
+    ? (cbNum / deal.purchase_price) * 100
+    : null;
+  const aiFee = liveWaterfall != null
+    ? liveWaterfall.portfolioAIFee
+    : portfolioAiFee({ cashback_at_close: cbNum, purchase_price: deal.purchase_price });
 
   function save() {
     if (editValue === null) return;
@@ -747,7 +768,7 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deal_id: deal.id, cashback_at_close: num }),
       });
-      setEditValue(null); // exit edit mode → display reverts to prop
+      setEditValue(null);
       router.refresh();
     });
   }
@@ -765,7 +786,7 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
         <span className="data-number tabular-nums text-accent">{aiFee != null ? money(aiFee) : "—"}</span>
       </div>
       <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Cashback at Close</span>
+        <span className="text-muted-foreground">Est. Net to Buyer</span>
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-md border border-border bg-secondary px-2 py-0.5">
             <span className="text-muted-foreground">$</span>
@@ -773,7 +794,7 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
               type="number"
               value={cbStr}
               disabled={busy}
-              onFocus={() => setEditValue(deal.cashback_at_close != null ? String(deal.cashback_at_close) : "")}
+              onFocus={() => setEditValue(idleValue)}
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={save}
               placeholder="—"
