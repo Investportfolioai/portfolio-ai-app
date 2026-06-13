@@ -31,7 +31,7 @@ export function Sidebar() {
     <aside className="flex w-[220px] shrink-0 flex-col bg-sidebar text-sidebar-foreground">
       <div className="px-6 py-6">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-dark.png" alt="Portfolio AI" className="max-h-9 max-w-full" />
+        <img src="/logo-white.png" alt="Portfolio AI" className="max-h-9 max-w-full" />
       </div>
 
       <nav className="mt-2 flex-1 px-3">

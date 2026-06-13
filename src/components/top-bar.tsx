@@ -10,7 +10,7 @@ export function TopBar({ user }: { user: SidebarUser }) {
       {/* Logo — only visible on mobile since desktop has the sidebar */}
       <div className="md:hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-dark.png" alt="Portfolio AI" className="max-h-7 max-w-full" />
+        <img src="/logo-white.png" alt="Portfolio AI" className="max-h-7 max-w-full" />
       </div>
 
       <UserMenu user={user} />
