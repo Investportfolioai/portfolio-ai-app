@@ -1706,6 +1706,24 @@ function WaterfallBreakdown({ w, ltvPct }: { w: WaterfallResult; ltvPct: number 
             {neg(w.assignmentFee)}
           </div>
         )}
+        {w.tcFee > 0 && (
+          <div className="flex justify-between">
+            <span>TC Fee</span>
+            {neg(w.tcFee)}
+          </div>
+        )}
+        {w.attorneyFee > 0 && (
+          <div className="flex justify-between">
+            <span>Attorney Fee</span>
+            {neg(w.attorneyFee)}
+          </div>
+        )}
+        {w.pmFee > 0 && (
+          <div className="flex justify-between">
+            <span>PM Fee</span>
+            {neg(w.pmFee)}
+          </div>
+        )}
         {w.creditPartnerFee > 0 && (
           <div className="flex justify-between">
             <span>Credit Partner (5%)</span>
@@ -1806,7 +1824,22 @@ function AiTab({
   onRun: () => void;
 }) {
   const uw = deal.ai_analysis?.underwriting ?? null;
-  const waterfall = deal.ai_analysis?.waterfall ?? null;
+  // Always recompute from current deal fields so the display matches Overview
+  // and picks up tc_fee/attorney_fee/pm_fee and any edits since last underwrite.
+  const waterfall = deal.purchase_price != null
+    ? calculateMorbyWaterfall({
+        purchase_price: deal.purchase_price,
+        ltv_percent: deal.ltv_percent,
+        seller_note_amount: deal.seller_note_amount,
+        assignment_fee: deal.assignment_fee,
+        realtor_commission: deal.realtor_commission,
+        insurance_annual: deal.insurance_annual,
+        taxes_annual: deal.taxes_annual,
+        tc_fee: deal.tc_fee,
+        attorney_fee: deal.attorney_fee,
+        pm_fee: deal.pm_fee,
+      })
+    : null;
   const cashflow = deal.ai_analysis?.cashflow ?? null;
   return (
     <div>

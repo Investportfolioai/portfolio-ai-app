@@ -262,6 +262,9 @@ export interface WaterfallResult {
   realtorCommission: number;
   dpts: number;
   assignmentFee: number;
+  tcFee: number;
+  attorneyFee: number;
+  pmFee: number;
   creditPartnerFee: number;
   netToBuyer: number;
   portfolioAIFee: number;
