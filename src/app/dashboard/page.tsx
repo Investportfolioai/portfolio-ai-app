@@ -1,82 +1,35 @@
 import Link from "next/link";
-import { getRecentActivity } from "@/lib/deals";
+import { AchievementBoard, LiveActivity } from "./achievement-board";
 import { DashboardIntel } from "./dashboard-intel";
-import { ImpactBoard } from "./impact-board";
 
 export const metadata = { title: "Dashboard — Portfolio AI" };
 export const dynamic = "force-dynamic";
 
-function fmtDateTime(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? "—"
-    : d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-export default async function DashboardHome() {
-  const activity = await getRecentActivity(10);
-
+export default function DashboardHome() {
   return (
-    <div className="mx-auto max-w-7xl px-8 py-8">
-      <header className="mb-6">
-        <h1 className="text-3xl tracking-tight text-primary">Dashboard</h1>
-        <p className="mt-2 text-[15px] italic font-light text-muted-foreground">
-          The person who controls the structure controls the money, the equity,
-          and the outcome.
-        </p>
-      </header>
+    <div
+      className="min-h-screen px-4 py-6 sm:px-8 sm:py-8"
+      style={{ background: "#0A0B14" }}
+    >
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* Sections 1–4: Achievement Board (time-toggled, recharts, leaderboard, activity) */}
+        <AchievementBoard />
 
-      {/* Impact Board — lifetime closed-deal metrics */}
-      <ImpactBoard />
+        {/* Section 3: KPI strip + Pipeline panels */}
+        <DashboardIntel />
 
-      {/* KPI row + pipeline panels */}
-      <DashboardIntel />
+        {/* Section 4: Live Activity */}
+        <LiveActivity />
 
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Section 4 — Recent Activity */}
-        <section className="lg:col-span-2">
-          <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
-            Recent Activity
-          </div>
-          <div className="overflow-hidden rounded-2xl border border-border bg-card">
-            {activity.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                No activity yet.
-              </p>
-            ) : (
-              <ul className="divide-y divide-border">
-                {activity.map((a) => (
-                  <li key={a.id} className="flex items-center justify-between gap-4 px-4 py-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-primary">
-                        {a.action.replace(/_/g, " ")}
-                        <span className="ml-2 font-normal text-muted-foreground">
-                          {a.deal_address}
-                        </span>
-                      </div>
-                      {a.note && (
-                        <div className="truncate text-xs text-muted-foreground">{a.note}</div>
-                      )}
-                    </div>
-                    <span className="data-number shrink-0 text-[11px] text-muted-foreground">
-                      {fmtDateTime(a.created_at)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
-
-        {/* Section 5 — Quick Links */}
+        {/* Quick Links */}
         <section>
-          <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+          <div className="mb-3 text-[10px] font-medium uppercase tracking-widest text-white/25">
             Quick Links
           </div>
-          <div className="flex flex-col gap-3">
-            <QuickLink href="/dashboard/pipeline" title="Pipeline" desc="Work the deal board" />
-            <QuickLink href="/dashboard/pipeline" title="Add Deal" desc="Enter a deal manually" accent />
-            <QuickLink href="/dashboard/underwriting" title="Underwriting" desc="AI grades & queue" />
+          <div className="flex flex-wrap gap-3">
+            <QuickLink href="/dashboard/pipeline" title="Pipeline" desc="Work the deal board" icon="→" />
+            <QuickLink href="/dashboard/portfolio" title="Portfolio" desc="Holdings & documents" icon="→" />
+            <QuickLink href="/dashboard/underwriting" title="Underwriting" desc="AI grades & queue" icon="→" />
           </div>
         </section>
       </div>
@@ -88,25 +41,24 @@ function QuickLink({
   href,
   title,
   desc,
-  accent,
+  icon,
 }: {
   href: string;
   title: string;
   desc: string;
-  accent?: boolean;
+  icon: string;
 }) {
   return (
     <Link
       href={href}
-      className={
-        "rounded-2xl border p-4 transition-colors " +
-        (accent
-          ? "border-accent/40 bg-accent/10 hover:bg-accent/20"
-          : "border-border bg-card hover:border-accent/40")
-      }
+      className="group rounded-xl px-4 py-3 transition-all min-w-[150px] hover:border-[rgba(201,168,76,0.3)]"
+      style={{ background: "#1a1d27", border: "1px solid rgba(255,255,255,0.07)", color: "#fff" }}
     >
-      <div className="text-sm font-medium text-primary">{title}</div>
-      <div className="text-xs text-muted-foreground">{desc}</div>
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">{title}</div>
+        <span className="text-[10px] transition-transform group-hover:translate-x-0.5" style={{ color: "#C9A84C" }}>{icon}</span>
+      </div>
+      <div className="mt-0.5 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>{desc}</div>
     </Link>
   );
 }
