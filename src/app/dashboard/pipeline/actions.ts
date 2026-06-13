@@ -500,9 +500,34 @@ export async function markDealClosed(
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
+  // Fetch the deal's waterfall inputs first so we can write back calculated fees.
+  const { data: dealForFees } = await admin
+    .from("deals")
+    .select(
+      "purchase_price, ltv_percent, seller_note_amount, assignment_fee, realtor_commission, insurance_annual, taxes_annual",
+    )
+    .eq("id", dealId)
+    .maybeSingle();
+
+  const feeUpdate: Record<string, number> = {};
+  if (dealForFees?.purchase_price) {
+    const w = calculateMorbyWaterfall({
+      purchase_price: dealForFees.purchase_price,
+      ltv_percent: dealForFees.ltv_percent ?? 75,
+      seller_note_amount: dealForFees.seller_note_amount ?? 0,
+      assignment_fee: dealForFees.assignment_fee ?? 0,
+      realtor_commission: dealForFees.realtor_commission ?? 0,
+      insurance_annual: dealForFees.insurance_annual ?? null,
+      taxes_annual: dealForFees.taxes_annual ?? null,
+    } as Parameters<typeof calculateMorbyWaterfall>[0]);
+    if (w.portfolioAIFee > 0) feeUpdate.portfolio_ai_fee = Math.round(w.portfolioAIFee);
+    if (w.creditPartnerFee > 0) feeUpdate.credit_partner_fee = Math.round(w.creditPartnerFee);
+    if (w.tlFee > 0) feeUpdate.tl_fee = Math.round(w.tlFee);
+  }
+
   const { error: updateError } = await admin
     .from("deals")
-    .update({ status: "closed", closed_at: now, status_changed_at: now })
+    .update({ status: "closed", closed_at: now, status_changed_at: now, ...feeUpdate })
     .eq("id", dealId);
   if (updateError) {
     console.error("[markDealClosed] deal update failed:", updateError.message);

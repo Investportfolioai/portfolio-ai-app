@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getRecentActivity } from "@/lib/deals";
 import { DashboardIntel } from "./dashboard-intel";
+import { ImpactBoard } from "./impact-board";
 
 export const metadata = { title: "Dashboard — Portfolio AI" };
 export const dynamic = "force-dynamic";
@@ -27,6 +28,8 @@ export default async function DashboardHome() {
 
       {/* Sections 1–3: KPI row, pipeline panels, performance stats */}
       <DashboardIntel />
+
+      <ImpactBoard />
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Section 4 — Recent Activity */}
