@@ -17,6 +17,7 @@ interface DealRow {
   created_at: string;
   purchase_price: number | null;
   cashback_at_close: number | null;
+  portfolio_ai_fee: number | null;
   seller_note_amount: number | null;
   acquisition_grade: number | null;
   stabilization_grade: number | null;
@@ -35,7 +36,7 @@ export async function GET() {
   const { data, error } = await admin
     .from("deals")
     .select(
-      "id, property_address, status, escrow_date, created_at, purchase_price, cashback_at_close, seller_note_amount, acquisition_grade, stabilization_grade, intentional_pass",
+      "id, property_address, status, escrow_date, created_at, purchase_price, cashback_at_close, portfolio_ai_fee, seller_note_amount, acquisition_grade, stabilization_grade, intentional_pass",
     );
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
@@ -130,6 +131,17 @@ export async function GET() {
     (d) => isPending(d) && d.cashback_at_close == null,
   ).length;
 
+  const sumField = (rows: DealRow[], key: keyof DealRow) =>
+    rows.reduce((s, d) => s + (Number(d[key]) || 0), 0);
+
+  const escrowRows = deals.filter(isEscrow);
+  const pendingRows = deals.filter(isPending);
+
+  const escrow_cashback = sumField(escrowRows, "cashback_at_close");
+  const escrow_fees = sumField(escrowRows, "portfolio_ai_fee");
+  const pending_cashback = sumField(pendingRows, "cashback_at_close");
+  const pending_fees = sumField(pendingRows, "portfolio_ai_fee");
+
   return NextResponse.json({
     total_projected_fees,
     total_projected_cashback,
@@ -145,5 +157,11 @@ export async function GET() {
     escrow_deals,
     pending_deals,
     pending_missing_cashback,
+    escrow_count: escrowRows.length,
+    escrow_cashback,
+    escrow_fees,
+    pending_count: pendingRows.length,
+    pending_cashback,
+    pending_fees,
   });
 }

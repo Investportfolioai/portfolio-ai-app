@@ -37,10 +37,23 @@ interface Intel {
   escrow_deals: EscrowDeal[];
   pending_deals: PendingDeal[];
   pending_missing_cashback: number;
+  escrow_count: number;
+  escrow_cashback: number;
+  escrow_fees: number;
+  pending_count: number;
+  pending_cashback: number;
+  pending_fees: number;
 }
 
 const fee = (cashback: number | null, price: number | null) =>
   portfolioAiFee({ cashback_at_close: cashback, purchase_price: price });
+
+function compactMoney(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `$${Math.round(value / 1_000)}K`;
+  return `$${Math.round(value)}`;
+}
 
 const daysBetween = (iso: string | null) =>
   iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : 0;
@@ -86,8 +99,9 @@ export function DashboardIntel() {
           iconBg="rgba(59,130,246,0.12)"
           iconColor="#3b82f6"
           label="In Escrow"
-          value={String(i?.deals_in_escrow ?? 0)}
-          sub={`${money(i?.total_projected_fees ?? 0)} proj fees`}
+          value={String(i?.escrow_count ?? i?.deals_in_escrow ?? 0)}
+          sub={i == null ? "loading…" : `${compactMoney(i.escrow_cashback)} proj cashback`}
+          sub2={i == null ? "" : `${compactMoney(i.escrow_fees)} proj fees`}
           valueColor="#3b82f6"
         />
         <KpiCard
@@ -95,8 +109,9 @@ export function DashboardIntel() {
           iconBg="rgba(168,85,247,0.12)"
           iconColor="#a855f7"
           label="Pending"
-          value={String(i?.deals_pending ?? 0)}
-          sub={i == null ? "loading…" : `${money(i.total_projected_cashback)} proj cashback`}
+          value={String(i?.pending_count ?? i?.deals_pending ?? 0)}
+          sub={i == null ? "loading…" : `${compactMoney(i.pending_cashback)} proj cashback`}
+          sub2={i == null ? "" : `${compactMoney(i.pending_fees)} proj fees`}
           valueColor="#a855f7"
         />
         <KpiCard
@@ -169,6 +184,7 @@ function KpiCard({
   label,
   value,
   sub,
+  sub2,
   valueColor,
 }: {
   icon: React.ReactNode;
@@ -177,6 +193,7 @@ function KpiCard({
   label: string;
   value: string;
   sub: string;
+  sub2?: string;
   valueColor: string;
 }) {
   return (
@@ -191,6 +208,7 @@ function KpiCard({
         {label}
       </div>
       <div className="mt-0.5 truncate text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>{sub}</div>
+      {sub2 && <div className="mt-0.5 truncate text-xs" style={{ color: "rgba(255,255,255,0.18)" }}>{sub2}</div>}
     </div>
   );
 }
