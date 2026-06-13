@@ -1145,7 +1145,7 @@ function HoldingDrawer({ holding, onClose, onReload }: { holding: Holding; onClo
 
   return (
     <div className="fixed inset-0 z-[55] flex justify-end bg-black/50" onClick={onClose}>
-      <aside className="flex h-full w-full max-w-[600px] flex-col border-l border-white/10 bg-[#0a1628]" onClick={(e) => e.stopPropagation()}>
+      <aside className="flex h-full w-full md:max-w-[600px] flex-col border-l border-white/10 bg-[#0a1628]" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-white/10 px-6 py-4">
           <div className="min-w-0">
             <h2 className="truncate text-xl text-white">{holding.address}</h2>

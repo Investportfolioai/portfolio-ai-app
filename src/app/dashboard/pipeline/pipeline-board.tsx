@@ -122,7 +122,7 @@ function IntelligenceBar() {
         <span className="text-xs text-white/50">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
           <MiniStat label="Portfolio AI Fees" value={money(intel?.total_projected_fees ?? 0)} />
           <MiniStat label="Proj Cashback" value={money(intel?.total_projected_cashback ?? 0)} />
           <MiniStat label="Close Rate" value={`${(intel?.close_rate ?? 0).toFixed(0)}%`} />
@@ -917,7 +917,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
         aria-modal="true"
         aria-label={deal ? `Deal detail: ${deal.property_address}` : undefined}
         className={
-          "absolute right-0 top-0 flex h-full w-full max-w-lg flex-col bg-card shadow-2xl transition-transform duration-200 ease-out " +
+          "absolute right-0 top-0 flex h-full w-full md:max-w-lg flex-col bg-card shadow-2xl transition-transform duration-200 ease-out " +
           (open ? "translate-x-0" : "translate-x-full")
         }
       >
