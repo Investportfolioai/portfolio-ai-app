@@ -145,12 +145,6 @@ export function DashboardIntel() {
         </Panel>
       </div>
 
-      {/* Section 3 — performance stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Perf label="Avg ACQ Grade" value={i?.avg_acq_grade != null ? i.avg_acq_grade.toFixed(0) : "—"} />
-        <Perf label="Avg STAB Grade" value={i?.avg_stab_grade != null ? i.avg_stab_grade.toFixed(0) : "—"} />
-        <Perf label="Avg Days to Escrow" value={i?.avg_days_to_escrow != null ? `${i.avg_days_to_escrow.toFixed(0)}d` : "—"} />
-      </div>
     </div>
   );
 }
@@ -233,11 +227,3 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="px-4 py-8 text-center text-sm text-muted-foreground">{children}</p>;
 }
 
-function Perf({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5">
-      <div className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">{label}</div>
-      <div className="data-number mt-2 text-2xl font-medium tabular-nums text-primary">{value}</div>
-    </div>
-  );
-}

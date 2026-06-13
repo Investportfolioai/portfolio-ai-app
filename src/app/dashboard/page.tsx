@@ -26,10 +26,11 @@ export default async function DashboardHome() {
         </p>
       </header>
 
-      {/* Sections 1–3: KPI row, pipeline panels, performance stats */}
-      <DashboardIntel />
-
+      {/* Impact Board — lifetime closed-deal metrics */}
       <ImpactBoard />
+
+      {/* KPI row + pipeline panels */}
+      <DashboardIntel />
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Section 4 — Recent Activity */}
