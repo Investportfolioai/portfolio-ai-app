@@ -146,10 +146,18 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function PipelineBoard({ deals }: { deals: Deal[] }) {
+export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
   const [status, setStatus] = useState<DealStatus | "all" | "escrow">("all");
   const [structure, setStructure] = useState<StructureFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+
+  const deals = initialDeals.filter((d) => !deletedIds.has(d.id));
+
+  function handleDeleted(id: string) {
+    setDeletedIds((prev) => new Set(prev).add(id));
+    if (selectedId === id) setSelectedId(null);
+  }
 
   // All = active + pending (excludes dead/passed); Escrow = active w/ escrow_date.
   const counts = useMemo(() => {
@@ -245,6 +253,7 @@ export function PipelineBoard({ deals }: { deals: Deal[] }) {
               key={deal.id}
               deal={deal}
               onOpen={() => setSelectedId(deal.id)}
+              onDeleted={handleDeleted}
             />
           ))}
         </div>
@@ -565,8 +574,10 @@ function RentalToggle({ deal, onChanged }: { deal: Deal; onChanged?: () => void 
   );
 }
 
-function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
+function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void; onDeleted: (id: string) => void }) {
   const spread = equitySpread(deal);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const locality = [deal.city, deal.state].filter(Boolean).join(", ");
 
   return (
@@ -658,7 +669,48 @@ function DealCard({ deal, onOpen }: { deal: Deal; onOpen: () => void }) {
             {deal.kp_count} {deal.kp_count === 1 ? "KP" : "KPs"}
           </span>
         )}
-        <span>{updatedLabel(daysSince(deal.updated_at))}</span>
+        <div className="flex items-center gap-2">
+          <span>{updatedLabel(daysSince(deal.updated_at))}</span>
+          {deal.status === "dead" && !confirmDelete && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+              className="rounded px-1.5 py-0.5 text-[11px] text-rose-500/70 hover:bg-rose-500/10 hover:text-rose-500"
+            >
+              Delete
+            </button>
+          )}
+          {deal.status === "dead" && confirmDelete && (
+            <span className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+              <span className="text-[11px] text-rose-600">Permanently delete?</span>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setDeleting(true);
+                  const res = await fetch(`/api/deals/${deal.id}`, { method: "DELETE" });
+                  if (res.ok) {
+                    onDeleted(deal.id);
+                  } else {
+                    setDeleting(false);
+                    setConfirmDelete(false);
+                  }
+                }}
+                className="rounded px-1.5 py-0.5 text-[11px] font-medium text-rose-600 hover:bg-rose-500/10 disabled:opacity-50"
+              >
+                {deleting ? "…" : "Yes, delete"}
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
+                className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-secondary"
+              >
+                Cancel
+              </button>
+            </span>
+          )}
+        </div>
       </div>
     </motion.div>
   );
