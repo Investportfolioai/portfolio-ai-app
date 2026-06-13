@@ -4,15 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGrid } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { logout } from "@/app/login/actions";
-import { ROLE_LABELS, type UserRole } from "@/lib/types";
-
 type NavItem = { label: string; href?: string; icon?: LucideIcon };
 
 export interface SidebarUser {
   email: string | null;
   full_name: string | null;
-  role: UserRole | null;
+  role: import("@/lib/types").UserRole | null;
 }
 
 const NAV: NavItem[] = [
@@ -27,14 +24,8 @@ const NAV: NavItem[] = [
   { label: "Documents", href: "/dashboard/documents" },
 ];
 
-export function Sidebar({ user }: { user: SidebarUser }) {
+export function Sidebar() {
   const pathname = usePathname();
-  const initials = (user.full_name ?? user.email ?? "?")
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase())
-    .join("");
 
   return (
     <aside className="flex w-[220px] shrink-0 flex-col bg-sidebar text-sidebar-foreground">
@@ -84,29 +75,6 @@ export function Sidebar({ user }: { user: SidebarUser }) {
         })}
       </nav>
 
-      <div className="border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-3 rounded-md px-2 py-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-accent">
-            {initials}
-          </span>
-          <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-sm font-medium text-sidebar-foreground">
-              {user.full_name ?? "Signed in"}
-            </div>
-            <div className="truncate text-[11px] text-accent">
-              {user.email ?? (user.role ? ROLE_LABELS[user.role] : "")}
-            </div>
-          </div>
-        </div>
-        <form action={logout}>
-          <button
-            type="submit"
-            className="mt-1 w-full rounded-md px-2 py-2 text-left text-sm text-sidebar-foreground/50 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-          >
-            Sign out
-          </button>
-        </form>
-      </div>
     </aside>
   );
 }
