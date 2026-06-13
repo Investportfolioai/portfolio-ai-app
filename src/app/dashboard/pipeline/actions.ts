@@ -636,6 +636,13 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   wholesaler_name: { label: "Wholesaler Name", numeric: false },
 };
 
+// Fields whose changes require a waterfall write-back to cashback_at_close et al.
+const WATERFALL_RECALC_FIELDS = new Set([
+  "purchase_price", "ltv_percent", "seller_note_amount",
+  "assignment_fee", "realtor_commission", "insurance_annual", "taxes_annual",
+  "tc_fee", "attorney_fee", "pm_fee",
+]);
+
 export async function updateDealField(
   dealId: string,
   field: string,
@@ -659,8 +666,41 @@ export async function updateDealField(
   const { error } = await supabase.from("deals").update({ [field]: parsed }).eq("id", dealId);
   if (error) return { ok: false, error: error.message };
   await logActivity(dealId, "field_edited", `${meta.label} → ${value.trim() || "—"}`);
+
+  if (WATERFALL_RECALC_FIELDS.has(field)) {
+    await recalcAndWriteWaterfall(dealId);
+  }
+
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
+}
+
+async function recalcAndWriteWaterfall(dealId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: row } = await admin
+    .from("deals")
+    .select("purchase_price, ltv_percent, seller_note_amount, assignment_fee, realtor_commission, insurance_annual, taxes_annual, tc_fee, attorney_fee, pm_fee, status")
+    .eq("id", dealId)
+    .single();
+  // Don't overwrite cashback on closed deals — that value was set at actual close.
+  if (!row || row.purchase_price == null || row.status === "closed") return;
+  const w = calculateMorbyWaterfall({
+    purchase_price: row.purchase_price,
+    ltv_percent: row.ltv_percent ?? null,
+    seller_note_amount: row.seller_note_amount ?? null,
+    assignment_fee: row.assignment_fee ?? null,
+    realtor_commission: row.realtor_commission ?? null,
+    insurance_annual: row.insurance_annual ?? null,
+    taxes_annual: row.taxes_annual ?? null,
+    tc_fee: row.tc_fee ?? null,
+    attorney_fee: row.attorney_fee ?? null,
+    pm_fee: row.pm_fee ?? null,
+  });
+  await admin.from("deals").update({
+    cashback_at_close: w.netToBuyer,
+    credit_partner_fee: w.creditPartnerFee,
+    portfolio_ai_fee: w.portfolioAIFee,
+  }).eq("id", dealId);
 }
 
 /** Item 2 — milestones. */

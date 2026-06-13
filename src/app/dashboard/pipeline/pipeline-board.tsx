@@ -727,6 +727,10 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
   const [cashback, setCashback] = useState(
     deal.cashback_at_close != null ? String(deal.cashback_at_close) : "",
   );
+  // Sync when the parent deal refreshes (e.g. after a waterfall recalc write-back).
+  useEffect(() => {
+    setCashback(deal.cashback_at_close != null ? String(deal.cashback_at_close) : "");
+  }, [deal.cashback_at_close]);
   const cbNum = cashback === "" ? null : Number(cashback);
   const cbPct = cbNum != null && deal.purchase_price ? (cbNum / deal.purchase_price) * 100 : null;
   const aiFee = portfolioAiFee({
