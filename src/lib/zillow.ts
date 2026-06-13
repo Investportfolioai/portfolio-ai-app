@@ -34,6 +34,63 @@ function zestimateFrom(data: JobResponse): number | null {
   return toNum(data?.results?.[0]?.property?.zestimate ?? null);
 }
 
+async function runJob(
+  address: string,
+  type: string,
+  headers: Record<string, string>,
+  label: string,
+): Promise<number | null> {
+  const startRes = await fetch(`https://${HOST}/v1/properties`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ search: address, type, max_items: 1 }),
+  });
+
+  if (!startRes.ok) {
+    let body: unknown = "<non-JSON>";
+    try { body = await startRes.json(); } catch { /* ignore */ }
+    console.error(`[zillow] ${label} start failed — HTTP ${startRes.status}:`, JSON.stringify(body));
+    return null;
+  }
+
+  const start: JobResponse = await startRes.json();
+  console.log(`[zillow] ${label} start response:`, JSON.stringify(start));
+
+  const immediate = zestimateFrom(start);
+  if (immediate != null) return immediate;
+
+  const jobId = start.job_id;
+  if (!jobId) {
+    console.error(`[zillow] ${label} — no job_id in start response`);
+    return null;
+  }
+
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await sleep(POLL_INTERVAL_MS);
+    const res = await fetch(`https://${HOST}/v1/results/${jobId}`, { method: "GET", headers });
+
+    if (!res.ok) {
+      let body: unknown = "<non-JSON>";
+      try { body = await res.json(); } catch { /* ignore */ }
+      console.error(`[zillow] ${label} poll ${i} failed — HTTP ${res.status}:`, JSON.stringify(body));
+      continue;
+    }
+
+    const data: JobResponse = await res.json();
+
+    if (data.status && data.status !== "processing") {
+      const value = zestimateFrom(data);
+      if (value == null) {
+        console.error(`[zillow] ${label} job complete but no zestimate — full result:`, JSON.stringify(data));
+      }
+      return value;
+    }
+  }
+
+  console.warn(`[zillow] ${label} job timed out for "${address}"`);
+  return null;
+}
+
 export async function getZillowAVM(address: string): Promise<number | null> {
   const key = process.env.RAPIDAPI_KEY?.replace(/\s/g, "");
   if (!key || !address?.trim()) return null;
@@ -45,40 +102,19 @@ export async function getZillowAVM(address: string): Promise<number | null> {
   };
 
   try {
-    // 1) Start the async job.
-    const startRes = await fetch(`https://${HOST}/v1/properties`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ search: address, type: "sale", max_items: 1 }),
-    });
-    if (!startRes.ok) {
-      console.warn(`[zillow] start ${startRes.status} for "${address}"`);
-      return null;
+    // Primary: type=sale search.
+    const primary = await runJob(address, "sale", headers, `primary(sale) "${address}"`);
+    if (primary != null) return primary;
+
+    // Fallback: type=zestimate — different search mode, often succeeds when "sale" finds nothing.
+    console.log(`[zillow] primary returned null — retrying with type=zestimate for "${address}"`);
+    const fallback = await runJob(address, "zestimate", headers, `fallback(zestimate) "${address}"`);
+    if (fallback == null) {
+      console.error(`[zillow] both attempts returned null for "${address}"`);
     }
-    const start: JobResponse = await startRes.json();
-
-    // Occasionally results are already present on the start response.
-    const immediate = zestimateFrom(start);
-    if (immediate != null) return immediate;
-
-    const jobId = start.job_id;
-    if (!jobId) return null;
-
-    // 2) Poll the results endpoint until the job reaches a terminal status.
-    for (let i = 0; i < MAX_POLLS; i++) {
-      await sleep(POLL_INTERVAL_MS);
-      const res = await fetch(`https://${HOST}/v1/results/${jobId}`, { method: "GET", headers });
-      if (!res.ok) continue;
-      const data: JobResponse = await res.json();
-      if (data.status && data.status !== "processing") {
-        return zestimateFrom(data); // "complete" (or terminal) — value or null
-      }
-    }
-
-    console.warn(`[zillow] job timed out for "${address}"`);
-    return null;
+    return fallback;
   } catch (e) {
-    console.warn("[zillow] lookup failed:", (e as Error).message);
+    console.error("[zillow] unexpected error:", (e as Error).message);
     return null;
   }
 }
