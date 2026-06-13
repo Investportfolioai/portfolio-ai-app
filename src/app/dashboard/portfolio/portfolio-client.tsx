@@ -52,6 +52,7 @@ interface DocRow {
   doc_type: string | null;
   created_at: string;
   parsed_data: unknown | null;
+  signed_url: string | null;
 }
 interface Snapshot {
   id: string;
@@ -1406,7 +1407,12 @@ function DocumentsTab({ holding, onReload }: { holding: Holding; onReload: () =>
                   {!!d.parsed_data && <span className="text-[#c9a84c]">AI Parsed</span>}
                 </p>
               </div>
-              <button onClick={() => remove(d.id)} className="shrink-0 text-xs text-white/40 hover:text-rose-400">Delete</button>
+              <div className="flex shrink-0 items-center gap-3">
+                {d.signed_url && (
+                  <a href={d.signed_url} target="_blank" rel="noopener noreferrer" className="text-xs text-white/40 hover:text-white">Download</a>
+                )}
+                <button onClick={() => remove(d.id)} className="text-xs text-white/40 hover:text-rose-400">Delete</button>
+              </div>
             </div>
           ))
         )}

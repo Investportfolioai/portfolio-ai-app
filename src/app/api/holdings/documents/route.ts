@@ -83,7 +83,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ success: true, file_url: path, document_id: doc?.id, parsed, updated });
 }
 
-/** GET ?holding_id= — list documents for a holding. */
+/** GET ?holding_id= — list documents for a holding, each with a 1-hour signed URL. */
 export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -99,7 +99,18 @@ export async function GET(req: Request) {
     .eq("holding_id", holdingId)
     .order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ documents: data ?? [] });
+
+  const docs = await Promise.all(
+    (data ?? []).map(async (doc) => {
+      if (!doc.file_url) return doc;
+      const { data: signed } = await admin.storage
+        .from(BUCKET)
+        .createSignedUrl(doc.file_url, 3600);
+      return { ...doc, signed_url: signed?.signedUrl ?? null };
+    }),
+  );
+
+  return NextResponse.json({ documents: docs });
 }
 
 /** DELETE ?id= — remove a document and its storage object. */
