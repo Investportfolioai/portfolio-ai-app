@@ -168,14 +168,20 @@ export default function NewSandboxPage() {
               required
               placeholder="e.g. Q3 Wholesale Push"
               style={{
-                width: "100%", background: "#1a1d27",
-                border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px",
+                width: "100%", background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px",
                 padding: "10px 14px", fontSize: "14px", color: "white",
                 outline: "none", boxSizing: "border-box",
-                transition: "border-color 150ms ease",
+                transition: "border-color 150ms ease, box-shadow 150ms ease",
               }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.5)"; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = "#C9A84C";
+                e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201,168,76,0.12)";
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
             />
           </div>
 
@@ -194,14 +200,20 @@ export default function NewSandboxPage() {
               rows={3}
               placeholder="Describe your strategy or goal…"
               style={{
-                width: "100%", background: "#1a1d27",
-                border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px",
+                width: "100%", background: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px",
                 padding: "10px 14px", fontSize: "14px", color: "white",
                 outline: "none", resize: "none", boxSizing: "border-box",
-                transition: "border-color 150ms ease",
+                transition: "border-color 150ms ease, box-shadow 150ms ease",
               }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.5)"; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; }}
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = "#C9A84C";
+                e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201,168,76,0.12)";
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
+                e.currentTarget.style.boxShadow = "none";
+              }}
             />
           </div>
 

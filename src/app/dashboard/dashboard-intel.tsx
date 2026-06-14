@@ -67,7 +67,7 @@ function gradeBadge(n: number | null, cashback?: number | null) {
   return { letter: n >= 60 ? "D" : "F", bg: "rgba(239,68,68,0.12)", color: "#ef4444", ring: "rgba(239,68,68,0.25)" };
 }
 
-const CARD = { background: "#1a1d27", border: "1px solid rgba(255,255,255,0.06)" } as const;
+const CARD = {} as const;
 const DIVIDER = { borderColor: "rgba(255,255,255,0.05)" } as const;
 
 export function DashboardIntel() {
@@ -197,7 +197,7 @@ function KpiCard({
   valueColor: string;
 }) {
   return (
-    <div className="rounded-2xl p-5 relative overflow-hidden" style={CARD}>
+    <div className="glass-card p-5 relative overflow-hidden">
       <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: iconBg }}>
         <span style={{ color: iconColor }}>{icon}</span>
       </div>
@@ -215,7 +215,7 @@ function KpiCard({
 
 function Panel({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
-    <section className="overflow-hidden rounded-2xl" style={CARD}>
+    <section className="glass-card overflow-hidden">
       <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>{title}</span>
         <span

@@ -154,19 +154,13 @@ function SandboxCard({
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      className="glass-card"
       style={{
-        background: "#1a1d27",
-        border: "1px solid rgba(255,255,255,0.06)",
-        borderRadius: "16px",
         padding: "20px",
         cursor: "pointer",
         display: "flex",
         flexDirection: "column",
         gap: "10px",
-        boxShadow: hovered
-          ? "0 0 0 1px rgba(201,168,76,0.4), 0 8px 24px rgba(201,168,76,0.15)"
-          : "0 1px 4px rgba(0,0,0,0.25)",
-        transition: "all 200ms ease",
         position: "relative",
       }}
     >
@@ -492,7 +486,7 @@ export function SandboxBoard({
               cursor: "pointer", display: "flex", alignItems: "center",
               gap: "6px", flexShrink: 0,
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#dbbe66"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#D4B86A"; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "#C9A84C"; }}
           >
             <IconPlus size={14} />
@@ -513,20 +507,23 @@ export function SandboxBoard({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search sandboxes…"
+            className="premium-input"
             style={{
               width: "100%",
-              background: "#1a1d27",
-              border: "1px solid rgba(255,255,255,0.08)",
               borderRadius: "12px",
               padding: "10px 14px 10px 42px",
               color: "white",
               fontSize: "14px",
-              outline: "none",
               boxSizing: "border-box",
-              transition: "border-color 150ms ease",
             }}
-            onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; }}
-            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "#C9A84C";
+              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(201,168,76,0.12)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
           />
         </div>
 

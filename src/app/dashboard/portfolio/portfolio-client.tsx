@@ -180,7 +180,7 @@ export function PortfolioClient({
   ];
 
   return (
-    <div className="min-h-screen bg-[#0a1628] px-8 py-8 text-white">
+    <div className="fade-up min-h-screen px-8 py-8 text-white" style={{ background: "#0A0B14" }}>
       {celebrate && (
         <div className="fixed inset-x-0 top-0 z-[60] bg-[#c9a84c] px-6 py-3 text-center text-sm font-semibold text-[#0a1628] shadow-lg">
           🎉 Property added to your portfolio — {money(celebrate.equity)} equity position established.
@@ -298,7 +298,7 @@ function StatCard({
   big?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+    <div className="glass-card px-4 py-3">
       <p className="text-[10px] uppercase tracking-widest text-white/40">{label}</p>
       <p
         className={`data-number mt-1 tabular-nums ${big ? "text-xl" : "text-lg"} font-medium ${
@@ -353,7 +353,7 @@ function IntelDashboard({
   return (
     <div className="mt-8">
       {/* Chart */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-5">
+      <div className="glass-card p-5">
         <p className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-white/40">
           Portfolio Value Over Time
         </p>

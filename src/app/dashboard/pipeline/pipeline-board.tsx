@@ -110,7 +110,7 @@ function IntelligenceBar() {
   }, []);
 
   return (
-    <div className="mb-4 rounded-xl bg-[#0a1628] px-4 py-3 text-white">
+    <div className="glass-card mb-4 px-4 py-3 text-white">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -515,7 +515,7 @@ function GradeBadge({ caption, value, dim }: { caption: string; value: number; d
       >
         {dim ? "—" : value}
       </span>
-      <span className="text-[8px] font-medium uppercase tracking-widest text-muted-foreground">
+      <span className="text-[8px] font-medium uppercase tracking-widest text-white/40">
         {caption}
       </span>
     </div>
@@ -583,19 +583,14 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
   return (
     <motion.div
       onClick={onOpen}
-      style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)", borderColor: "rgba(0,0,0,0.06)" }}
-      whileHover={{
-        y: -2,
-        boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-        borderColor: "rgba(212,175,55,0.3)",
-      }}
+      whileHover={{ y: -2 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="flex cursor-pointer flex-col rounded-2xl border bg-card p-5 text-left"
+      className="glass-card flex cursor-pointer flex-col p-5 text-left"
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-base text-primary">{deal.property_address}</h3>
-          {locality && <p className="truncate text-xs text-muted-foreground">{locality}</p>}
+          <h3 className="truncate text-base text-white">{deal.property_address}</h3>
+          {locality && <p className="truncate text-xs text-white/45">{locality}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           {deal.next_milestone_days != null && deal.next_milestone_days <= 10 && (
@@ -645,11 +640,11 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
       </div>
 
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Rental</span>
+        <span className="text-[10px] uppercase tracking-widest text-white/40">Rental</span>
         <RentalToggle deal={deal} />
       </div>
 
-      <dl className="grid grid-cols-3 gap-3 border-t border-border pt-4">
+      <dl className="grid grid-cols-3 gap-3 border-t border-white/10 pt-4">
         <Metric label="Purchase" value={moneyCompact(deal.purchase_price)} />
         <Metric label="ARV" value={moneyCompact(deal.arv)} />
         <Metric label="Equity Spread" value={moneyCompact(spread)} accent />
@@ -659,7 +654,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
         <CardCashback deal={deal} escrow={deal.status === "active" && !!deal.escrow_date} />
       )}
 
-      <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
+      <div className="mt-4 flex items-center justify-between text-xs text-white/40">
         {deal.status === "dead" && deadDaysRemaining(deal) != null ? (
           <span className="font-medium text-rose-600">
             Auto-deletes in {deadDaysRemaining(deal)}d
@@ -704,7 +699,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
-                className="rounded px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-secondary"
+                className="rounded px-1.5 py-0.5 text-[11px] text-white/40 hover:bg-white/10"
               >
                 Cancel
               </button>
@@ -774,22 +769,22 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
   }
 
   return (
-    <div className="mt-4 space-y-2 border-t border-border pt-4" onClick={(e) => e.stopPropagation()}>
+    <div className="mt-4 space-y-2 border-t border-white/10 pt-4" onClick={(e) => e.stopPropagation()}>
       {escrow && deal.escrow_date && (
         <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Days in escrow</span>
-          <span className="data-number tabular-nums text-primary">{daysSince(deal.escrow_date)}d</span>
+          <span className="text-white/45">Days in escrow</span>
+          <span className="data-number tabular-nums text-white">{daysSince(deal.escrow_date)}d</span>
         </div>
       )}
       <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Portfolio AI Fee</span>
-        <span className="data-number tabular-nums text-accent">{aiFee != null ? money(aiFee) : "—"}</span>
+        <span className="text-white/45">Portfolio AI Fee</span>
+        <span className="data-number tabular-nums text-[#C9A84C]">{aiFee != null ? money(aiFee) : "—"}</span>
       </div>
       <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Est. Net to Buyer</span>
+        <span className="text-white/45">Est. Net to Buyer</span>
         <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-md border border-border bg-secondary px-2 py-0.5">
-            <span className="text-muted-foreground">$</span>
+          <div className="flex items-center rounded-md border border-white/10 bg-white/5 px-2 py-0.5">
+            <span className="text-white/40">$</span>
             <input
               type="number"
               value={cbStr}
@@ -798,7 +793,7 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
               onChange={(e) => setEditValue(e.target.value)}
               onBlur={save}
               placeholder="—"
-              className="w-20 bg-transparent px-1 text-right text-xs text-primary outline-none"
+              className="w-20 bg-transparent px-1 text-right text-xs text-white outline-none"
             />
           </div>
           {cbPct != null && (
@@ -823,13 +818,13 @@ function Metric({
 }) {
   return (
     <div>
-      <dt className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+      <dt className="text-[10px] font-medium uppercase tracking-widest text-white/40">
         {label}
       </dt>
       <dd
         className={
           "data-number mt-1 text-sm font-medium tabular-nums " +
-          (accent ? "text-accent" : "text-primary")
+          (accent ? "text-[#C9A84C]" : "text-white")
         }
       >
         {value}

@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default function DashboardHome() {
   return (
     <div
-      className="min-h-screen px-4 py-6 sm:px-8 sm:py-8"
+      className="fade-up min-h-screen px-4 py-6 sm:px-8 sm:py-8"
       style={{ background: "#0A0B14" }}
     >
       <div className="mx-auto max-w-7xl space-y-6">
@@ -51,8 +51,8 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className="group rounded-xl px-4 py-3 transition-all min-w-[150px] hover:border-[rgba(201,168,76,0.3)]"
-      style={{ background: "#1a1d27", border: "1px solid rgba(255,255,255,0.07)", color: "#fff" }}
+      className="glass-card group px-4 py-3 min-w-[150px] block"
+      style={{ color: "#fff" }}
     >
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">{title}</div>
