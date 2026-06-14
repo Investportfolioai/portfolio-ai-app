@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { money, moneyCompact } from "@/lib/format";
 import { portfolioAiFee } from "@/lib/types";
 
@@ -70,6 +70,26 @@ function gradeBadge(n: number | null, cashback?: number | null) {
 const CARD = {} as const;
 const DIVIDER = { borderColor: "rgba(255,255,255,0.05)" } as const;
 
+function useCountUp(target: number, duration = 1200): number {
+  const [value, setValue] = useState(0);
+  const rafRef = useRef<number>(0);
+  useEffect(() => {
+    setValue(0);
+    if (target === 0) return;
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(target * eased);
+      if (progress < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, duration]);
+  return value;
+}
+
 export function DashboardIntel() {
   const [intel, setIntel] = useState<Intel | null>(null);
 
@@ -87,41 +107,34 @@ export function DashboardIntel() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard
           icon={<TargetIcon />}
-          iconBg="rgba(201,168,76,0.12)"
-          iconColor="#C9A84C"
           label="Close Rate"
-          value={`${(i?.close_rate ?? 0).toFixed(0)}%`}
+          numericValue={i?.close_rate ?? 0}
+          valueFmt={(n) => `${Math.round(n)}%`}
           sub={`${i?.closed_count ?? 0} of ${i?.worked_count ?? 0} worked`}
-          valueColor="#C9A84C"
         />
         <KpiCard
           icon={<EscrowIcon />}
-          iconBg="rgba(59,130,246,0.12)"
-          iconColor="#3b82f6"
           label="In Escrow"
-          value={String(i?.escrow_count ?? i?.deals_in_escrow ?? 0)}
+          numericValue={i?.escrow_count ?? i?.deals_in_escrow ?? 0}
+          valueFmt={(n) => String(Math.round(n))}
           sub={i == null ? "loading…" : `${compactMoney(i.escrow_cashback)} proj cashback`}
           sub2={i == null ? "" : `${compactMoney(i.escrow_fees)} proj fees`}
-          valueColor="#3b82f6"
         />
         <KpiCard
           icon={<ClockIcon />}
-          iconBg="rgba(168,85,247,0.12)"
-          iconColor="#a855f7"
           label="Pending"
-          value={String(i?.pending_count ?? i?.deals_pending ?? 0)}
+          numericValue={i?.pending_count ?? i?.deals_pending ?? 0}
+          valueFmt={(n) => String(Math.round(n))}
           sub={i == null ? "loading…" : `${compactMoney(i.pending_cashback)} proj cashback`}
           sub2={i == null ? "" : `${compactMoney(i.pending_fees)} proj fees`}
-          valueColor="#a855f7"
         />
         <KpiCard
           icon={<StarIcon />}
-          iconBg="rgba(34,197,94,0.12)"
-          iconColor="#22c55e"
           label="Buybox Score"
-          value={i?.buybox_score != null ? `${i.buybox_score.toFixed(1)}%` : "—"}
+          numericValue={i?.buybox_score ?? 0}
+          valueFmt={(n) => `${n.toFixed(1)}%`}
+          displayOverride={i != null && i.buybox_score == null ? "—" : undefined}
           sub="avg cashback at close"
-          valueColor="#22c55e"
         />
       </div>
 
@@ -179,35 +192,52 @@ export function DashboardIntel() {
 
 function KpiCard({
   icon,
-  iconBg,
-  iconColor,
   label,
-  value,
+  numericValue,
+  valueFmt,
+  displayOverride,
   sub,
   sub2,
-  valueColor,
 }: {
   icon: React.ReactNode;
-  iconBg: string;
-  iconColor: string;
   label: string;
-  value: string;
-  sub: string;
+  numericValue: number;
+  valueFmt: (n: number) => string;
+  displayOverride?: string;
+  sub?: string;
   sub2?: string;
-  valueColor: string;
 }) {
+  const counted = useCountUp(numericValue);
+  const display = displayOverride ?? valueFmt(counted);
   return (
     <div className="glass-card p-5 relative overflow-hidden">
-      <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: iconBg }}>
-        <span style={{ color: iconColor }}>{icon}</span>
+      {/* Icon: 28px, gold, top-left */}
+      <div className="mb-4" style={{ color: "#C9A84C" }}>
+        {icon}
       </div>
-      <div className="font-mono text-2xl font-semibold leading-none tabular-nums sm:text-3xl" style={{ color: valueColor }}>
-        {value}
+      {/* Big number */}
+      <div style={{
+        fontSize: "3rem",
+        fontWeight: 200,
+        letterSpacing: "-0.03em",
+        color: "#fff",
+        lineHeight: 1.05,
+      }}>
+        {display}
       </div>
-      <div className="mt-1.5 text-[10px] font-medium uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.3)" }}>
+      {/* Gold underline */}
+      <div style={{ width: "32px", height: "2px", background: "#C9A84C", margin: "10px 0 8px" }} />
+      {/* Label */}
+      <div style={{
+        fontSize: "0.6rem",
+        fontWeight: 600,
+        letterSpacing: "0.15em",
+        textTransform: "uppercase",
+        color: "#6b7280",
+      }}>
         {label}
       </div>
-      <div className="mt-0.5 truncate text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>{sub}</div>
+      {sub && <div className="mt-0.5 truncate text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>{sub}</div>}
       {sub2 && <div className="mt-0.5 truncate text-xs" style={{ color: "rgba(255,255,255,0.18)" }}>{sub2}</div>}
     </div>
   );
@@ -314,28 +344,28 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 function TargetIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
     </svg>
   );
 }
 function EscrowIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
     </svg>
   );
 }
 function ClockIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
     </svg>
   );
 }
 function StarIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
     </svg>
   );

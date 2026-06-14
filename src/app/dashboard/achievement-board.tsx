@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   LineChart,
   Line,
@@ -98,7 +98,12 @@ function initials(email: string): string {
     .join("");
 }
 
-const RANK_BADGE = ["#C9A84C", "#9ca3af", "#b45309"];
+// Rank badge styles: #1 gold, #2 silver-gray, #3 bronze-gray
+const RANK_STYLES = [
+  { bg: "rgba(201,168,76,0.15)", color: "#C9A84C", border: "1px solid rgba(201,168,76,0.3)" },
+  { bg: "rgba(180,180,180,0.1)", color: "#9ca3af", border: "none" },
+  { bg: "rgba(180,120,60,0.1)", color: "#9ca3af", border: "none" },
+];
 
 function CustomTooltip({ active, payload, label }: {
   active?: boolean;
@@ -112,6 +117,30 @@ function CustomTooltip({ active, payload, label }: {
       <div className="text-[#EBB66A] font-mono font-semibold">{payload[0].value}</div>
     </div>
   );
+}
+
+// Counts from 0 to target over `duration` ms with ease-out-cubic easing.
+// Resets whenever target changes (e.g. new data loads).
+function useCountUp(target: number, duration = 1200): number {
+  const [value, setValue] = useState(0);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    setValue(0);
+    if (target === 0) return;
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(Math.round(target * eased));
+      if (progress < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, duration]);
+
+  return value;
 }
 
 export function AchievementBoard() {
@@ -155,6 +184,11 @@ export function AchievementBoard() {
       ? leaders[0].fees
       : leaders[0].sellers
     : 1;
+
+  // Flat baseline when no trend data
+  const trendData = (m?.trend ?? []).length > 0
+    ? m!.trend
+    : [{ week: "", deals: 0, volume: 0, fees: 0 }, { week: "", deals: 0, volume: 0, fees: 0 }];
 
   return (
     <div className="space-y-5">
@@ -205,7 +239,8 @@ export function AchievementBoard() {
           iconBg="rgba(201,168,76,0.12)"
           iconColor="#C9A84C"
           label="Deals Closed"
-          value={m ? String(m.dealsClosed) : "—"}
+          rawValue={m?.dealsClosed ?? 0}
+          formatter={(n) => String(n)}
           growth={m?.growth ?? null}
           loading={loading}
         />
@@ -214,17 +249,18 @@ export function AchievementBoard() {
           iconBg="rgba(201,168,76,0.12)"
           iconColor="#C9A84C"
           label="Total Cashback"
-          value={m ? fmt$(m.totalCashback) : "—"}
+          rawValue={m?.totalCashback ?? 0}
+          formatter={fmt$}
           growth={null}
           loading={loading}
-          gold
         />
         <MetricCard
           icon={<DollarIcon />}
           iconBg="rgba(59,130,246,0.12)"
           iconColor="#3b82f6"
           label="Fees Paid Out"
-          value={m ? fmt$(m.totalFees) : "—"}
+          rawValue={m?.totalFees ?? 0}
+          formatter={fmt$}
           growth={null}
           loading={loading}
         />
@@ -233,10 +269,10 @@ export function AchievementBoard() {
           iconBg="rgba(34,197,94,0.12)"
           iconColor="#22c55e"
           label="Sellers Helped"
-          value={m ? String(m.sellersHelped) : "—"}
+          rawValue={m?.sellersHelped ?? 0}
+          formatter={(n) => String(n)}
           growth={null}
           loading={loading}
-          green
         />
       </div>
 
@@ -244,8 +280,7 @@ export function AchievementBoard() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-10">
         {/* Left 70%: Top Wholesalers */}
         <div
-          className="lg:col-span-7 rounded-2xl p-5"
-          style={{ background: "#1a1d27", border: "1px solid rgba(255,255,255,0.06)" }}
+          className="lg:col-span-7 glass-card p-5"
         >
           <div className="mb-4 flex items-center justify-between gap-3">
             <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
@@ -287,22 +322,38 @@ export function AchievementBoard() {
                   leaderTab === "deals" || leaderTab === "sellers"
                     ? String(val)
                     : fmt$(val);
+                const rank = RANK_STYLES[i];
                 return (
                   <li key={w.email} className="flex items-center gap-3">
-                    {/* Avatar */}
-                    <div
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
-                      style={{
-                        background:
-                          i < 3
-                            ? `${RANK_BADGE[i]}25`
-                            : "rgba(255,255,255,0.07)",
-                        color: i < 3 ? RANK_BADGE[i] : "rgba(255,255,255,0.4)",
-                        border: `1px solid ${i < 3 ? RANK_BADGE[i] + "50" : "rgba(255,255,255,0.1)"}`,
-                      }}
-                    >
-                      {initials(w.email)}
-                    </div>
+                    {/* Rank badge / avatar */}
+                    {i < 3 ? (
+                      <span
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: "999px",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          flexShrink: 0,
+                          background: rank.bg,
+                          color: rank.color,
+                          border: rank.border,
+                          letterSpacing: "0.04em",
+                        }}
+                      >
+                        #{i + 1}
+                      </span>
+                    ) : (
+                      <div
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+                        style={{
+                          background: "rgba(255,255,255,0.05)",
+                          color: "rgba(255,255,255,0.3)",
+                          border: "1px solid rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        {initials(w.email)}
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between mb-1">
                         <span className="truncate text-xs text-white/70">{w.email}</span>
@@ -321,9 +372,7 @@ export function AchievementBoard() {
                             background:
                               i === 0
                                 ? "linear-gradient(90deg, #C9A84C, #EBB66A)"
-                                : i === 1
-                                ? "#9ca3af"
-                                : "rgba(255,255,255,0.25)",
+                                : "#9ca3af",
                           }}
                         />
                       </div>
@@ -337,11 +386,8 @@ export function AchievementBoard() {
 
         {/* Right 30%: Chart + Deal Mix */}
         <div className="lg:col-span-3 flex flex-col gap-3">
-          {/* Trend Chart */}
-          <div
-            className="rounded-2xl p-4 flex-1"
-            style={{ background: "#1a1d27", border: "1px solid rgba(255,255,255,0.06)" }}
-          >
+          {/* Trend Chart — always renders; flat baseline when no data */}
+          <div className="glass-card p-4 flex-1">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
                 12-Week Trend
@@ -363,13 +409,9 @@ export function AchievementBoard() {
                 ))}
               </div>
             </div>
-            {(m?.trend ?? []).length === 0 ? (
-              <div className="flex h-24 items-center justify-center text-xs text-white/20">
-                No trend data
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={110}>
-                <LineChart data={m?.trend ?? []} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <div style={{ minHeight: "180px" }}>
+              <ResponsiveContainer width="100%" height={180}>
+                <LineChart data={trendData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                   <XAxis
                     dataKey="week"
                     tick={{ fontSize: 9, fill: "rgba(255,255,255,0.2)" }}
@@ -388,14 +430,11 @@ export function AchievementBoard() {
                   />
                 </LineChart>
               </ResponsiveContainer>
-            )}
+            </div>
           </div>
 
           {/* Deal Mix */}
-          <div
-            className="rounded-2xl p-4"
-            style={{ background: "#1a1d27", border: "1px solid rgba(255,255,255,0.06)" }}
-          >
+          <div className="glass-card p-4">
             <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/30">
               Deal Mix
             </div>
@@ -444,10 +483,7 @@ export function LiveActivity() {
 
 export function LiveActivityFeed({ activity }: { activity: ActivityItem[] }) {
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{ background: "#1a1d27", border: "1px solid rgba(255,255,255,0.06)" }}
-    >
+    <div className="glass-card overflow-hidden">
       <div className="flex items-center gap-2 px-5 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
         <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e] animate-pulse" />
         <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
@@ -501,33 +537,26 @@ function MetricCard({
   iconBg,
   iconColor,
   label,
-  value,
+  rawValue,
+  formatter,
   growth,
   loading,
-  gold,
-  green,
 }: {
   icon: React.ReactNode;
   iconBg: string;
   iconColor: string;
   label: string;
-  value: string;
+  rawValue: number;
+  formatter: (n: number) => string;
   growth: number | null;
   loading: boolean;
-  gold?: boolean;
-  green?: boolean;
 }) {
-  const valueColor = gold ? "transparent" : green ? "#22c55e" : "#fff";
-  const gradientStyle = gold
-    ? { backgroundImage: "linear-gradient(135deg, #C9A84C, #EBB66A)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }
-    : {};
+  const counted = useCountUp(loading ? 0 : rawValue);
+  const display = loading ? "—" : formatter(counted);
 
   return (
-    <div
-      className="rounded-2xl p-5 relative overflow-hidden"
-      style={{ background: "#1a1d27", border: "1px solid rgba(255,255,255,0.06)" }}
-    >
-      <div className="mb-3 flex items-center justify-between">
+    <div className="glass-card p-5 relative overflow-hidden">
+      <div className="mb-4 flex items-center justify-between">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: iconBg }}>
           <span style={{ color: iconColor }}>{icon}</span>
         </div>
@@ -543,13 +572,35 @@ function MetricCard({
           </span>
         )}
       </div>
+
+      {/* Big number */}
       <div
-        className="font-mono text-2xl font-semibold leading-none tabular-nums sm:text-3xl"
-        style={{ color: valueColor, ...gradientStyle, opacity: loading ? 0.4 : 1 }}
+        style={{
+          fontSize: "3rem",
+          fontWeight: 200,
+          letterSpacing: "-0.03em",
+          color: "#fff",
+          lineHeight: 1.05,
+          opacity: loading ? 0.3 : 1,
+          transition: "opacity 300ms ease",
+        }}
       >
-        {value}
+        {display}
       </div>
-      <div className="mt-2 text-[10px] font-medium uppercase tracking-widest text-white/30">
+
+      {/* Gold underline accent */}
+      <div style={{ width: "32px", height: "2px", background: "#C9A84C", margin: "10px 0 8px" }} />
+
+      {/* Label */}
+      <div
+        style={{
+          fontSize: "0.6rem",
+          fontWeight: 600,
+          letterSpacing: "0.15em",
+          textTransform: "uppercase",
+          color: "#6b7280",
+        }}
+      >
         {label}
       </div>
     </div>
