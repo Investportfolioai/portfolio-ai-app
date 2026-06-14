@@ -241,8 +241,8 @@ function SandboxCard({
           {sandbox.title ?? "Untitled"}
         </h3>
         {sandbox.description && (
-          <p style={{
-            color: "#6b7280", fontSize: "13px", lineHeight: "1.55", marginTop: "4px",
+          <p className="label-sub" style={{
+            marginTop: "4px",
             display: "-webkit-box", WebkitLineClamp: 2,
             WebkitBoxOrient: "vertical", overflow: "hidden",
           }}>
@@ -278,7 +278,7 @@ function SandboxCard({
         </div>
 
         {/* Module count + timestamp */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px", color: "#6b7280", fontSize: "11px" }}>
+        <div className="label-sub" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
             <IconBranch />
             {sandbox.module_count} {sandbox.module_count === 1 ? "module" : "modules"}
@@ -348,15 +348,8 @@ function NewSandboxCard({ onClick }: { onClick: () => void }) {
 function MetricStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{
-        fontSize: "9px", fontWeight: 700, textTransform: "uppercase",
-        letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", marginBottom: "6px",
-      }}>
-        {label}
-      </div>
-      <div style={{ fontSize: "22px", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "#C9A84C" }}>
-        {value}
-      </div>
+      <div className="label-eyebrow" style={{ marginBottom: "8px" }}>{label}</div>
+      <div className="num-metric" style={{ color: "#C9A84C" }}>{value}</div>
     </div>
   );
 }
@@ -547,12 +540,7 @@ export function SandboxBoard({
         </div>
 
         {/* Section label */}
-        <div style={{
-          fontSize: "10px", fontWeight: 700, letterSpacing: "0.12em",
-          color: "rgba(255,255,255,0.25)", textTransform: "uppercase", marginBottom: "16px",
-        }}>
-          Workspaces
-        </div>
+        <div className="label-eyebrow" style={{ marginBottom: "16px" }}>Workspaces</div>
 
         {/* Grid */}
         {filtered.length === 0 && query ? (

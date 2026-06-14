@@ -534,8 +534,6 @@ export function LiveActivityFeed({ activity }: { activity: ActivityItem[] }) {
 
 function MetricCard({
   icon,
-  iconBg,
-  iconColor,
   label,
   rawValue,
   formatter,
@@ -543,8 +541,8 @@ function MetricCard({
   loading,
 }: {
   icon: React.ReactNode;
-  iconBg: string;
-  iconColor: string;
+  iconBg?: string;
+  iconColor?: string;
   label: string;
   rawValue: number;
   formatter: (n: number) => string;
@@ -556,11 +554,13 @@ function MetricCard({
 
   return (
     <div className="glass-card p-5 relative overflow-hidden">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ background: iconBg }}>
-          <span style={{ color: iconColor }}>{icon}</span>
-        </div>
-        {growth != null && (
+      {/* Subtle icon — top right, gold, 20px, 40% opacity */}
+      <div style={{ position: "absolute", top: "16px", right: "16px", color: "#C9A84C", opacity: 0.4 }}>
+        {icon}
+      </div>
+
+      {growth != null && (
+        <div className="mb-3">
           <span
             className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
             style={{
@@ -570,46 +570,26 @@ function MetricCard({
           >
             {growth >= 0 ? "+" : ""}{growth}%
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Big number */}
+      {/* Hero number + gold underline via ::after */}
       <div
-        style={{
-          fontSize: "3rem",
-          fontWeight: 200,
-          letterSpacing: "-0.03em",
-          color: "#fff",
-          lineHeight: 1.05,
-          opacity: loading ? 0.3 : 1,
-          transition: "opacity 300ms ease",
-        }}
+        className="num-hero metric-accent"
+        style={{ opacity: loading ? 0.3 : 1, transition: "opacity 300ms ease" }}
       >
         {display}
       </div>
 
-      {/* Gold underline accent */}
-      <div style={{ width: "32px", height: "2px", background: "#C9A84C", margin: "10px 0 8px" }} />
-
       {/* Label */}
-      <div
-        style={{
-          fontSize: "0.6rem",
-          fontWeight: 600,
-          letterSpacing: "0.15em",
-          textTransform: "uppercase",
-          color: "#6b7280",
-        }}
-      >
-        {label}
-      </div>
+      <div className="label-eyebrow mt-3">{label}</div>
     </div>
   );
 }
 
 function TrophyIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
       <path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
       <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
@@ -619,7 +599,7 @@ function TrophyIcon() {
 }
 function ChartIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" />
       <line x1="6" y1="20" x2="6" y2="14" /><line x1="2" y1="20" x2="22" y2="20" />
     </svg>
@@ -627,14 +607,14 @@ function ChartIcon() {
 }
 function DollarIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="12" y1="2" x2="12" y2="22" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
     </svg>
   );
 }
 function PeopleIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
       <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>

@@ -199,8 +199,8 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
       <IntelligenceBar />
 
       {/* Status tabs + Add Deal */}
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-2 border-b border-border">
-        <div className="flex flex-wrap gap-1">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+        <div className="flex flex-wrap gap-0">
         {STATUS_TABS.map((t) => {
           const active = status === t.key;
           return (
@@ -208,15 +208,21 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
               key={t.key}
               type="button"
               onClick={() => setStatus(t.key)}
-              className={
-                "-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors " +
-                (active
-                  ? "border-accent text-primary"
-                  : "border-transparent text-muted-foreground hover:text-primary")
-              }
+              className="-mb-px flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors"
+              style={{
+                borderBottom: active ? "2px solid #C9A84C" : "2px solid transparent",
+                color: active ? "#ffffff" : "#52525b",
+              }}
             >
               {t.label}
-              <span className="ml-1.5 data-number text-xs text-muted-foreground">
+              <span
+                className="data-number font-mono text-[0.65rem] rounded px-1.5 py-0.5"
+                style={{
+                  background: "rgba(26,29,39,0.72)",
+                  color: "#C9A84C",
+                  border: "1px solid rgba(201,168,76,0.12)",
+                }}
+              >
                 {counts[t.key] ?? 0}
               </span>
             </button>
@@ -226,7 +232,7 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="mb-1.5 rounded-full bg-accent px-4 py-1.5 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/90"
+          className="btn-primary mb-1.5 rounded-full px-4 py-1.5 text-xs"
         >
           + Add Deal
         </button>
@@ -234,7 +240,7 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
 
       {/* Structure chips */}
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <span className="w-20 shrink-0 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+        <span className="label-eyebrow w-20 shrink-0">
           Structure
         </span>
         {STRUCTURE_FILTERS.map(([value, label]) => (
@@ -483,35 +489,42 @@ function StructureBadge({
 }
 
 function StatusBadge({ status }: { status: DealStatus }) {
-  const tone =
+  const s =
     status === "active" || status === "closed"
-      ? "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30"
-      : status === "passed"
-        ? "bg-rose-500/10 text-rose-600 ring-rose-400/20"
-        : status === "dead"
-          ? "bg-foreground/10 text-foreground/60 ring-foreground/20"
-          : "bg-accent/15 text-amber-700 ring-accent/30";
+      ? { bg: "rgba(34,197,94,0.12)", color: "#22c55e" }
+      : status === "passed" || status === "dead"
+        ? { bg: "rgba(255,255,255,0.06)", color: "#52525b" }
+        : { bg: "rgba(245,158,11,0.12)", color: "#f59e0b" };
   return (
-    <span className={"rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 " + tone}>
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", gap: "4px",
+        background: s.bg, color: s.color,
+        borderRadius: "999px", padding: "2px 8px",
+        fontSize: "10px", fontWeight: 600,
+        letterSpacing: "0.08em", textTransform: "uppercase",
+      }}
+    >
+      <span style={{ width: "5px", height: "5px", borderRadius: "50%", background: s.color, flexShrink: 0 }} />
       {STATUS_LABELS[status]}
     </span>
   );
 }
 
-function gradeClasses(v: number): string {
-  if (v >= 80) return "bg-emerald-500/15 text-emerald-700 ring-emerald-500/30";
-  if (v >= 60) return "bg-accent/15 text-amber-700 ring-accent/40";
-  return "bg-rose-500/10 text-rose-600 ring-rose-400/30";
+function gradeColors(v: number): { bg: string; color: string } {
+  if (v >= 80) return { bg: "rgba(34,197,94,0.12)", color: "#22c55e" };
+  if (v >= 60) return { bg: "rgba(201,168,76,0.12)", color: "#C9A84C" };
+  if (v >= 40) return { bg: "rgba(245,158,11,0.12)", color: "#f59e0b" };
+  return { bg: "rgba(239,68,68,0.12)", color: "#ef4444" };
 }
 
 function GradeBadge({ caption, value, dim }: { caption: string; value: number; dim?: boolean }) {
+  const c = dim ? { bg: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.25)" } : gradeColors(value);
   return (
     <div className="flex flex-col items-center gap-1">
       <span
-        className={
-          "data-number flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-medium tabular-nums ring-1 " +
-          (dim ? "bg-secondary text-muted-foreground ring-border" : gradeClasses(value))
-        }
+        className="data-number flex h-9 w-9 items-center justify-center rounded-full text-[13px] font-medium tabular-nums"
+        style={{ background: c.bg, color: c.color }}
       >
         {dim ? "—" : value}
       </span>
@@ -574,11 +587,22 @@ function RentalToggle({ deal, onChanged }: { deal: Deal; onChanged?: () => void 
   );
 }
 
+const STATUS_LEFT_BORDER: Record<string, string> = {
+  pending: "#f59e0b",
+  active:  "#3b82f6",
+  closed:  "#22c55e",
+  dead:    "#ef4444",
+  passed:  "#ef4444",
+};
+
 function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void; onDeleted: (id: string) => void }) {
   const spread = equitySpread(deal);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const locality = [deal.city, deal.state].filter(Boolean).join(", ");
+  const leftBorder = deal.status === "active" && deal.escrow_date
+    ? "#3b82f6"
+    : STATUS_LEFT_BORDER[deal.status] ?? "rgba(201,168,76,0.08)";
 
   return (
     <motion.div
@@ -586,6 +610,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
       className="glass-card flex cursor-pointer flex-col p-5 text-left"
+      style={{ borderLeft: `3px solid ${leftBorder}` }}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -777,11 +802,11 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
         </div>
       )}
       <div className="flex items-center justify-between text-xs">
-        <span className="text-white/45">Portfolio AI Fee</span>
-        <span className="data-number tabular-nums text-[#C9A84C]">{aiFee != null ? money(aiFee) : "—"}</span>
+        <span className="label-sub">Portfolio AI Fee</span>
+        <span className="num-deal">{aiFee != null ? money(aiFee) : "—"}</span>
       </div>
       <div className="flex items-center justify-between text-xs">
-        <span className="text-white/45">Est. Net to Buyer</span>
+        <span className="label-sub">Est. Net to Buyer</span>
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-md border border-white/10 bg-white/5 px-2 py-0.5">
             <span className="text-white/40">$</span>
@@ -797,7 +822,10 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
             />
           </div>
           {cbPct != null && (
-            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-semibold text-accent ring-1 ring-inset ring-accent/40">
+            <span
+              className="rounded-full px-2 py-0.5 text-[9px] font-semibold"
+              style={{ background: "rgba(201,168,76,0.12)", color: "#C9A84C" }}
+            >
               {cbPct.toFixed(1)}%
             </span>
           )}
@@ -810,7 +838,6 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
 function Metric({
   label,
   value,
-  accent,
 }: {
   label: string;
   value: string;
@@ -818,17 +845,8 @@ function Metric({
 }) {
   return (
     <div>
-      <dt className="text-[10px] font-medium uppercase tracking-widest text-white/40">
-        {label}
-      </dt>
-      <dd
-        className={
-          "data-number mt-1 text-sm font-medium tabular-nums " +
-          (accent ? "text-[#C9A84C]" : "text-white")
-        }
-      >
-        {value}
-      </dd>
+      <dt className="label-eyebrow mb-1">{label}</dt>
+      <dd className="num-deal mt-1">{value}</dd>
     </div>
   );
 }
@@ -1091,22 +1109,21 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
             )}
 
             {/* Tabs */}
-            <div className="flex border-b border-border px-2">
+            <div className="flex px-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
               {TABS.map((t) => (
                 <button
                   key={t}
                   type="button"
                   onClick={() => setTab(t)}
-                  className={
-                    "-mb-px inline-flex items-center gap-1 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors " +
-                    (tab === t
-                      ? "border-accent text-primary"
-                      : "border-transparent text-muted-foreground hover:text-primary")
-                  }
+                  className="-mb-px inline-flex items-center gap-1 px-3 py-2.5 text-xs font-medium transition-colors"
+                  style={{
+                    borderBottom: tab === t ? "2px solid #C9A84C" : "2px solid transparent",
+                    color: tab === t ? "#ffffff" : "#52525b",
+                  }}
                 >
                   {t}
                   {t === "AI Underwriting" && running && (
-                    <span className="ml-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                    <span className="ml-0.5 h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "#C9A84C" }} />
                   )}
                 </button>
               ))}

@@ -9,9 +9,20 @@ export default function DashboardHome() {
   return (
     <div
       className="fade-up min-h-screen px-4 py-6 sm:px-8 sm:py-8"
-      style={{ background: "#0A0B14" }}
+      style={{ background: "#0A0B14", position: "relative" }}
     >
-      <div className="mx-auto max-w-7xl space-y-6">
+      {/* Ambient gold orb */}
+      <div style={{
+        position: "fixed",
+        top: "-200px",
+        left: "-200px",
+        width: "600px",
+        height: "600px",
+        background: "radial-gradient(circle, rgba(201,168,76,0.06) 0%, transparent 70%)",
+        pointerEvents: "none",
+        zIndex: 0,
+      }} />
+      <div className="relative mx-auto max-w-7xl space-y-6" style={{ zIndex: 1 }}>
         {/* Sections 1–4: Achievement Board (time-toggled, recharts, leaderboard, activity) */}
         <AchievementBoard />
 

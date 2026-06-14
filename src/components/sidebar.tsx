@@ -29,9 +29,17 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-[220px] shrink-0 flex-col bg-sidebar text-sidebar-foreground">
-      <div className="px-6 py-6">
+      {/* Logo area — gold orb glow behind */}
+      <div className="relative px-6 py-6">
+        <div style={{
+          position: "absolute",
+          top: "-24px", left: "-24px",
+          width: "180px", height: "120px",
+          background: "radial-gradient(ellipse at 40% 50%, rgba(201,168,76,0.08) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }} />
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-white.png" alt="Portfolio AI" className="max-h-9 max-w-full" />
+        <img src="/logo-white.png" alt="Portfolio AI" className="relative max-h-9 max-w-full" />
       </div>
 
       <nav className="mt-2 flex-1 px-3">
@@ -64,9 +72,10 @@ export function Sidebar() {
               aria-current={active ? "page" : undefined}
               className={
                 active
-                  ? `${base} border-l-2 border-accent pl-[10px] text-accent`
-                  : `${base} text-sidebar-foreground/60 hover:translate-x-0.5 hover:text-accent hover:[text-shadow:0_0_8px_rgba(212,175,55,0.45)]`
+                  ? `${base} border-l-2 border-[#C9A84C] pl-[10px] text-[#C9A84C]`
+                  : `${base} text-sidebar-foreground/55 hover:text-[#C9A84C] hover:[text-shadow:0_0_8px_rgba(201,168,76,0.35)]`
               }
+              style={active ? { background: "rgba(201,168,76,0.06)" } : undefined}
             >
               {Icon && <Icon className="h-4 w-4 shrink-0" />}
               {item.label}

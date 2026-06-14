@@ -111,6 +111,7 @@ export function DashboardIntel() {
           numericValue={i?.close_rate ?? 0}
           valueFmt={(n) => `${Math.round(n)}%`}
           sub={`${i?.closed_count ?? 0} of ${i?.worked_count ?? 0} worked`}
+          valueColor={(i?.close_rate ?? 0) > 20 ? "#22c55e" : (i?.close_rate ?? 0) > 10 ? "#C9A84C" : "#f59e0b"}
         />
         <KpiCard
           icon={<EscrowIcon />}
@@ -135,6 +136,7 @@ export function DashboardIntel() {
           valueFmt={(n) => `${n.toFixed(1)}%`}
           displayOverride={i != null && i.buybox_score == null ? "—" : undefined}
           sub="avg cashback at close"
+          valueColor={(i?.buybox_score ?? 0) > 20 ? "#22c55e" : (i?.buybox_score ?? 0) > 10 ? "#C9A84C" : "#f59e0b"}
         />
       </div>
 
@@ -198,6 +200,7 @@ function KpiCard({
   displayOverride,
   sub,
   sub2,
+  valueColor,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -206,6 +209,7 @@ function KpiCard({
   displayOverride?: string;
   sub?: string;
   sub2?: string;
+  valueColor?: string;
 }) {
   const counted = useCountUp(numericValue);
   const display = displayOverride ?? valueFmt(counted);
@@ -215,30 +219,16 @@ function KpiCard({
       <div className="mb-4" style={{ color: "#C9A84C" }}>
         {icon}
       </div>
-      {/* Big number */}
-      <div style={{
-        fontSize: "3rem",
-        fontWeight: 200,
-        letterSpacing: "-0.03em",
-        color: "#fff",
-        lineHeight: 1.05,
-      }}>
+      {/* Medium metric number */}
+      <div className="num-metric" style={valueColor ? { color: valueColor } : undefined}>
         {display}
       </div>
       {/* Gold underline */}
       <div style={{ width: "32px", height: "2px", background: "#C9A84C", margin: "10px 0 8px" }} />
       {/* Label */}
-      <div style={{
-        fontSize: "0.6rem",
-        fontWeight: 600,
-        letterSpacing: "0.15em",
-        textTransform: "uppercase",
-        color: "#6b7280",
-      }}>
-        {label}
-      </div>
-      {sub && <div className="mt-0.5 truncate text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>{sub}</div>}
-      {sub2 && <div className="mt-0.5 truncate text-xs" style={{ color: "rgba(255,255,255,0.18)" }}>{sub2}</div>}
+      <div className="label-eyebrow">{label}</div>
+      {sub && <div className="label-sub mt-1.5 truncate">{sub}</div>}
+      {sub2 && <div className="label-sub mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.18)" }}>{sub2}</div>}
     </div>
   );
 }
