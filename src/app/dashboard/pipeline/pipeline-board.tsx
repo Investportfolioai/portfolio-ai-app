@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
+import { toast } from "sonner";
+import { Drawer } from "vaul";
 import {
   type Deal,
   type DealStatus,
@@ -254,14 +256,24 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
         <EmptyState hasDeals={deals.length > 0} />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((deal) => (
-            <DealCard
-              key={deal.id}
-              deal={deal}
-              onOpen={() => setSelectedId(deal.id)}
-              onDeleted={handleDeleted}
-            />
-          ))}
+          <AnimatePresence mode="popLayout">
+            {filtered.map((deal) => (
+              <motion.div
+                key={deal.id}
+                layout
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+              >
+                <DealCard
+                  deal={deal}
+                  onOpen={() => setSelectedId(deal.id)}
+                  onDeleted={handleDeleted}
+                />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       )}
 
@@ -882,8 +894,6 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   const [intentionalPass, setIntentionalPass] = useState(false);
   const [markingClosed, startMarkClosed] = useTransition();
   const [confirmingClosed, setConfirmingClosed] = useState(false);
-  const [closedToast, setClosedToast] = useState<string | null>(null);
-  const [closedError, setClosedError] = useState<string | null>(null);
 
   const reloadDetail = () => {
     if (deal) getDealDetail(deal.id).then(setDetail);
@@ -918,19 +928,6 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
     };
   }, [deal?.id, deal]);
 
-  // ESC closes; lock scroll.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [open, onClose]);
-
   function onRun() {
     if (!deal) return;
     startRun(async () => {
@@ -942,230 +939,237 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   }
 
   return (
-    <div
-      aria-hidden={!open}
-      className={"fixed inset-0 z-40 " + (open ? "" : "pointer-events-none")}
+    <Drawer.Root
+      open={open}
+      onOpenChange={(o) => { if (!o) onClose(); }}
+      direction="right"
     >
-      <div
-        onClick={onClose}
-        className={
-          "absolute inset-0 bg-primary/40 backdrop-blur-[1px] transition-opacity duration-200 " +
-          (open ? "opacity-100" : "opacity-0")
-        }
-      />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-label={deal ? `Deal detail: ${deal.property_address}` : undefined}
-        className={
-          "absolute right-0 top-0 flex h-full w-full md:max-w-lg flex-col bg-card shadow-2xl transition-transform duration-200 ease-out " +
-          (open ? "translate-x-0" : "translate-x-full")
-        }
-      >
-        {deal && (
-          <>
-            <div className="flex items-start justify-between gap-4 bg-primary px-6 py-5 text-primary-foreground">
-              <div className="min-w-0">
-                <div className="mb-2 flex items-center gap-2">
-                  <StructureBadge structure={deal.structure_type} dark />
-                  <StatusBadge status={deal.status} />
+      <Drawer.Portal>
+        <Drawer.Overlay
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 39,
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(4px)",
+          }}
+        />
+        <Drawer.Content
+          aria-label={deal ? `Deal detail: ${deal.property_address}` : "Deal detail"}
+          className="fixed right-0 top-0 flex h-full w-full flex-col md:max-w-lg"
+          style={{ background: "#ffffff", zIndex: 40, outline: "none", boxShadow: "-8px 0 40px rgba(0,0,0,0.4)" }}
+        >
+          {deal && (
+            <>
+              <div className="flex items-start justify-between gap-4 bg-primary px-6 py-5 text-primary-foreground">
+                <div className="min-w-0">
+                  <div className="mb-2 flex items-center gap-2">
+                    <StructureBadge structure={deal.structure_type} dark />
+                    <StatusBadge status={deal.status} />
+                  </div>
+                  <h2 className="truncate text-xl text-primary-foreground">
+                    {deal.property_address}
+                  </h2>
+                  {[deal.city, deal.state].filter(Boolean).length > 0 && (
+                    <p className="text-sm text-primary-foreground/70">
+                      {[deal.city, deal.state].filter(Boolean).join(", ")}
+                    </p>
+                  )}
                 </div>
-                <h2 className="truncate text-xl text-primary-foreground">
-                  {deal.property_address}
-                </h2>
-                {[deal.city, deal.state].filter(Boolean).length > 0 && (
-                  <p className="text-sm text-primary-foreground/70">
-                    {[deal.city, deal.state].filter(Boolean).join(", ")}
-                  </p>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                {deal.status !== "dead" && deal.status !== "closed" && deal.status !== "passed" && (
+                <div className="flex shrink-0 items-center gap-1">
+                  {deal.status !== "dead" && deal.status !== "closed" && deal.status !== "passed" && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingClosed(true)}
+                      className="rounded-full border border-emerald-400/40 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20"
+                    >
+                      Mark Closed
+                    </button>
+                  )}
+                  {deal.status !== "dead" && deal.status !== "closed" && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDead(true)}
+                      className="rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-medium text-primary-foreground/80 transition-colors hover:bg-white/10"
+                    >
+                      Mark Dead
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setConfirmingClosed(true)}
-                    className="rounded-full border border-emerald-400/40 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20"
+                    onClick={onClose}
+                    aria-label="Close"
+                    className="rounded-md p-1 text-primary-foreground/70 transition-colors hover:bg-white/10 hover:text-primary-foreground"
                   >
-                    Mark Closed
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                      <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
                   </button>
-                )}
-                {deal.status !== "dead" && deal.status !== "closed" && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDead(true)}
-                    className="rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-medium text-primary-foreground/80 transition-colors hover:bg-white/10"
-                  >
-                    Mark Dead
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Close"
-                  className="rounded-md p-1 text-primary-foreground/70 transition-colors hover:bg-white/10 hover:text-primary-foreground"
-                >
-                  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                    <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </button>
+                </div>
               </div>
-            </div>
 
-            {confirmingDead && (
-              <div className="flex flex-col gap-2 border-b border-border bg-secondary px-4 py-2">
-                <div className="flex items-center gap-2">
-                  <span className="shrink-0 text-xs text-muted-foreground">Reason</span>
-                  <select
-                    value={deadReason}
-                    onChange={(e) => setDeadReason(e.target.value)}
-                    className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-sm focus:border-accent focus:outline-none"
-                  >
-                    {DEAD_REASONS.map((r) => (
-                      <option key={r} value={r}>
-                        {r}
-                      </option>
-                    ))}
-                  </select>
+              {confirmingDead && (
+                <div className="flex flex-col gap-2 border-b border-border bg-secondary px-4 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0 text-xs text-muted-foreground">Reason</span>
+                    <select
+                      value={deadReason}
+                      onChange={(e) => setDeadReason(e.target.value)}
+                      className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                    >
+                      {DEAD_REASONS.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={markingDead}
+                      onClick={() =>
+                        startMarkDead(async () => {
+                          await Promise.all([
+                            markDealDead(deal.id, deadReason, intentionalPass),
+                            new Promise<void>((r) => setTimeout(r, 350)),
+                          ]);
+                          setConfirmingDead(false);
+                          setIntentionalPass(false);
+                          router.refresh();
+                          toast.success("Deal marked as dead");
+                        })
+                      }
+                      className="shrink-0 rounded-full bg-destructive/90 px-3 py-1 text-xs font-medium text-white hover:bg-destructive disabled:opacity-60"
+                    >
+                      {markingDead ? "…" : "Confirm Dead"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDead(false)}
+                      className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                    <input
+                      type="checkbox"
+                      checked={intentionalPass}
+                      onChange={(e) => setIntentionalPass(e.target.checked)}
+                      className="h-3.5 w-3.5 accent-[#c9a84c]"
+                    />
+                    Intentional Pass — outside buybox, exclude from close rate
+                  </label>
+                </div>
+              )}
+
+              {confirmingClosed && (
+                <div className="flex items-center gap-2 border-b border-border bg-secondary px-4 py-2">
+                  <span className="text-xs text-muted-foreground">Mark this deal as closed?</span>
                   <button
                     type="button"
-                    disabled={markingDead}
+                    disabled={markingClosed}
                     onClick={() =>
-                      startMarkDead(async () => {
-                        await markDealDead(deal.id, deadReason, intentionalPass);
-                        setConfirmingDead(false);
-                        setIntentionalPass(false);
-                        router.refresh();
+                      startMarkClosed(async () => {
+                        const [result] = await Promise.all([
+                          markDealClosed(deal.id),
+                          new Promise<void>((r) => setTimeout(r, 350)),
+                        ]);
+                        if (result.ok) {
+                          setConfirmingClosed(false);
+                          const msg = result.holdingCreated
+                            ? "Deal closed and added to Portfolio"
+                            : "Deal marked as closed";
+                          toast.success(msg);
+                          router.refresh();
+                        } else {
+                          toast.error(result.error ?? "Failed to close deal");
+                        }
                       })
                     }
-                    className="shrink-0 rounded-full bg-destructive/90 px-3 py-1 text-xs font-medium text-white hover:bg-destructive disabled:opacity-60"
+                    className="shrink-0 rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
                   >
-                    {markingDead ? "…" : "Confirm Dead"}
+                    {markingClosed ? "…" : "Confirm Closed"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setConfirmingDead(false)}
+                    onClick={() => setConfirmingClosed(false)}
                     className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
                   >
                     Cancel
                   </button>
                 </div>
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={intentionalPass}
-                    onChange={(e) => setIntentionalPass(e.target.checked)}
-                    className="h-3.5 w-3.5 accent-[#c9a84c]"
-                  />
-                  Intentional Pass — outside buybox, exclude from close rate
-                </label>
+              )}
+
+              {/* Tabs */}
+              <div className="flex px-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                {TABS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTab(t)}
+                    className="-mb-px inline-flex items-center gap-1 px-3 py-2.5 text-xs font-medium transition-colors"
+                    style={{
+                      borderBottom: tab === t ? "2px solid #C9A84C" : "2px solid transparent",
+                      color: tab === t ? "#ffffff" : "#52525b",
+                    }}
+                  >
+                    {t}
+                    {t === "AI Underwriting" && running && (
+                      <span className="ml-0.5 h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "#C9A84C" }} />
+                    )}
+                  </button>
+                ))}
               </div>
-            )}
 
-            {confirmingClosed && (
-              <div className="flex items-center gap-2 border-b border-border bg-secondary px-4 py-2">
-                <span className="text-xs text-muted-foreground">Mark this deal as closed?</span>
-                <button
-                  type="button"
-                  disabled={markingClosed}
-                  onClick={() =>
-                    startMarkClosed(async () => {
-                      setClosedError(null);
-                      const result = await markDealClosed(deal.id);
-                      if (result.ok) {
-                        setConfirmingClosed(false);
-                        const msg = result.holdingCreated
-                          ? "Deal closed and added to Portfolio"
-                          : "Deal marked as closed";
-                        setClosedToast(msg);
-                        setTimeout(() => setClosedToast(null), 5000);
-                        router.refresh();
-                      } else {
-                        setClosedError(result.error);
-                      }
-                    })
-                  }
-                  className="shrink-0 rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
-                >
-                  {markingClosed ? "…" : "Confirm Closed"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setConfirmingClosed(false); setClosedError(null); }}
-                  className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
-                >
-                  Cancel
-                </button>
-                {closedError && (
-                  <span className="ml-auto text-xs text-red-600">{closedError}</span>
-                )}
+              <div className="flex-1 overflow-y-auto">
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={tab}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15, ease: [0.4, 0, 0.2, 1] }}
+                    className="px-6 py-6"
+                  >
+                    {tab === "Overview" && (
+                      <OverviewTab
+                        deal={deal}
+                        onChanged={onChanged}
+                        onReunderwrite={onRun}
+                        reunderwriting={running}
+                      />
+                    )}
+                    {tab === "AI Underwriting" && (
+                      <AiTab deal={deal} running={running} onRun={onRun} />
+                    )}
+                    {tab === "Timeline" && (
+                      <TimelineTab
+                        dealId={deal.id}
+                        milestones={detail?.milestones ?? []}
+                        loading={loadingDetail}
+                        onChanged={onChanged}
+                      />
+                    )}
+                    {tab === "Documents" && (
+                      <DocumentsTab
+                        dealId={deal.id}
+                        loading={loadingDetail}
+                        detail={detail}
+                        onChanged={onChanged}
+                      />
+                    )}
+                    {tab === "KPs" && <KpsTab dealId={deal.id} onChanged={onChanged} />}
+                    {tab === "Activity" && (
+                      <ActivityTab loading={loadingDetail} detail={detail} />
+                    )}
+                  </motion.div>
+                </AnimatePresence>
               </div>
-            )}
-
-            {closedToast && (
-              <div className="flex items-center gap-2 border-b border-emerald-500/20 bg-emerald-500/10 px-4 py-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                <span className="text-xs font-medium text-emerald-700">{closedToast}</span>
-              </div>
-            )}
-
-            {/* Tabs */}
-            <div className="flex px-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-              {TABS.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTab(t)}
-                  className="-mb-px inline-flex items-center gap-1 px-3 py-2.5 text-xs font-medium transition-colors"
-                  style={{
-                    borderBottom: tab === t ? "2px solid #C9A84C" : "2px solid transparent",
-                    color: tab === t ? "#ffffff" : "#52525b",
-                  }}
-                >
-                  {t}
-                  {t === "AI Underwriting" && running && (
-                    <span className="ml-0.5 h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "#C9A84C" }} />
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-6 py-6">
-              {tab === "Overview" && (
-                <OverviewTab
-                  deal={deal}
-                  onChanged={onChanged}
-                  onReunderwrite={onRun}
-                  reunderwriting={running}
-                />
-              )}
-              {tab === "AI Underwriting" && (
-                <AiTab deal={deal} running={running} onRun={onRun} />
-              )}
-              {tab === "Timeline" && (
-                <TimelineTab
-                  dealId={deal.id}
-                  milestones={detail?.milestones ?? []}
-                  loading={loadingDetail}
-                  onChanged={onChanged}
-                />
-              )}
-              {tab === "Documents" && (
-                <DocumentsTab
-                  dealId={deal.id}
-                  loading={loadingDetail}
-                  detail={detail}
-                  onChanged={onChanged}
-                />
-              )}
-              {tab === "KPs" && <KpsTab dealId={deal.id} onChanged={onChanged} />}
-              {tab === "Activity" && (
-                <ActivityTab loading={loadingDetail} detail={detail} />
-              )}
-            </div>
-          </>
-        )}
-      </aside>
-    </div>
+            </>
+          )}
+        </Drawer.Content>
+      </Drawer.Portal>
+    </Drawer.Root>
   );
 }
 
@@ -1436,16 +1440,18 @@ function WholesalerActions({
 
   if (deal.status !== "pending") return null;
 
-  function run(fn: () => Promise<{ ok: boolean; error?: string }>, after?: () => void) {
+  function run(fn: () => Promise<{ ok: boolean; error?: string }>, after?: () => void, successMsg?: string) {
     setError("");
     start(async () => {
-      const res = await fn();
+      const [res] = await Promise.all([fn(), new Promise<void>((r) => setTimeout(r, 350))]);
       if (!res.ok) {
         setError(res.error ?? "Something went wrong.");
+        toast.error(res.error ?? "Something went wrong.");
         return;
       }
       after?.();
       onChanged();
+      if (successMsg) toast.success(successMsg);
     });
   }
 
@@ -1476,6 +1482,7 @@ function WholesalerActions({
                     setNegotiating(false);
                     setMessage("");
                   },
+                  "Message sent",
                 )
               }
               className="flex-1 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
@@ -1500,7 +1507,7 @@ function WholesalerActions({
           <button
             type="button"
             disabled={pending}
-            onClick={() => run(() => acceptDeal(deal.id))}
+            onClick={() => run(() => acceptDeal(deal.id), undefined, "Deal accepted")}
             className="flex-1 rounded-full bg-accent px-3 py-2 text-xs font-medium text-accent-foreground hover:bg-accent/90 disabled:opacity-60"
           >
             Accept
@@ -1519,7 +1526,7 @@ function WholesalerActions({
           <button
             type="button"
             disabled={pending}
-            onClick={() => run(() => rejectDeal(deal.id))}
+            onClick={() => run(() => rejectDeal(deal.id), undefined, "Deal rejected")}
             className="flex-1 rounded-full bg-destructive/90 px-3 py-2 text-xs font-medium text-white hover:bg-destructive disabled:opacity-60"
           >
             Reject

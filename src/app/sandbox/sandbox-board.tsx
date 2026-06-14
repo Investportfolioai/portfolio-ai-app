@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { deleteSandbox } from "./actions";
 
 // ---------------------------------------------------------------------------
@@ -564,14 +564,24 @@ export function SandboxBoard({
             gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
             gap: "16px",
           }}>
-            {filtered.map((sandbox) => (
-              <SandboxCard
-                key={sandbox.id}
-                sandbox={sandbox}
-                onClick={() => router.push(`/sandbox/${sandbox.id}`)}
-                onDelete={() => setDeleteTarget({ id: sandbox.id, title: sandbox.title })}
-              />
-            ))}
+            <AnimatePresence mode="popLayout">
+              {filtered.map((sandbox) => (
+                <motion.div
+                  key={sandbox.id}
+                  layout
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                >
+                  <SandboxCard
+                    sandbox={sandbox}
+                    onClick={() => router.push(`/sandbox/${sandbox.id}`)}
+                    onDelete={() => setDeleteTarget({ id: sandbox.id, title: sandbox.title })}
+                  />
+                </motion.div>
+              ))}
+            </AnimatePresence>
             {showNewCard && <NewSandboxCard onClick={() => router.push("/sandbox/new")} />}
           </div>
         )}

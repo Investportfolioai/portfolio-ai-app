@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { toast } from "sonner";
 import { motion } from "motion/react";
 import { X, Sparkles, Send, Loader2, Plus, Copy } from "lucide-react";
 import type { ContentBlock } from "./actions";
@@ -300,8 +301,6 @@ export function ModulePanel({
   const [editError, setEditError] = useState<string | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
-  const [toast, setToast] = useState<{ text: string; ok: boolean } | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [promptHistory, setPromptHistory] = useState<{ text: string; ts: Date }[]>([]);
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -347,7 +346,6 @@ export function ModulePanel({
     setEditPrompt("");
     setEditError(null);
     setPromptHistory([]);
-    setToast(null);
   }, [module.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll every 3s when content is empty, stop once content arrives
@@ -406,12 +404,6 @@ export function ModulePanel({
     scheduleSave();
   }
 
-  function showToast(text: string, ok: boolean) {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast({ text, ok });
-    toastTimerRef.current = setTimeout(() => setToast(null), 3000);
-  }
-
   async function handleAiEdit() {
     const trimmed = editPrompt.trim();
     if (!trimmed || isAiLoading) return;
@@ -424,7 +416,7 @@ export function ModulePanel({
     try {
       const res = await editModuleWithAI(module.id, contentRef.current, trimmed);
       if (!res.ok) {
-        showToast("Edit failed", false);
+        toast.error("Edit failed");
         setEditError(res.error ?? "AI edit failed");
         return;
       }
@@ -433,9 +425,9 @@ export function ModulePanel({
       contentRef.current = cleaned;
       onUpdate(module.id, { content: cleaned });
       setEditPrompt("");
-      showToast("Updated", true);
+      toast.success("Updated");
     } catch {
-      showToast("Edit failed", false);
+      toast.error("Edit failed");
     } finally {
       setIsAiLoading(false);
     }
@@ -469,19 +461,6 @@ export function ModulePanel({
         exit={{ x: 480 }}
         transition={{ type: "spring", damping: 28, stiffness: 320 }}
       >
-        {/* ── Toast ── */}
-        {toast && (
-          <div
-            className={`absolute left-4 right-4 top-4 z-10 rounded-xl px-4 py-2.5 text-[13px] font-medium shadow-lg ${
-              toast.ok
-                ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/30"
-                : "bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/30"
-            }`}
-          >
-            {toast.text}
-          </div>
-        )}
-
         {/* ── Header ── */}
         <div className="flex shrink-0 items-start gap-3 border-b border-white/8 px-5 py-4">
           <div className="min-w-0 flex-1">
