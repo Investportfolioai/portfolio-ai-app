@@ -483,7 +483,7 @@ export function SandboxBoard({
         {/* Header */}
         <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px", marginBottom: "24px" }}>
           <div>
-            <h1 style={{ color: "white", fontSize: "28px", fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>
+            <h1 style={{ color: "white", fontSize: "2.5rem", fontFamily: "var(--font-display), serif", fontWeight: 300, letterSpacing: "-0.02em", margin: 0 }}>
               Sandboxes
             </h1>
             <p style={{ color: "#6b7280", fontSize: "14px", marginTop: "6px" }}>

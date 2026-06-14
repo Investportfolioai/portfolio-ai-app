@@ -2,6 +2,26 @@ import type { Metadata } from "next";
 import "./globals.css";
 import CustomCursor from "@/components/CustomCursor";
 import { Toaster } from "sonner";
+import { Cormorant_Garamond, DM_Sans, JetBrains_Mono } from "next/font/google";
+
+const cormorant = Cormorant_Garamond({
+  subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["300", "400", "600"],
+  style: ["normal", "italic"],
+});
+
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-body",
+  weight: ["400", "500", "600"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  weight: ["400", "500"],
+});
 
 export const metadata: Metadata = {
   title: "Portfolio AI",
@@ -14,7 +34,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${cormorant.variable} ${dmSans.variable} ${jetbrainsMono.variable}`}>
       <body className="min-h-screen antialiased">
         <CustomCursor />
         {children}

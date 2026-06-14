@@ -660,7 +660,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate text-base text-white">{deal.property_address}</h3>
+          <h3 className="truncate text-base text-white" style={{ fontFamily: "var(--font-display), serif", fontStyle: "italic", fontWeight: 400 }}>{deal.property_address}</h3>
           {locality && <p className="truncate text-xs text-white/45">{locality}</p>}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">

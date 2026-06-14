@@ -12,7 +12,7 @@ export default async function PipelinePage() {
   return (
     <div className="fade-up mx-auto max-w-7xl px-8 py-8" style={{ background: "#0A0B14", minHeight: "100vh" }}>
       <header className="mb-6">
-        <h1 className="text-3xl tracking-tight text-white" style={{ fontFamily: "Playfair Display, serif" }}>Deal Pipeline</h1>
+        <h1 className="text-3xl tracking-tight text-white" style={{ fontFamily: "var(--font-display), serif", fontWeight: 300 }}>Deal Pipeline</h1>
         <p className="mt-2 text-[15px] italic font-light text-white/45">
           The person who controls the structure controls the money, the equity,
           and the outcome.

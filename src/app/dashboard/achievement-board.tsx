@@ -198,7 +198,7 @@ export function AchievementBoard() {
           <div>
             <h1
               className="text-2xl font-semibold tracking-tight"
-              style={{ color: "#fff", fontFamily: "Playfair Display, serif" }}
+              style={{ color: "#fff", fontFamily: "var(--font-display), serif", fontWeight: 300 }}
             >
               Achievement Board
             </h1>

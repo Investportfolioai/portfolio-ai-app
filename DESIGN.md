@@ -52,14 +52,30 @@ Gradient (active toggle, submit button backgrounds): `linear-gradient(135deg, #C
 
 ## Typography
 
+Font stack loaded via `next/font/google` (no CDN import):
+- `--font-display` → Cormorant Garamond — weights 300, 400, 600 (normal + italic)
+- `--font-body` → DM Sans — weights 400, 500, 600
+- `--font-mono` → JetBrains Mono — weights 400, 500
+
 | Role | Font | Size | Weight | Notes |
 |------|------|------|--------|-------|
-| Body / UI | `DM Sans` | 14px | 400–500 | Default for all body copy |
-| Display headings | `Playfair Display, serif` | 24px | 600–700 | `h1`, `h2`, section headers |
-| Data / mono | `JetBrains Mono` | 12–13px | 600 | Dollar amounts, IDs, chart values |
+| Body / UI | DM Sans (`--font-body`) | 14px | 400–500 | Default for all body copy, nav, labels, inputs |
+| Display headings | Cormorant Garamond (`--font-display`) | 2.5rem | 300 | `h1`, `h2`, page titles. Never bold. |
+| Hero metrics | Cormorant Garamond (`--font-display`) | 2.75rem | 300 | `.num-hero` — dashboard metric card values |
+| Medium metrics | Cormorant Garamond (`--font-display`) | 2rem | 300 | `.num-metric` — KPI strip numbers |
+| Deal card address | Cormorant Garamond (`--font-display`) | 1rem | 400 italic | Property address on pipeline cards |
+| Portfolio metrics | Cormorant Garamond (`--font-display`) | xl/2xl | 300 | StatsBar + IntelOverview count-up values |
+| Data / mono | JetBrains Mono (`--font-mono`) | 12–14px | 400–500 | `.data-number` — prices, table cells, chart labels |
+| Deal values inline | JetBrains Mono (`--font-mono`) | 14px | 500 | `.num-deal` — purchase prices, fees, cashback |
 | Section label | DM Sans | 10px | 700 | Uppercase, `letter-spacing: 0.1em` |
 | Card title | DM Sans | 15–16px | 600 | Card primary text |
 | Caption / badge | DM Sans | 10–11px | 600–700 | Uppercase pill text |
+
+Typography rules:
+- Cormorant always at weight 300 for display; weight 400 for italic property addresses; never bold
+- All display numbers: `font-variant-numeric: tabular-nums`
+- Page titles: `font-size: 2.5rem; font-weight: 300; letter-spacing: -0.02em`
+- Inline dark-theme font: use `style={{ fontFamily: "var(--font-display), serif" }}` — CSS var utilities resolve to light theme values
 
 ---
 
