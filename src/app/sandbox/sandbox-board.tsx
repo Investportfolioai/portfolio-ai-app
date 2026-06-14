@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useState, useTransition, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { createSandbox, deleteSandbox } from "./actions";
+import { deleteSandbox } from "./actions";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,8 +23,31 @@ export interface SandboxRow {
 export interface SandboxStats {
   total: number;
   active: number;
+  members: number;
   modules: number;
 }
+
+// ---------------------------------------------------------------------------
+// Config maps
+// ---------------------------------------------------------------------------
+
+const TEMPLATE_BADGE: Record<string, { bg: string; color: string }> = {
+  "Curative Title":       { bg: "rgba(59,130,246,0.12)",   color: "#60a5fa" },
+  "Wholesale Pipeline":   { bg: "rgba(139,92,246,0.12)",   color: "#a78bfa" },
+  "Creative Finance":     { bg: "rgba(201,168,76,0.12)",   color: "#C9A84C" },
+  "Content Strategy":     { bg: "rgba(6,182,212,0.12)",    color: "#22d3ee" },
+  "Multifamily Strategy": { bg: "rgba(249,115,22,0.12)",   color: "#fb923c" },
+  "Business Acquisition": { bg: "rgba(99,102,241,0.12)",   color: "#818cf8" },
+  "Blank":                { bg: "rgba(255,255,255,0.06)",  color: "rgba(255,255,255,0.3)" },
+};
+
+const STATUS_MAP: Record<string, { dot: string; label: string }> = {
+  active:   { dot: "#22c55e", label: "Active"    },
+  building: { dot: "#f97316", label: "Building"  },
+  draft:    { dot: "#f97316", label: "Building"  },
+  idle:     { dot: "#6b7280", label: "Idle"      },
+  archived: { dot: "#ef4444", label: "Archived"  },
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,87 +56,67 @@ export interface SandboxStats {
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const min = Math.floor(ms / 60_000);
-  const hr = Math.floor(ms / 3_600_000);
+  const hr  = Math.floor(ms / 3_600_000);
   const day = Math.floor(ms / 86_400_000);
-  if (min < 2) return "just now";
+  if (min < 2)  return "just now";
   if (min < 60) return `${min}m ago`;
-  if (hr < 24) return `${hr}h ago`;
+  if (hr  < 24) return `${hr}h ago`;
   if (day === 1) return "yesterday";
   return `${day}d ago`;
 }
 
-const TEMPLATE_COLORS: Record<string, { bg: string; text: string }> = {
-  "Curative Title":       { bg: "bg-blue-500/15",   text: "text-blue-600" },
-  "Wholesale Pipeline":   { bg: "bg-violet-500/15", text: "text-violet-600" },
-  "Creative Finance":     { bg: "bg-accent/15",     text: "text-amber-700" },
-  "Content Strategy":     { bg: "bg-cyan-500/15",   text: "text-cyan-700" },
-  "Multifamily Strategy": { bg: "bg-orange-500/15", text: "text-orange-700" },
-  "Business Acquisition": { bg: "bg-indigo-500/15", text: "text-indigo-700" },
-  "Blank":                { bg: "bg-secondary",     text: "text-muted-foreground" },
-};
-
-const STATUS_CONFIG: Record<string, { dot: string; ring: string; label: string }> = {
-  active:   { dot: "bg-emerald-500", ring: "text-emerald-700 bg-emerald-500/15 ring-emerald-500/30", label: "Active" },
-  building: { dot: "bg-amber-500",   ring: "text-amber-700 bg-accent/15 ring-accent/30",            label: "Building" },
-  idle:     { dot: "bg-gray-400",    ring: "text-muted-foreground bg-secondary ring-border",         label: "Idle" },
-  archived: { dot: "bg-rose-500",    ring: "text-rose-600 bg-rose-500/10 ring-rose-400/20",          label: "Archived" },
-};
-
-const TEMPLATES = [
-  { key: "Curative Title",       desc: "Track title defects and remediation" },
-  { key: "Wholesale Pipeline",   desc: "End-to-end wholesale deal flow" },
-  { key: "Creative Finance",     desc: "Morby Method and seller carry deals" },
-  { key: "Content Strategy",     desc: "Marketing and content planning" },
-  { key: "Multifamily Strategy", desc: "Multi-unit acquisition pipeline" },
-  { key: "Business Acquisition", desc: "Business purchase and integration" },
-  { key: "Blank",                desc: "Start from scratch" },
-];
-
-const CURRENT_QUARTER = Math.ceil((new Date().getMonth() + 1) / 3);
-
-const TEMPLATE_TITLE_DEFAULTS: Record<string, string> = {
-  "Curative Title":       "Title Cure Pipeline",
-  "Wholesale Pipeline":   "Wholesale Outreach System",
-  "Creative Finance":     "Creative Finance Playbook",
-  "Content Strategy":     `Content Strategy — Q${CURRENT_QUARTER}`,
-  "Multifamily Strategy": "Multifamily Acquisition Strategy",
-  "Business Acquisition": "Business Acquisition Pipeline",
-  "Blank":                "",
-};
-
-const DARK_TEMPLATE_PILL: Record<string, string> = {
-  "Curative Title":       "bg-blue-500/15 text-blue-300",
-  "Wholesale Pipeline":   "bg-violet-500/15 text-violet-300",
-  "Creative Finance":     "bg-[#c9a84c]/15 text-[#c9a84c]",
-  "Content Strategy":     "bg-cyan-500/15 text-cyan-300",
-  "Multifamily Strategy": "bg-orange-500/15 text-orange-300",
-  "Business Acquisition": "bg-indigo-500/15 text-indigo-300",
-  "Blank":                "bg-white/8 text-white/30",
-};
-
 // ---------------------------------------------------------------------------
-// Stats bar
+// Icons
 // ---------------------------------------------------------------------------
 
-function StatBar({ stats }: { stats: SandboxStats }) {
+function IconChevron({ color }: { color: string }) {
   return (
-    <div className="mb-6 rounded-xl bg-[#0a1628] px-5 py-4 text-white">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Stat label="Total Sandboxes"   value={String(stats.total)}   />
-        <Stat label="Active Strategies" value={String(stats.active)}  />
-        <Stat label="Team Members"      value="2"                     />
-        <Stat label="Modules Built"     value={String(stats.modules)} />
-      </div>
-    </div>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" style={{ transition: "stroke 200ms ease", flexShrink: 0 }}>
+      <path d="M9 18l6-6-6-6" />
+    </svg>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function IconBranch() {
   return (
-    <div>
-      <div className="text-[9px] font-medium uppercase tracking-widest text-white/40">{label}</div>
-      <div className="data-number mt-0.5 text-xl font-semibold tabular-nums text-[#c9a84c]">{value}</div>
-    </div>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round">
+      <line x1="6" y1="3" x2="6" y2="15" />
+      <circle cx="18" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M18 9a9 9 0 01-9 9" />
+    </svg>
+  );
+}
+
+function IconClock() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+
+function IconSearch() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <path d="M21 21l-4.35-4.35" />
+    </svg>
+  );
+}
+
+function IconPlus({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+      strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
   );
 }
 
@@ -124,69 +127,111 @@ function Stat({ label, value }: { label: string; value: string }) {
 function SandboxCard({
   sandbox,
   onClick,
-  onDeleteRequest,
+  onDelete,
 }: {
   sandbox: SandboxRow;
   onClick: () => void;
-  onDeleteRequest: (id: string, title: string | null) => void;
+  onDelete: () => void;
 }) {
-  const tpl = sandbox.template ?? "Blank";
-  const tplColor = TEMPLATE_COLORS[tpl] ?? TEMPLATE_COLORS["Blank"];
-  const s = STATUS_CONFIG[sandbox.status] ?? STATUS_CONFIG["idle"];
+  const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
-    function onPointerDown(e: PointerEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
+    function handler(e: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
     }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
   }, [menuOpen]);
 
+  const badge  = TEMPLATE_BADGE[sandbox.template ?? "Blank"] ?? TEMPLATE_BADGE["Blank"];
+  const status = STATUS_MAP[sandbox.status] ?? STATUS_MAP.idle;
+
   return (
-    <motion.div
+    <div
       onClick={onClick}
-      style={{ boxShadow: "0 2px 12px rgba(0,0,0,0.06)", borderColor: "rgba(0,0,0,0.06)" }}
-      whileHover={{ y: -2, boxShadow: "0 8px 32px rgba(0,0,0,0.12)", borderColor: "rgba(212,175,55,0.3)" }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-      className="flex cursor-pointer flex-col rounded-2xl border bg-card p-5 text-left"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: "#1a1d27",
+        border: "1px solid rgba(255,255,255,0.06)",
+        borderRadius: "16px",
+        padding: "20px",
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        boxShadow: hovered
+          ? "0 0 0 1px rgba(201,168,76,0.4), 0 8px 24px rgba(201,168,76,0.15)"
+          : "0 1px 4px rgba(0,0,0,0.25)",
+        transition: "all 200ms ease",
+        position: "relative",
+      }}
     >
-      {/* Top row — category + status + menu */}
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${tplColor.bg} ${tplColor.text}`}>
-          {tpl}
+      {/* Top row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+        {/* Category badge */}
+        <span style={{
+          background: badge.bg,
+          color: badge.color,
+          borderRadius: "999px",
+          padding: "2px 10px",
+          fontSize: "10px",
+          fontWeight: 700,
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          maxWidth: "160px",
+        }}>
+          {sandbox.template ?? "Blank"}
         </span>
-        <div className="flex items-center gap-1.5">
-          <span className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium ring-1 ${s.ring}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${s.dot}`} />
-            {s.label}
+
+        {/* Status + chevron + menu */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+          <span style={{
+            width: "6px", height: "6px",
+            borderRadius: "50%",
+            background: status.dot,
+            display: "inline-block",
+            flexShrink: 0,
+          }} />
+          <span style={{ fontSize: "12px", color: "rgba(255,255,255,0.45)", fontWeight: 500 }}>
+            {status.label}
           </span>
-          <div className="relative" ref={menuRef}>
+          <IconChevron color={hovered ? "#C9A84C" : "rgba(255,255,255,0.2)"} />
+
+          {/* 3-dot delete menu */}
+          <div ref={menuRef} onClick={(e) => e.stopPropagation()} style={{ position: "relative" }}>
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/30 transition-colors hover:bg-secondary hover:text-muted-foreground"
+              onClick={() => setMenuOpen((v) => !v)}
+              style={{ color: "rgba(255,255,255,0.2)", padding: "2px 4px", lineHeight: 0, background: "none", border: "none", cursor: "pointer" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.5)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.2)"; }}
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <circle cx="8" cy="3" r="1.5"/>
-                <circle cx="8" cy="8" r="1.5"/>
-                <circle cx="8" cy="13" r="1.5"/>
+                <circle cx="8" cy="3" r="1.5" />
+                <circle cx="8" cy="8" r="1.5" />
+                <circle cx="8" cy="13" r="1.5" />
               </svg>
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full z-10 mt-1 w-40 rounded-xl border border-border bg-card shadow-lg">
+              <div style={{
+                position: "absolute", right: 0, top: "100%", marginTop: "4px",
+                width: "160px", background: "#111828",
+                border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px",
+                zIndex: 20, overflow: "hidden",
+              }}>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setMenuOpen(false);
-                    onDeleteRequest(sandbox.id, sandbox.title);
-                  }}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] text-rose-500 transition-colors hover:bg-rose-50"
+                  onClick={() => { setMenuOpen(false); onDelete(); }}
+                  style={{ width: "100%", textAlign: "left", padding: "10px 12px", fontSize: "13px", color: "#f87171", background: "none", border: "none", cursor: "pointer" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(239,68,68,0.08)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
                 >
                   Delete Sandbox
                 </button>
@@ -197,47 +242,60 @@ function SandboxCard({
       </div>
 
       {/* Title + description */}
-      <h3 className="mb-1 text-base font-medium text-primary leading-snug">
-        {sandbox.title ?? "Untitled"}
-      </h3>
-      {sandbox.description && (
-        <p className="mb-3 line-clamp-2 text-sm text-muted-foreground leading-relaxed">
-          {sandbox.description}
-        </p>
-      )}
+      <div>
+        <h3 style={{ color: "white", fontWeight: 600, fontSize: "15px", lineHeight: "1.35", margin: 0 }}>
+          {sandbox.title ?? "Untitled"}
+        </h3>
+        {sandbox.description && (
+          <p style={{
+            color: "#6b7280", fontSize: "13px", lineHeight: "1.55", marginTop: "4px",
+            display: "-webkit-box", WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical", overflow: "hidden",
+          }}>
+            {sandbox.description}
+          </p>
+        )}
+      </div>
 
-      <div className="mt-auto pt-4 border-t border-border flex items-center justify-between">
-        {/* Avatars */}
-        <div className="flex -space-x-1.5">
-          {[
-            { initials: "JM", title: "John Masingale" },
-            { initials: "LO", title: "Loammi" },
-          ].map((a) => (
+      {/* Bottom row */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        paddingTop: "12px", borderTop: "1px solid rgba(255,255,255,0.05)",
+        marginTop: "auto",
+      }}>
+        {/* Avatar stack */}
+        <div style={{ display: "flex" }}>
+          {[{ ini: "JM", name: "John Masingale" }, { ini: "LO", name: "Loammi" }].map((a, i) => (
             <span
-              key={a.initials}
-              title={a.title}
-              className="flex h-6 w-6 items-center justify-center rounded-full bg-[#0a1628] text-[9px] font-bold text-[#c9a84c] ring-2 ring-card"
+              key={a.ini}
+              title={a.name}
+              style={{
+                width: "24px", height: "24px", borderRadius: "50%",
+                background: "rgba(201,168,76,0.15)", color: "#C9A84C",
+                fontSize: "9px", fontWeight: 700,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                border: "2px solid #1a1d27",
+                marginLeft: i === 0 ? 0 : "-6px",
+              }}
             >
-              {a.initials}
+              {a.ini}
             </span>
           ))}
         </div>
 
-        {/* Module count + time */}
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-              <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
-              <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
-              <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
-              <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
-            </svg>
+        {/* Module count + timestamp */}
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", color: "#6b7280", fontSize: "11px" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+            <IconBranch />
             {sandbox.module_count} {sandbox.module_count === 1 ? "module" : "modules"}
           </span>
-          <span>{timeAgo(sandbox.updated_at)}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+            <IconClock />
+            {timeAgo(sandbox.updated_at)}
+          </span>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -246,178 +304,64 @@ function SandboxCard({
 // ---------------------------------------------------------------------------
 
 function NewSandboxCard({ onClick }: { onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+
   return (
-    <motion.div
+    <div
       onClick={onClick}
-      whileHover={{ y: -2, borderColor: "rgba(212,175,55,0.5)" }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-      className="flex min-h-[172px] cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border bg-card/60 p-5 text-center transition-colors hover:bg-card"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        background: "transparent",
+        border: `1.5px dashed ${hovered ? "rgba(201,168,76,0.45)" : "#2a2d3a"}`,
+        borderRadius: "16px",
+        padding: "20px",
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "172px",
+        gap: "12px",
+        boxShadow: hovered
+          ? "0 0 0 1px rgba(201,168,76,0.4), 0 8px 24px rgba(201,168,76,0.15)"
+          : "none",
+        transition: "all 200ms ease",
+      }}
     >
-      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-2xl font-light text-muted-foreground">
-        +
-      </span>
-      <div>
-        <p className="text-sm font-medium text-primary">New Sandbox</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">Create a new workspace</p>
+      <div style={{
+        width: "40px", height: "40px", borderRadius: "50%",
+        background: "rgba(201,168,76,0.1)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        color: "#C9A84C",
+      }}>
+        <IconPlus size={20} />
       </div>
-    </motion.div>
+      <div style={{ textAlign: "center" }}>
+        <p style={{ color: "white", fontWeight: 500, fontSize: "14px", margin: 0 }}>New Sandbox</p>
+        <p style={{ color: "#6b7280", fontSize: "12px", marginTop: "4px" }}>
+          Build from a template or scratch
+        </p>
+      </div>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// New Sandbox modal
+// Metric stat
 // ---------------------------------------------------------------------------
 
-function NewSandboxModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [template, setTemplate] = useState("Blank");
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  function reset() {
-    setTitle("");
-    setDescription("");
-    setTemplate("Blank");
-    setError(null);
-  }
-
-  function handleClose() {
-    reset();
-    onClose();
-  }
-
-  function handleTemplateSelect(key: string) {
-    setTemplate(key);
-    setTitle(TEMPLATE_TITLE_DEFAULTS[key] ?? "");
-  }
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    start(async () => {
-      const res = await createSandbox({ title, description, template });
-      if (!res.ok) { setError(res.error); return; }
-      handleClose();
-      router.push(`/sandbox/${res.id}`);
-    });
-  }
-
-  if (!open) return null;
-
+function MetricStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={handleClose} />
-      <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0d1b30] shadow-2xl">
-
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/8 px-6 py-4">
-          <h2 className="text-base font-semibold text-white">New Sandbox</h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            aria-label="Close"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-white/30 transition-colors hover:bg-white/8 hover:text-white/70"
-          >
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-
-        <form onSubmit={submit} className="space-y-5 px-6 py-5">
-          {/* Template picker — first so clicking auto-populates title below */}
-          <div>
-            <span className="mb-2 block text-[10px] font-semibold uppercase tracking-widest text-white/40">
-              Template
-            </span>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-              {TEMPLATES.map((t) => {
-                const pill = DARK_TEMPLATE_PILL[t.key] ?? DARK_TEMPLATE_PILL["Blank"];
-                const selected = template === t.key;
-                return (
-                  <button
-                    key={t.key}
-                    type="button"
-                    onClick={() => handleTemplateSelect(t.key)}
-                    className={
-                      "flex flex-col items-start gap-1.5 rounded-xl border px-3 py-3 text-left transition-all duration-150 " +
-                      (selected
-                        ? "border-[#c9a84c] bg-[#c9a84c]/8 shadow-[0_0_0_1px_rgba(201,168,76,0.2)]"
-                        : "border-white/8 bg-white/3 hover:border-white/15 hover:bg-white/6")
-                    }
-                  >
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${pill}`}>
-                      {t.key}
-                    </span>
-                    <span className={`text-[11px] leading-snug transition-colors ${selected ? "text-white/70" : "text-white/30"}`}>
-                      {t.desc}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Title — auto-populated by template selection, user can override */}
-          <label className="block">
-            <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/40">
-              Title *
-            </span>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              placeholder="e.g. Q3 Wholesale Push"
-              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none transition-colors focus:border-[#c9a84c]/50 focus:bg-[#c9a84c]/5"
-            />
-          </label>
-
-          {/* What are you building? */}
-          <label className="block">
-            <span className="mb-1.5 block text-[10px] font-semibold uppercase tracking-widest text-white/40">
-              What are you building?
-            </span>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              placeholder="Describe your strategy or goal..."
-              className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none transition-colors focus:border-[#c9a84c]/50 focus:bg-[#c9a84c]/5"
-            />
-          </label>
-
-          {error && (
-            <p className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-400 ring-1 ring-rose-500/20">
-              {error}
-            </p>
-          )}
-
-          <div className="flex justify-end gap-2 pt-1">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/50 transition-colors hover:bg-white/8 hover:text-white/80"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-xl bg-[#c9a84c] px-4 py-2 text-sm font-medium text-[#070f1c] transition-all hover:bg-[#e0c060] disabled:opacity-50"
-            >
-              {pending ? "Creating…" : "Create Sandbox"}
-            </button>
-          </div>
-        </form>
+    <div>
+      <div style={{
+        fontSize: "9px", fontWeight: 700, textTransform: "uppercase",
+        letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", marginBottom: "6px",
+      }}>
+        {label}
+      </div>
+      <div style={{ fontSize: "22px", fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "#C9A84C" }}>
+        {value}
       </div>
     </div>
   );
@@ -428,10 +372,7 @@ function NewSandboxModal({ open, onClose }: { open: boolean; onClose: () => void
 // ---------------------------------------------------------------------------
 
 function DeleteConfirmDialog({
-  title,
-  onCancel,
-  onConfirm,
-  isPending,
+  title, onCancel, onConfirm, isPending,
 }: {
   title: string | null;
   onCancel: () => void;
@@ -445,22 +386,28 @@ function DeleteConfirmDialog({
   }, [onCancel]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onCancel} />
-      <div className="relative w-full max-w-sm rounded-xl border border-white/10 bg-[#0d1b30] p-6 shadow-2xl">
-        <h2 className="mb-1 text-base font-semibold text-white">Delete Sandbox</h2>
-        {title && (
-          <p className="mb-3 text-sm font-medium text-white/50">&ldquo;{title}&rdquo;</p>
-        )}
-        <p className="mb-5 text-sm leading-relaxed text-white/40">
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(2px)" }} onClick={onCancel} />
+      <div style={{
+        position: "relative", width: "100%", maxWidth: "360px", padding: "24px",
+        background: "#0d1b30", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px",
+        boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+      }}>
+        <h2 style={{ color: "white", fontWeight: 600, fontSize: "15px", marginBottom: "4px" }}>Delete Sandbox</h2>
+        {title && <p style={{ color: "rgba(255,255,255,0.45)", fontSize: "13px", marginBottom: "12px" }}>&ldquo;{title}&rdquo;</p>}
+        <p style={{ color: "rgba(255,255,255,0.35)", fontSize: "13px", lineHeight: "1.6", marginBottom: "20px" }}>
           This will permanently delete this sandbox and all its folders and modules. This cannot be undone.
         </p>
-        <div className="flex justify-end gap-2">
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
           <button
             type="button"
             onClick={onCancel}
             disabled={isPending}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/50 transition-colors hover:bg-white/8 hover:text-white/80 disabled:opacity-50"
+            style={{
+              background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "10px", padding: "8px 16px", fontSize: "13px", color: "rgba(255,255,255,0.5)",
+              cursor: "pointer",
+            }}
           >
             Cancel
           </button>
@@ -468,7 +415,12 @@ function DeleteConfirmDialog({
             type="button"
             onClick={onConfirm}
             disabled={isPending}
-            className="rounded-xl bg-rose-500 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-rose-600 disabled:opacity-50"
+            style={{
+              background: "#ef4444", border: "none", borderRadius: "10px",
+              padding: "8px 16px", fontSize: "13px", fontWeight: 500, color: "white",
+              cursor: isPending ? "not-allowed" : "pointer",
+              opacity: isPending ? 0.6 : 1,
+            }}
           >
             {isPending ? "Deleting…" : "Delete"}
           </button>
@@ -479,7 +431,7 @@ function DeleteConfirmDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Root
+// Root component
 // ---------------------------------------------------------------------------
 
 export function SandboxBoard({
@@ -491,7 +443,6 @@ export function SandboxBoard({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [adding, setAdding] = useState(false);
   const [sandboxList, setSandboxList] = useState(sandboxes);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string | null } | null>(null);
   const [isDeleting, startDelete] = useTransition();
@@ -500,89 +451,158 @@ export function SandboxBoard({
     !query || (s.title ?? "").toLowerCase().includes(query.toLowerCase()),
   );
 
-  function handleDeleteRequest(id: string, title: string | null) {
-    setDeleteTarget({ id, title });
-  }
-
   function handleConfirmDelete() {
     if (!deleteTarget) return;
     const targetId = deleteTarget.id;
     startDelete(async () => {
       const res = await deleteSandbox(targetId);
-      if (res.ok) {
-        setSandboxList((prev) => prev.filter((s) => s.id !== targetId));
-      }
+      if (res.ok) setSandboxList((prev) => prev.filter((s) => s.id !== targetId));
       setDeleteTarget(null);
     });
   }
 
+  const showNewCard = !query || filtered.length > 0;
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className="mx-auto max-w-7xl px-8 py-8"
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      style={{ background: "#0A0B14", minHeight: "100vh", padding: "32px" }}
     >
-      <header className="mb-6 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl tracking-tight text-primary">Sandbox</h1>
-          <p className="mt-2 text-[15px] italic font-light text-muted-foreground">
-            Strategy workspaces for deals, content, and outreach.
-          </p>
+      <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
+
+        {/* Header */}
+        <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px", marginBottom: "24px" }}>
+          <div>
+            <h1 style={{ color: "white", fontSize: "28px", fontWeight: 700, letterSpacing: "-0.02em", margin: 0 }}>
+              Sandboxes
+            </h1>
+            <p style={{ color: "#6b7280", fontSize: "14px", marginTop: "6px" }}>
+              {stats.total} {stats.total === 1 ? "workspace" : "workspaces"} · {stats.active} active now
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push("/sandbox/new")}
+            style={{
+              background: "#C9A84C", color: "#0A0B14",
+              border: "none", borderRadius: "8px",
+              padding: "9px 16px", fontSize: "14px", fontWeight: 600,
+              cursor: "pointer", display: "flex", alignItems: "center",
+              gap: "6px", flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "#dbbe66"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "#C9A84C"; }}
+          >
+            <IconPlus size={14} />
+            New Sandbox
+          </button>
+        </header>
+
+        {/* Search */}
+        <div style={{ position: "relative", marginBottom: "24px" }}>
+          <span style={{
+            position: "absolute", left: "14px", top: "50%", transform: "translateY(-50%)",
+            color: "#6b7280", pointerEvents: "none",
+          }}>
+            <IconSearch />
+          </span>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search sandboxes…"
+            style={{
+              width: "100%",
+              background: "#1a1d27",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "12px",
+              padding: "10px 14px 10px 42px",
+              color: "white",
+              fontSize: "14px",
+              outline: "none",
+              boxSizing: "border-box",
+              transition: "border-color 150ms ease",
+            }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.4)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+          />
         </div>
-      </header>
 
-      <StatBar stats={stats} />
-
-      {/* Search */}
-      <div className="mb-6 relative">
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 20 20"
-          fill="none"
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+        {/* Metric strip */}
+        <div
+          style={{
+            background: "#111219",
+            border: "1px solid rgba(255,255,255,0.05)",
+            borderRadius: "16px",
+            padding: "20px 24px",
+            marginBottom: "32px",
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: "16px",
+          }}
         >
-          <circle cx="8.5" cy="8.5" r="5.75" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-        </svg>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search sandboxes…"
-          className="w-full rounded-xl border border-border bg-card py-2.5 pl-9 pr-4 text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-        />
+          <MetricStat label="Total Sandboxes"   value={String(stats.total)}   />
+          <MetricStat label="Active Strategies" value={String(stats.active)}  />
+          <MetricStat label="Team Members"      value={String(stats.members)} />
+          <MetricStat label="Modules Built"     value={String(stats.modules)} />
+        </div>
+
+        {/* Section label */}
+        <div style={{
+          fontSize: "10px", fontWeight: 700, letterSpacing: "0.12em",
+          color: "rgba(255,255,255,0.25)", textTransform: "uppercase", marginBottom: "16px",
+        }}>
+          Workspaces
+        </div>
+
+        {/* Grid */}
+        {filtered.length === 0 && query ? (
+          <div style={{
+            background: "#1a1d27",
+            border: "1px dashed rgba(255,255,255,0.08)",
+            borderRadius: "16px",
+            padding: "64px 32px",
+            textAlign: "center",
+          }}>
+            <p style={{ color: "rgba(255,255,255,0.45)", fontWeight: 500, fontSize: "14px" }}>
+              No sandboxes match &ldquo;{query}&rdquo;
+            </p>
+            <p style={{ color: "#6b7280", fontSize: "13px", marginTop: "4px" }}>
+              Try a different search term.
+            </p>
+          </div>
+        ) : (
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: "16px",
+          }}>
+            {filtered.map((sandbox) => (
+              <SandboxCard
+                key={sandbox.id}
+                sandbox={sandbox}
+                onClick={() => router.push(`/sandbox/${sandbox.id}`)}
+                onDelete={() => setDeleteTarget({ id: sandbox.id, title: sandbox.title })}
+              />
+            ))}
+            {showNewCard && <NewSandboxCard onClick={() => router.push("/sandbox/new")} />}
+          </div>
+        )}
+
+        {/* Empty state (no sandboxes at all) */}
+        {sandboxList.length === 0 && !query && (
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: "16px",
+          }}>
+            <NewSandboxCard onClick={() => router.push("/sandbox/new")} />
+          </div>
+        )}
+
       </div>
-
-      {/* Grid */}
-      {filtered.length === 0 && query ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card py-16 text-center">
-          <p className="text-sm font-medium text-primary">No sandboxes match &ldquo;{query}&rdquo;</p>
-          <p className="mt-1 text-xs text-muted-foreground">Try a different search term.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((sandbox) => (
-            <SandboxCard
-              key={sandbox.id}
-              sandbox={sandbox}
-              onClick={() => router.push(`/sandbox/${sandbox.id}`)}
-              onDeleteRequest={handleDeleteRequest}
-            />
-          ))}
-          <NewSandboxCard onClick={() => setAdding(true)} />
-        </div>
-      )}
-
-      {/* Always show New Sandbox card even when search is active with results */}
-      {filtered.length === 0 && !query && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <NewSandboxCard onClick={() => setAdding(true)} />
-        </div>
-      )}
-
-      <NewSandboxModal open={adding} onClose={() => setAdding(false)} />
 
       {deleteTarget && (
         <DeleteConfirmDialog
