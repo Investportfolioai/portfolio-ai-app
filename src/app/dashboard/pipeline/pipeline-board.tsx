@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
 import { Drawer } from "vaul";
+import { dealClosedConfetti, escrowTransitionEffect } from "@/lib/celebrations";
 import {
   type Deal,
   type DealStatus,
@@ -95,6 +96,32 @@ interface PipelineIntel {
   deals_pending: number;
 }
 
+function useCountUp(target: number, duration = 1200): number {
+  const [value, setValue] = useState(0);
+  const rafRef = useRef<number>(0);
+  useEffect(() => {
+    setValue(0);
+    if (target === 0) return;
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(target * eased);
+      if (progress < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, duration]);
+  return value;
+}
+
+function fmtCompact(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
+  return `$${Math.round(n)}`;
+}
+
 /** Collapsible pipeline-intelligence bar (navy, gold numbers) above the tabs. */
 function IntelligenceBar() {
   const [open, setOpen] = useState(true);
@@ -111,6 +138,12 @@ function IntelligenceBar() {
     };
   }, []);
 
+  const fees = useCountUp(intel?.total_projected_fees ?? 0);
+  const cashback = useCountUp(intel?.total_projected_cashback ?? 0);
+  const closeRate = useCountUp(intel?.close_rate ?? 0, 1200);
+  const buybox = useCountUp(intel?.buybox_score ?? 0, 1200);
+  const inEscrow = useCountUp(intel?.deals_in_escrow ?? 0, 1000);
+
   return (
     <div className="glass-card mb-4 px-4 py-3 text-white">
       <button
@@ -125,14 +158,14 @@ function IntelligenceBar() {
       </button>
       {open && (
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
-          <MiniStat label="Portfolio AI Fees" value={money(intel?.total_projected_fees ?? 0)} />
-          <MiniStat label="Proj Cashback" value={money(intel?.total_projected_cashback ?? 0)} />
-          <MiniStat label="Close Rate" value={`${(intel?.close_rate ?? 0).toFixed(0)}%`} />
+          <MiniStat label="Portfolio AI Fees" value={fmtCompact(fees)} />
+          <MiniStat label="Proj Cashback" value={fmtCompact(cashback)} />
+          <MiniStat label="Close Rate" value={`${closeRate.toFixed(1)}%`} />
           <MiniStat label="Avg ACQ" value={intel?.avg_acq_grade != null ? intel.avg_acq_grade.toFixed(0) : "—"} />
           <MiniStat label="Avg STAB" value={intel?.avg_stab_grade != null ? intel.avg_stab_grade.toFixed(0) : "—"} />
           <MiniStat label="To Escrow" value={intel?.avg_days_to_escrow != null ? `${intel.avg_days_to_escrow.toFixed(0)}d` : "—"} />
-          <MiniStat label="Buybox" value={intel?.buybox_score != null ? `${intel.buybox_score.toFixed(1)}%` : "—"} />
-          <MiniStat label="In Escrow" value={String(intel?.deals_in_escrow ?? 0)} />
+          <MiniStat label="Buybox" value={intel?.buybox_score != null ? `${buybox.toFixed(1)}%` : "—"} />
+          <MiniStat label="In Escrow" value={String(Math.round(inEscrow))} />
         </div>
       )}
     </div>
@@ -261,10 +294,10 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
               <motion.div
                 key={deal.id}
                 layout
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.18, ease: [0.4, 0, 0.2, 1] }}
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 1.05, y: -8 }}
+                transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }}
               >
                 <DealCard
                   deal={deal}
@@ -943,21 +976,18 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
       open={open}
       onOpenChange={(o) => { if (!o) onClose(); }}
       direction="right"
+      shouldScaleBackground={false}
     >
+      {open && (
       <Drawer.Portal>
         <Drawer.Overlay
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 39,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(4px)",
-          }}
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
+          style={{ zIndex: 39 }}
         />
         <Drawer.Content
           aria-label={deal ? `Deal detail: ${deal.property_address}` : "Deal detail"}
-          className="fixed right-0 top-0 flex h-full w-full flex-col md:max-w-lg"
-          style={{ background: "#ffffff", zIndex: 40, outline: "none", boxShadow: "-8px 0 40px rgba(0,0,0,0.4)" }}
+          className="fixed right-0 top-0 flex h-full w-full flex-col md:max-w-lg bg-[#0f111c] border-l border-white/5 outline-none"
+          style={{ zIndex: 40, boxShadow: "-8px 0 40px rgba(0,0,0,0.4)" }}
         >
           {deal && (
             <>
@@ -1080,6 +1110,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                             ? "Deal closed and added to Portfolio"
                             : "Deal marked as closed";
                           toast.success(msg);
+                          dealClosedConfetti();
                           router.refresh();
                         } else {
                           toast.error(result.error ?? "Failed to close deal");
@@ -1169,6 +1200,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
           )}
         </Drawer.Content>
       </Drawer.Portal>
+      )}
     </Drawer.Root>
   );
 }
@@ -1379,18 +1411,24 @@ function EscrowAction({ deal, onChanged }: { deal: Deal; onChanged: () => void }
   function move() {
     setError("");
     start(async () => {
-      const res = await fetch("/api/deals/escrow", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deal_id: deal.id }),
-      });
+      const [res] = await Promise.all([
+        fetch("/api/deals/escrow", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ deal_id: deal.id }),
+        }),
+        new Promise<void>((r) => setTimeout(r, 350)),
+      ]);
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         setError(j.error || "Could not move the deal to escrow.");
+        toast.error(j.error || "Could not move the deal to escrow.");
         return;
       }
       setDone(true);
       onChanged();
+      toast.success("Deal moved to Escrow Pipeline");
+      escrowTransitionEffect();
       setTimeout(() => setDone(false), 4000);
     });
   }

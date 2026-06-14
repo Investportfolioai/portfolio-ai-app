@@ -345,11 +345,32 @@ function NewSandboxCard({ onClick }: { onClick: () => void }) {
 // Metric stat
 // ---------------------------------------------------------------------------
 
-function MetricStat({ label, value }: { label: string; value: string }) {
+function useCountUp(target: number, duration = 1200): number {
+  const [value, setValue] = useState(0);
+  const rafRef = useRef<number>(0);
+  useEffect(() => {
+    setValue(0);
+    if (target === 0) return;
+    const start = Date.now();
+    const tick = () => {
+      const elapsed = Date.now() - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(target * eased);
+      if (progress < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [target, duration]);
+  return value;
+}
+
+function MetricStat({ label, target, duration = 1000 }: { label: string; target: number; duration?: number }) {
+  const counted = useCountUp(target, duration);
   return (
     <div>
       <div className="label-eyebrow" style={{ marginBottom: "8px" }}>{label}</div>
-      <div className="num-metric" style={{ color: "#C9A84C" }}>{value}</div>
+      <div className="num-metric" style={{ color: "#C9A84C" }}>{Math.round(counted)}</div>
     </div>
   );
 }
@@ -533,10 +554,10 @@ export function SandboxBoard({
             gap: "16px",
           }}
         >
-          <MetricStat label="Total Sandboxes"   value={String(stats.total)}   />
-          <MetricStat label="Active Strategies" value={String(stats.active)}  />
-          <MetricStat label="Team Members"      value={String(stats.members)} />
-          <MetricStat label="Modules Built"     value={String(stats.modules)} />
+          <MetricStat label="Total Sandboxes"   target={stats.total}   duration={800}  />
+          <MetricStat label="Active Strategies" target={stats.active}  duration={800}  />
+          <MetricStat label="Team Members"      target={stats.members} duration={800}  />
+          <MetricStat label="Modules Built"     target={stats.modules} duration={1000} />
         </div>
 
         {/* Section label */}
