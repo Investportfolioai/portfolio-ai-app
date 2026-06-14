@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCountUp } from "@/hooks/useCountUp";
 import { useRouter } from "next/navigation";
 import {
   LineChart,
@@ -100,6 +101,14 @@ const DOC_TYPES = [
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function fmtCompact(n: number): string {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${sign}$${Math.round(abs / 1_000)}K`;
+  return `${sign}$${Math.round(abs)}`;
+}
 
 function eqColor(n: number | null): string {
   if (n == null) return "text-white/60";
@@ -261,23 +270,30 @@ function StatsBar({ holdings }: { holdings: Holding[] }) {
     return { count: holdings.length, value, equity, net, appr };
   }, [holdings]);
 
+  const cCount = useCountUp(stats.count, 800);
+  const cValue = useCountUp(stats.value, 1400);
+  const cEquity = useCountUp(stats.equity, 1400);
+  const cNet = useCountUp(stats.net, 1200);
+  const cAppr = useCountUp(stats.appr ?? 0, 1000);
+
+  const apprDisplay =
+    stats.appr == null
+      ? "—"
+      : `${cAppr >= 0 ? "▲ +" : "▼ "}${Math.abs(cAppr).toFixed(1)}%`;
+
   return (
     <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-5">
-      <StatCard label="Total Properties" value={String(stats.count)} />
-      <StatCard label="Portfolio Value" value={money(stats.value)} gold big />
-      <StatCard label="Total Equity" value={money(stats.equity)} cls={eqColor(stats.equity)} />
+      <StatCard label="Total Properties" value={String(Math.round(cCount))} />
+      <StatCard label="Portfolio Value" value={fmtCompact(cValue)} gold big />
+      <StatCard label="Total Equity" value={fmtCompact(cEquity)} cls={eqColor(stats.equity)} />
       <StatCard
         label="Monthly Net Cashflow"
-        value={money(stats.net)}
+        value={fmtCompact(cNet)}
         cls={stats.net >= 0 ? "text-emerald-400" : "text-rose-400"}
       />
       <StatCard
         label="Appreciation"
-        value={
-          stats.appr == null
-            ? "—"
-            : `${stats.appr >= 0 ? "▲ +" : "▼ "}${stats.appr.toFixed(1)}%`
-        }
+        value={apprDisplay}
         cls={stats.appr == null ? "text-white/60" : stats.appr >= 0 ? "text-emerald-400" : "text-rose-400"}
       />
     </div>
@@ -467,22 +483,28 @@ function IntelOverview({ holdings }: { holdings: Holding[] }) {
     return { value, equity, cashflow, appr };
   }, [holdings]);
 
+  const cValue = useCountUp(stats.value, 1400);
+  const cEquity = useCountUp(stats.equity, 1400);
+  const cCashflow = useCountUp(stats.cashflow, 1200);
+  const cAppr = useCountUp(stats.appr ?? 0, 1000);
+
+  const apprDisplay =
+    stats.appr == null
+      ? "—"
+      : `${cAppr >= 0 ? "+" : ""}${cAppr.toFixed(1)}%`;
+
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-      <IntelMetricCard label="Total Portfolio Value" value={money(stats.value)} cls="text-[#c9a84c]" />
-      <IntelMetricCard label="Total Equity" value={money(stats.equity)} cls={eqColor(stats.equity)} />
+      <IntelMetricCard label="Total Portfolio Value" value={fmtCompact(cValue)} cls="text-[#c9a84c]" />
+      <IntelMetricCard label="Total Equity" value={fmtCompact(cEquity)} cls={eqColor(stats.equity)} />
       <IntelMetricCard
         label="Monthly Net Cashflow"
-        value={money(stats.cashflow)}
+        value={fmtCompact(cCashflow)}
         cls={stats.cashflow >= 0 ? "text-emerald-400" : "text-rose-400"}
       />
       <IntelMetricCard
         label="Portfolio Appreciation"
-        value={
-          stats.appr == null
-            ? "—"
-            : `${stats.appr >= 0 ? "+" : ""}${stats.appr.toFixed(1)}%`
-        }
+        value={apprDisplay}
         cls={
           stats.appr == null
             ? "text-white/60"
