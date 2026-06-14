@@ -1,14 +1,23 @@
 import confetti from "canvas-confetti";
 
-export function dealClosedConfetti() {
+export function dealClosedConfetti(cardElement?: HTMLElement) {
   const gold = "#C9A84C";
   const white = "#ffffff";
   const dark = "#1a1d27";
 
+  let originX = 0.5;
+  let originY = 0.5;
+
+  if (cardElement) {
+    const rect = cardElement.getBoundingClientRect();
+    originX = (rect.left + rect.width / 2) / window.innerWidth;
+    originY = (rect.top + rect.height / 2) / window.innerHeight;
+  }
+
   confetti({
     particleCount: 80,
     spread: 70,
-    origin: { x: 0.5, y: 0.5 },
+    origin: { x: originX, y: originY },
     colors: [gold, white, dark],
     ticks: 200,
     gravity: 1.2,
@@ -20,7 +29,7 @@ export function dealClosedConfetti() {
       particleCount: 40,
       angle: 60,
       spread: 55,
-      origin: { x: 0, y: 0.6 },
+      origin: { x: originX, y: originY },
       colors: [gold, white],
       ticks: 150,
     });
@@ -31,7 +40,7 @@ export function dealClosedConfetti() {
       particleCount: 40,
       angle: 120,
       spread: 55,
-      origin: { x: 1, y: 0.6 },
+      origin: { x: originX, y: originY },
       colors: [gold, white],
       ticks: 150,
     });

@@ -295,3 +295,9 @@
   animation: shimmer 1.8s infinite;
   border-radius: 6px;
 }
+
+.sidebar-collapsed {
+  width: 0 !important;
+  overflow: hidden !important;
+  transition: width 300ms cubic-bezier(0.4,0,0.2,1) !important;
+}

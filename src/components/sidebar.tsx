@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutGrid } from "lucide-react";
@@ -26,9 +27,19 @@ const NAV: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    function onDealClosed() {
+      setCollapsed(true);
+      setTimeout(() => setCollapsed(false), 4000);
+    }
+    window.addEventListener("dealClosed", onDealClosed);
+    return () => window.removeEventListener("dealClosed", onDealClosed);
+  }, []);
 
   return (
-    <aside className="flex w-[220px] shrink-0 flex-col bg-sidebar text-sidebar-foreground">
+    <aside className={`flex w-[220px] shrink-0 flex-col bg-sidebar text-sidebar-foreground${collapsed ? " sidebar-collapsed" : ""}`}>
       {/* Logo area — gold orb glow behind */}
       <div className="relative px-6 py-6">
         <div style={{

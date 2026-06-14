@@ -656,6 +656,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
       transition={{ duration: 0.2, ease: "easeOut" }}
       className="glass-card flex cursor-pointer flex-col p-5 text-left"
       style={{ borderLeft: `3px solid ${leftBorder}` }}
+      data-deal-card
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -981,13 +982,13 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
       {open && (
       <Drawer.Portal>
         <Drawer.Overlay
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-          style={{ zIndex: 39 }}
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+          style={{ backgroundColor: "rgba(0,0,0,0.4)", zIndex: 39 }}
         />
         <Drawer.Content
           aria-label={deal ? `Deal detail: ${deal.property_address}` : "Deal detail"}
-          className="fixed right-0 top-0 flex h-full w-full flex-col md:max-w-lg bg-[#0f111c] border-l border-white/5 outline-none"
-          style={{ zIndex: 40, boxShadow: "-8px 0 40px rgba(0,0,0,0.4)" }}
+          className="fixed right-0 top-0 bottom-0 flex flex-col w-[480px] bg-[#0f111c] border-l border-white/5 outline-none overflow-y-auto z-50"
+          style={{ boxShadow: "-8px 0 40px rgba(0,0,0,0.4)" }}
         >
           {deal && (
             <>
@@ -1098,7 +1099,8 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                   <button
                     type="button"
                     disabled={markingClosed}
-                    onClick={() =>
+                    onClick={(e) => {
+                      const cardEl = (e.currentTarget as HTMLElement).closest("[data-deal-card]") as HTMLElement | null;
                       startMarkClosed(async () => {
                         const [result] = await Promise.all([
                           markDealClosed(deal.id),
@@ -1110,13 +1112,14 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                             ? "Deal closed and added to Portfolio"
                             : "Deal marked as closed";
                           toast.success(msg);
-                          dealClosedConfetti();
+                          dealClosedConfetti(cardEl ?? undefined);
+                          window.dispatchEvent(new Event("dealClosed"));
                           router.refresh();
                         } else {
                           toast.error(result.error ?? "Failed to close deal");
                         }
-                      })
-                    }
+                      });
+                    }}
                     className="shrink-0 rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
                   >
                     {markingClosed ? "…" : "Confirm Closed"}
