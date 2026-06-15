@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
 import { toast } from "sonner";
-import { Drawer } from "vaul";
 import { dealClosedConfetti, escrowTransitionEffect } from "@/lib/celebrations";
 import {
   type Deal,
@@ -194,6 +193,14 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
     if (selectedId === id) setSelectedId(null);
   }
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelectedId(null);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // All = active + pending (excludes dead/passed); Escrow = active w/ escrow_date.
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: 0, escrow: 0, pending: 0, passed: 0, closed: 0, dead: 0 };
@@ -222,8 +229,18 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
   }, [deals, status, structure]);
 
   const [adding, setAdding] = useState(false);
+  const [panelMounted, setPanelMounted] = useState(false);
 
   const selected = deals.find((d) => d.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!selected) {
+      setPanelMounted(false);
+      return;
+    }
+    const rafId = requestAnimationFrame(() => setPanelMounted(true));
+    return () => cancelAnimationFrame(rafId);
+  }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <motion.div
@@ -310,7 +327,37 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
         </div>
       )}
 
-      <DealPanel deal={selected} onClose={() => setSelectedId(null)} />
+      {selected && (
+        <>
+          <div
+            onClick={() => setSelectedId(null)}
+            style={{
+              position: 'fixed', inset: 0,
+              background: 'rgba(0,0,0,0.4)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 40,
+            }}
+          />
+          <div
+            style={{
+              position: 'fixed', top: 0, right: 0, bottom: 0,
+              width: '480px',
+              background: '#0f111c',
+              borderLeft: '1px solid rgba(255,255,255,0.06)',
+              zIndex: 50,
+              outline: 'none',
+              display: 'flex',
+              flexDirection: 'column' as const,
+              overflow: 'hidden',
+              transform: panelMounted ? 'translateX(0)' : 'translateX(100%)',
+              opacity: panelMounted ? 1 : 0,
+              transition: 'transform 250ms cubic-bezier(0.4,0,0.2,1), opacity 250ms cubic-bezier(0.4,0,0.2,1)',
+            }}
+          >
+            <DealPanel deal={selected} onClose={() => setSelectedId(null)} />
+          </div>
+        </>
+      )}
       <AddDealModal open={adding} onClose={() => setAdding(false)} />
     </motion.div>
   );
@@ -589,6 +636,21 @@ function PendingGradeBadge() {
   );
 }
 
+function GradePill({ label, value }: { label: string; value: number }) {
+  const c = gradeColors(value);
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '3px',
+      background: c.bg, color: c.color,
+      borderRadius: '999px', padding: '2px 8px',
+      fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
+      fontFamily: 'var(--font-mono), monospace',
+    }}>
+      {label} {value}
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Card
 // ---------------------------------------------------------------------------
@@ -633,122 +695,186 @@ function RentalToggle({ deal, onChanged }: { deal: Deal; onChanged?: () => void 
 }
 
 const STATUS_LEFT_BORDER: Record<string, string> = {
-  pending: "#f59e0b",
+  pending: "#818cf8",
   active:  "#3b82f6",
   closed:  "#22c55e",
-  dead:    "#ef4444",
-  passed:  "#ef4444",
+  dead:    "#6b7280",
+  passed:  "#6b7280",
 };
 
 function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void; onDeleted: (id: string) => void }) {
-  const spread = equitySpread(deal);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
   const locality = [deal.city, deal.state].filter(Boolean).join(", ");
   const leftBorder = deal.status === "active" && deal.escrow_date
-    ? "#3b82f6"
+    ? "#C9A84C"
     : STATUS_LEFT_BORDER[deal.status] ?? "rgba(201,168,76,0.08)";
+
+  const waterfall = deal.purchase_price != null
+    ? calculateMorbyWaterfall({
+        purchase_price: deal.purchase_price,
+        ltv_percent: deal.ltv_percent,
+        seller_note_amount: deal.seller_note_amount,
+        assignment_fee: deal.assignment_fee,
+        realtor_commission: deal.realtor_commission,
+        insurance_annual: deal.insurance_annual,
+        taxes_annual: deal.taxes_annual,
+        tc_fee: deal.tc_fee,
+        attorney_fee: deal.attorney_fee,
+        pm_fee: deal.pm_fee,
+      })
+    : null;
+
+  const cashbackPct = waterfall?.cashbackPct
+    ?? (deal.cashback_at_close != null && deal.purchase_price
+        ? (deal.cashback_at_close / deal.purchase_price) * 100
+        : null);
+  const paiFee = waterfall?.portfolioAIFee
+    ?? portfolioAiFee({ cashback_at_close: deal.cashback_at_close, purchase_price: deal.purchase_price });
+  const daysInEscrow = deal.escrow_date ? daysSince(deal.escrow_date) : null;
 
   return (
     <motion.div
       onClick={onOpen}
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
-      className="glass-card flex cursor-pointer flex-col p-5 text-left"
-      style={{ borderLeft: `3px solid ${leftBorder}` }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       data-deal-card
+      style={{
+        background: '#1a1d27',
+        borderRadius: '12px',
+        padding: '16px 20px',
+        borderTop: `1px solid ${hovered ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'}`,
+        borderRight: `1px solid ${hovered ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'}`,
+        borderBottom: `1px solid ${hovered ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'}`,
+        borderLeft: `3px solid ${leftBorder}`,
+        boxShadow: hovered ? '0 0 0 1px rgba(201,168,76,0.4), 0 8px 24px rgba(201,168,76,0.15)' : 'none',
+        transition: 'all 200ms ease',
+        cursor: 'pointer',
+      }}
     >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-base text-white" style={{ fontFamily: "var(--font-display), serif", fontStyle: "italic", fontWeight: 400 }}>{deal.property_address}</h3>
-          {locality && <p className="truncate text-xs text-white/45">{locality}</p>}
-        </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {deal.next_milestone_days != null && deal.next_milestone_days <= 10 && (
-            <span
-              title={`Milestone in ${deal.next_milestone_days}d`}
-              className="text-rose-600"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
-                <path d="M12 7.5v5l3 1.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-              </svg>
-            </span>
+      {/* Top row: address + structure badge */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '12px' }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{
+            fontSize: '15px', fontWeight: 500, color: '#f9fafb',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            fontFamily: 'var(--font-display), serif', fontStyle: 'italic',
+          }}>
+            {deal.property_address}
+          </div>
+          {locality && (
+            <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+              {locality}
+            </div>
           )}
+        </div>
+        <div style={{ flexShrink: 0 }}>
           <StructureBadge structure={deal.structure_type} />
         </div>
       </div>
 
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
-          <StatusBadge status={deal.status} />
-          {deal.status === "closed" ? (
-            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-700 ring-1 ring-inset ring-emerald-500/30">
-              Closed
-            </span>
-          ) : deal.escrow_date ? (
-            <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-accent ring-1 ring-inset ring-accent/40">
-              In Escrow
-            </span>
-          ) : null}
-        </div>
-        {deal.acquisition_grade == null && deal.stabilization_grade == null ? (
-          <PendingGradeBadge />
-        ) : (
-          <div className="flex items-center gap-2.5">
-            <GradeBadge
-              caption="Acq"
-              value={deal.acquisition_grade ?? 0}
-              dim={(deal.acquisition_grade == null || deal.acquisition_grade === 0) && deal.cashback_at_close == null}
-            />
-            <GradeBadge
-              caption="Stab"
-              value={deal.stabilization_grade ?? 0}
-              dim={(deal.stabilization_grade == null || deal.stabilization_grade === 0) && deal.cashback_at_close == null}
-            />
+      {/* Metrics row: Purchase | Cashback% | PAI Fee */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+        <div>
+          <div style={{
+            fontFamily: 'var(--font-mono), monospace',
+            fontSize: '1.1rem', fontWeight: 300, color: '#ffffff',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {deal.purchase_price != null ? moneyCompact(deal.purchase_price) : '—'}
           </div>
+          <div style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#4b5563', marginTop: '3px' }}>
+            PURCHASE
+          </div>
+        </div>
+        <div>
+          <div style={{
+            fontFamily: 'var(--font-mono), monospace',
+            fontSize: '1.1rem', fontWeight: 600,
+            color: cashbackPct != null && cashbackPct >= 15 ? '#C9A84C' : '#6b7280',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {cashbackPct != null ? `${cashbackPct.toFixed(1)}%` : '—'}
+          </div>
+          <div style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#4b5563', marginTop: '3px' }}>
+            CASHBACK
+          </div>
+        </div>
+        <div>
+          <div style={{
+            fontFamily: 'var(--font-mono), monospace',
+            fontSize: '0.9rem', color: '#9ca3af',
+            fontVariantNumeric: 'tabular-nums',
+          }}>
+            {paiFee != null ? moneyCompact(paiFee) : '—'}
+          </div>
+          <div style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#4b5563', marginTop: '3px' }}>
+            PAI FEE
+          </div>
+        </div>
+      </div>
+
+      {/* Grades row: grade pills + status badge + escrow days */}
+      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
+        {deal.acquisition_grade != null && (
+          <GradePill label="ACQ" value={deal.acquisition_grade} />
+        )}
+        {deal.stabilization_grade != null && (
+          <GradePill label="STAB" value={deal.stabilization_grade} />
+        )}
+        {deal.acquisition_grade == null && deal.stabilization_grade == null && (
+          <span style={{ fontSize: '10px', color: '#6b7280', fontStyle: 'italic' }}>Pending</span>
+        )}
+        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '10px' }}>·</span>
+        <StatusBadge status={deal.status} />
+        {deal.escrow_date && daysInEscrow != null && (
+          <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono), monospace', color: '#6b7280' }}>
+            {daysInEscrow}d
+          </span>
+        )}
+        {deal.next_milestone_days != null && deal.next_milestone_days <= 10 && (
+          <span title={`Milestone in ${deal.next_milestone_days}d`} style={{ color: '#dc2626' }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
+              <path d="M12 7.5v5l3 1.8" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+            </svg>
+          </span>
         )}
       </div>
 
-      <div className="mb-3 flex items-center gap-2">
-        <span className="text-[10px] uppercase tracking-widest text-white/40">Rental</span>
-        <RentalToggle deal={deal} />
-      </div>
-
-      <dl className="grid grid-cols-3 gap-3 border-t border-white/10 pt-4">
-        <Metric label="Purchase" value={moneyCompact(deal.purchase_price)} />
-        <Metric label="ARV" value={moneyCompact(deal.arv)} />
-        <Metric label="Equity Spread" value={moneyCompact(spread)} accent />
-      </dl>
-
-      {(deal.status === "pending" || (deal.status === "active" && deal.escrow_date)) && (
-        <CardCashback deal={deal} escrow={deal.status === "active" && !!deal.escrow_date} />
-      )}
-
-      <div className="mt-4 flex items-center justify-between text-xs text-white/40">
-        {deal.status === "dead" && deadDaysRemaining(deal) != null ? (
-          <span className="font-medium text-rose-600">
-            Auto-deletes in {deadDaysRemaining(deal)}d
-          </span>
-        ) : (
-          <span>
-            {deal.kp_count} {deal.kp_count === 1 ? "KP" : "KPs"}
-          </span>
-        )}
-        <div className="flex items-center gap-2">
+      {/* Bottom row: rental toggle | KP count | updated */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px', gap: '8px',
+      }}>
+        <div onClick={(e) => e.stopPropagation()}>
+          <RentalToggle deal={deal} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#6b7280' }}>
+          {deal.status === "dead" && deadDaysRemaining(deal) != null ? (
+            <span style={{ color: '#dc2626', fontWeight: 500 }}>
+              Auto-deletes in {deadDaysRemaining(deal)}d
+            </span>
+          ) : (
+            <span>{deal.kp_count} {deal.kp_count === 1 ? "KP" : "KPs"}</span>
+          )}
           <span>{updatedLabel(daysSince(deal.updated_at))}</span>
           {deal.status === "dead" && !confirmDelete && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
-              className="rounded px-1.5 py-0.5 text-[11px] text-rose-500/70 hover:bg-rose-500/10 hover:text-rose-500"
+              style={{ fontSize: '11px', color: 'rgba(239,68,68,0.7)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px' }}
             >
               Delete
             </button>
           )}
           {deal.status === "dead" && confirmDelete && (
-            <span className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-              <span className="text-[11px] text-rose-600">Permanently delete?</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+              <span style={{ fontSize: '11px', color: '#dc2626' }}>Permanently delete?</span>
               <button
                 type="button"
                 disabled={deleting}
@@ -763,14 +889,14 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
                     setConfirmDelete(false);
                   }
                 }}
-                className="rounded px-1.5 py-0.5 text-[11px] font-medium text-rose-600 hover:bg-rose-500/10 disabled:opacity-50"
+                style={{ fontSize: '11px', fontWeight: 500, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}
               >
                 {deleting ? "…" : "Yes, delete"}
               </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
-                className="rounded px-1.5 py-0.5 text-[11px] text-white/40 hover:bg-white/10"
+                style={{ fontSize: '11px', color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer' }}
               >
                 Cancel
               </button>
@@ -915,9 +1041,8 @@ function fmtDateTime(iso: string): string {
   });
 }
 
-function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }) {
+function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
   const router = useRouter();
-  const open = deal !== null;
   const [tab, setTab] = useState<Tab>("Overview");
   const [detail, setDetail] = useState<DealDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -930,28 +1055,20 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   const [confirmingClosed, setConfirmingClosed] = useState(false);
 
   const reloadDetail = () => {
-    if (deal) getDealDetail(deal.id).then(setDetail);
+    getDealDetail(deal.id).then(setDetail);
   };
   const onChanged = () => {
     router.refresh();
     reloadDetail();
   };
 
-  // Reset to Overview when a different deal opens.
   useEffect(() => {
-    if (open) {
-      setTab("Overview");
-      setConfirmingDead(false);
-      setConfirmingClosed(false);
-    }
-  }, [deal?.id, open]);
+    setTab("Overview");
+    setConfirmingDead(false);
+    setConfirmingClosed(false);
+  }, [deal.id]);
 
-  // Load activity + documents for the open deal.
   useEffect(() => {
-    if (!deal) {
-      setDetail(null);
-      return;
-    }
     let cancelled = false;
     setLoadingDetail(true);
     getDealDetail(deal.id)
@@ -960,10 +1077,9 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
     return () => {
       cancelled = true;
     };
-  }, [deal?.id, deal]);
+  }, [deal.id]);
 
   function onRun() {
-    if (!deal) return;
     startRun(async () => {
       await runUnderwriting(deal.id);
       router.refresh();
@@ -973,25 +1089,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
   }
 
   return (
-    <Drawer.Root
-      open={open}
-      onOpenChange={(o) => { if (!o) onClose(); }}
-      direction="right"
-      shouldScaleBackground={false}
-    >
-      {open && (
-      <Drawer.Portal>
-        <Drawer.Overlay
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-          style={{ backgroundColor: "rgba(0,0,0,0.4)", zIndex: 39 }}
-        />
-        <Drawer.Content
-          aria-label={deal ? `Deal detail: ${deal.property_address}` : "Deal detail"}
-          className="fixed right-0 top-0 bottom-0 flex flex-col w-[480px] bg-[#0f111c] border-l border-white/5 outline-none overflow-y-auto z-50"
-          style={{ boxShadow: "-8px 0 40px rgba(0,0,0,0.4)" }}
-        >
-          {deal && (
-            <>
+    <>
               <div className="flex items-start justify-between gap-4 bg-primary px-6 py-5 text-primary-foreground">
                 <div className="min-w-0">
                   <div className="mb-2 flex items-center gap-2">
@@ -1199,12 +1297,7 @@ function DealPanel({ deal, onClose }: { deal: Deal | null; onClose: () => void }
                   </motion.div>
                 </AnimatePresence>
               </div>
-            </>
-          )}
-        </Drawer.Content>
-      </Drawer.Portal>
-      )}
-    </Drawer.Root>
+    </>
   );
 }
 

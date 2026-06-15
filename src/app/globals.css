@@ -124,6 +124,9 @@
   .data-number, .font-mono {
     font-family: var(--font-mono), monospace;
   }
+  .font-display {
+    font-family: var(--font-display), serif;
+  }
 }
 
 /* ── Glass card system ────────────────────────────────────────────── */
