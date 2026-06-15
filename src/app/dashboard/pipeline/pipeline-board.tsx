@@ -1110,15 +1110,16 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                   </div>
                   <h2 style={{
                     margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    fontFamily: 'var(--font-display), serif', fontSize: '1.25rem', fontWeight: 400,
-                    fontStyle: 'normal', color: '#ffffff', letterSpacing: '-0.01em',
+                    fontFamily: 'var(--font-display), serif', fontSize: '1.4rem', fontWeight: 500,
+                    fontStyle: 'normal', color: '#f9fafb', letterSpacing: '-0.01em',
                   }}>
                     {deal.property_address}
                   </h2>
                   {[deal.city, deal.state].filter(Boolean).length > 0 && (
                     <p style={{
                       margin: '2px 0 0', fontFamily: 'var(--font-body), sans-serif',
-                      fontSize: '0.8rem', color: '#6b7280',
+                      fontSize: '0.8rem', fontWeight: 400, color: '#6b7280',
+                      letterSpacing: '0.02em', textTransform: 'uppercase',
                     }}>
                       {[deal.city, deal.state].filter(Boolean).join(", ")}
                     </p>
@@ -1133,7 +1134,9 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                         borderRadius: '999px',
                         border: '1px solid rgba(34,197,94,0.3)',
                         padding: '3px 10px',
-                        fontSize: '11px', fontWeight: 500,
+                        fontFamily: 'var(--font-body), sans-serif',
+                        fontSize: '0.7rem', fontWeight: 600,
+                        letterSpacing: '0.06em', textTransform: 'uppercase',
                         background: 'rgba(34,197,94,0.1)',
                         color: '#22c55e', cursor: 'pointer',
                       }}
@@ -1149,7 +1152,9 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                         borderRadius: '999px',
                         border: '1px solid rgba(239,68,68,0.3)',
                         padding: '3px 10px',
-                        fontSize: '11px', fontWeight: 500,
+                        fontFamily: 'var(--font-body), sans-serif',
+                        fontSize: '0.7rem', fontWeight: 600,
+                        letterSpacing: '0.06em', textTransform: 'uppercase',
                         background: 'rgba(239,68,68,0.1)',
                         color: '#ef4444', cursor: 'pointer',
                       }}
@@ -1310,10 +1315,13 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                     key={t}
                     type="button"
                     onClick={() => setTab(t)}
-                    className="-mb-px inline-flex items-center gap-1 px-3 py-2.5 text-xs font-medium transition-colors"
+                    className="-mb-px inline-flex items-center gap-1 px-3 py-2.5 transition-colors"
                     style={{
+                      fontFamily: 'var(--font-body), sans-serif',
+                      fontSize: '0.75rem', fontWeight: 500,
+                      letterSpacing: '0.06em', textTransform: 'uppercase',
                       borderBottom: tab === t ? "2px solid #C9A84C" : "2px solid transparent",
-                      color: tab === t ? "#ffffff" : "#52525b",
+                      color: tab === t ? "#C9A84C" : "#6b7280",
                     }}
                   >
                     {t}
@@ -1474,8 +1482,19 @@ function OverviewTab({
         />
         {liveWaterfall != null && (
           <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-            <dt className="shrink-0 text-sm text-muted-foreground">DPTS — Cash to Seller</dt>
-            <dd className="data-number text-right text-sm font-medium tabular-nums text-[#D4AF37]">
+            <dt style={{
+              flexShrink: 0,
+              fontFamily: 'var(--font-body), sans-serif',
+              fontSize: '0.7rem', fontWeight: 500,
+              letterSpacing: '0.08em', textTransform: 'uppercase',
+              color: '#4b5563',
+            }}>DPTS — Cash to Seller</dt>
+            <dd style={{
+              fontFamily: 'var(--font-mono), monospace',
+              fontSize: '0.9rem', fontWeight: 400,
+              color: '#C9A84C', letterSpacing: '-0.01em',
+              fontVariantNumeric: 'tabular-nums', textAlign: 'right',
+            }}>
               {money(liveWaterfall.dpts)}
             </dd>
           </div>
@@ -1787,7 +1806,13 @@ function EditableRow({
 
   return (
     <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-      <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
+      <dt style={{
+        flexShrink: 0,
+        fontFamily: 'var(--font-body), sans-serif',
+        fontSize: '0.7rem', fontWeight: 500,
+        letterSpacing: '0.08em', textTransform: 'uppercase',
+        color: '#4b5563',
+      }}>{label}</dt>
       {editing ? (
         <div className="flex items-center gap-1">
           <input
@@ -1817,7 +1842,16 @@ function EditableRow({
             setValue(raw == null ? "" : String(raw));
             setEditing(true);
           }}
-          className="data-number truncate rounded text-right text-sm font-medium text-primary hover:bg-secondary hover:px-1"
+          style={{
+            fontFamily: numeric ? 'var(--font-mono), monospace' : 'var(--font-body), sans-serif',
+            fontSize: numeric ? '0.9rem' : '0.875rem',
+            fontWeight: numeric ? 400 : 500,
+            color: '#f9fafb',
+            letterSpacing: numeric ? '-0.01em' : undefined,
+            fontVariantNumeric: numeric ? 'tabular-nums' : undefined,
+            textAlign: 'right', background: 'transparent', border: 'none',
+            cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}
           title="Click to edit"
         >
           {display}
@@ -1864,7 +1898,13 @@ function LtvRow({
 
   return (
     <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-      <dt className="shrink-0 text-sm text-muted-foreground">LTV %</dt>
+      <dt style={{
+        flexShrink: 0,
+        fontFamily: 'var(--font-body), sans-serif',
+        fontSize: '0.7rem', fontWeight: 500,
+        letterSpacing: '0.08em', textTransform: 'uppercase',
+        color: '#4b5563',
+      }}>LTV %</dt>
       <div className="flex flex-col items-end gap-0.5">
         {editing ? (
           <div className="flex items-center gap-1">
@@ -1899,7 +1939,13 @@ function LtvRow({
           <button
             type="button"
             onClick={() => { setValue(String(ltvPct)); setEditing(true); }}
-            className="data-number rounded text-right text-sm font-medium text-primary hover:bg-secondary hover:px-1"
+            style={{
+              fontFamily: 'var(--font-mono), monospace',
+              fontSize: '0.9rem', fontWeight: 400,
+              color: '#f9fafb', letterSpacing: '-0.01em',
+              fontVariantNumeric: 'tabular-nums',
+              textAlign: 'right', background: 'transparent', border: 'none', cursor: 'pointer',
+            }}
             title="Click to edit LTV %"
           >
             {ltvPct}%
@@ -2675,7 +2721,13 @@ function ActivityTab({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mb-6 last:mb-0">
-      <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+      <div style={{
+        marginBottom: '8px',
+        fontFamily: 'var(--font-body), sans-serif',
+        fontSize: '0.6rem', fontWeight: 600,
+        letterSpacing: '0.12em', textTransform: 'uppercase',
+        color: '#4b5563',
+      }}>
         {title}
       </div>
       <dl className="divide-y divide-border rounded-xl border border-border">{children}</dl>
@@ -2694,8 +2746,26 @@ function Row({
 }) {
   return (
     <div className="flex items-center justify-between gap-4 px-3 py-2.5">
-      <dt className="shrink-0 text-sm text-muted-foreground">{label}</dt>
-      <dd className={"truncate text-right text-sm font-medium text-primary " + (mono ? "data-number tabular-nums" : "")}>
+      <dt style={{
+        flexShrink: 0,
+        fontFamily: 'var(--font-body), sans-serif',
+        fontSize: '0.7rem', fontWeight: 500,
+        letterSpacing: '0.08em', textTransform: 'uppercase',
+        color: '#4b5563',
+      }}>{label}</dt>
+      <dd style={mono ? {
+        fontFamily: 'var(--font-mono), monospace',
+        fontSize: '0.9rem', fontWeight: 400,
+        color: '#f9fafb', letterSpacing: '-0.01em',
+        overflow: 'hidden', textOverflow: 'ellipsis',
+        textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+      } : {
+        fontFamily: 'var(--font-body), sans-serif',
+        fontSize: '0.875rem', fontWeight: 500,
+        color: '#f9fafb',
+        overflow: 'hidden', textOverflow: 'ellipsis',
+        textAlign: 'right',
+      }}>
         {value}
       </dd>
     </div>
