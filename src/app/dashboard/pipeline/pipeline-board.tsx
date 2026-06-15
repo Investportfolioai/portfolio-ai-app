@@ -789,7 +789,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
         <div>
           <div style={{
             fontFamily: 'var(--font-mono), monospace',
-            fontSize: '1.1rem', fontWeight: 300, color: '#ffffff',
+            fontSize: '1.1rem', fontWeight: 400, color: '#ffffff',
             fontVariantNumeric: 'tabular-nums',
           }}>
             {deal.purchase_price != null ? moneyCompact(deal.purchase_price) : '—'}

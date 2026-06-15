@@ -232,7 +232,7 @@
 .num-hero {
   font-family: var(--font-display), serif;
   font-size: 2.75rem;
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: -0.04em;
   color: var(--text-primary);
   line-height: 1;
@@ -243,7 +243,7 @@
 .num-metric {
   font-family: var(--font-display), serif;
   font-size: 2rem;
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: -0.03em;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -253,16 +253,16 @@
 /* Premium display text utilities */
 .text-display {
   font-family: var(--font-display), serif;
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: -0.02em;
 }
 .text-metric-lg {
   font-family: var(--font-display), serif;
-  font-weight: 300;
+  font-weight: 400;
 }
 .text-metric-md {
   font-family: var(--font-display), serif;
-  font-weight: 300;
+  font-weight: 400;
 }
 
 /* Deal values inline — pipeline rows */
