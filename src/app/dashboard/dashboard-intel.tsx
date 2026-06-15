@@ -198,9 +198,9 @@ function KpiRow({ intel }: { intel: Intel | null }) {
         divider
       />
       <KpiStat
-        label="Buybox Score"
+        label="Cashback Rate"
         value={i != null && i.buybox_score == null ? "—" : `${buybox.toFixed(1)}%`}
-        sub="avg cashback at close"
+        sub="avg · deals in escrow"
         valueColor={i?.buybox_score != null ? buyboxColor : undefined}
         divider
       />

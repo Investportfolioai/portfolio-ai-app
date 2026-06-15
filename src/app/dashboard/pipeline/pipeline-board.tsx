@@ -174,7 +174,7 @@ function IntelligenceBar() {
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[9px] font-medium uppercase tracking-widest text-white/40">{label}</div>
+      <div className="text-[11px] font-medium uppercase tracking-widest text-white/40">{label}</div>
       <div className="data-number mt-0.5 text-sm font-medium tabular-nums text-[#c9a84c]">{value}</div>
     </div>
   );
@@ -747,6 +747,10 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
   return (
     <motion.div
       onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open ${deal.property_address}`}
       whileHover={{ y: -2 }}
       transition={{ duration: 0.2, ease: "easeOut" }}
       onMouseEnter={() => setHovered(true)}

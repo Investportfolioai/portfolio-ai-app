@@ -232,48 +232,15 @@ export function AchievementBoard() {
         </div>
       </div>
 
-      {/* ── Section 2: Metric Cards ── */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard
-          icon={<TrophyIcon />}
-          iconBg="rgba(201,168,76,0.12)"
-          iconColor="#C9A84C"
-          label="Deals Closed"
-          rawValue={m?.dealsClosed ?? 0}
-          formatter={(n) => String(n)}
-          growth={m?.growth ?? null}
-          loading={loading}
-        />
-        <MetricCard
-          icon={<ChartIcon />}
-          iconBg="rgba(201,168,76,0.12)"
-          iconColor="#C9A84C"
-          label="Total Cashback"
-          rawValue={m?.totalCashback ?? 0}
-          formatter={fmt$}
-          growth={null}
-          loading={loading}
-        />
-        <MetricCard
-          icon={<DollarIcon />}
-          iconBg="rgba(59,130,246,0.12)"
-          iconColor="#3b82f6"
-          label="Fees Paid Out"
-          rawValue={m?.totalFees ?? 0}
-          formatter={fmt$}
-          growth={null}
-          loading={loading}
-        />
-        <MetricCard
-          icon={<PeopleIcon />}
-          iconBg="rgba(34,197,94,0.12)"
-          iconColor="#22c55e"
-          label="Sellers Helped"
-          rawValue={m?.sellersHelped ?? 0}
-          formatter={(n) => String(n)}
-          growth={null}
-          loading={loading}
-        />
+      {/* ── Section 2: Stats Row ── */}
+      <div
+        className="grid grid-cols-2 lg:grid-cols-4 overflow-hidden rounded-xl"
+        style={{ background: "rgba(26,29,39,0.7)", border: "1px solid rgba(255,255,255,0.05)" }}
+      >
+        <AchievementStat label="Deals Closed" rawValue={m?.dealsClosed ?? 0} formatter={(n) => String(n)} growth={m?.growth ?? null} loading={loading} />
+        <AchievementStat label="Total Cashback" rawValue={m?.totalCashback ?? 0} formatter={fmt$} loading={loading} divider />
+        <AchievementStat label="Fees Paid Out" rawValue={m?.totalFees ?? 0} formatter={fmt$} loading={loading} divider />
+        <AchievementStat label="Sellers Helped" rawValue={m?.sellersHelped ?? 0} formatter={(n) => String(n)} loading={loading} divider />
       </div>
 
       {/* ── Section 3: Leaderboard + Chart ── */}
@@ -524,37 +491,42 @@ export function LiveActivityFeed({ activity }: { activity: ActivityItem[] }) {
   );
 }
 
-function MetricCard({
-  icon,
+function AchievementStat({
   label,
   rawValue,
   formatter,
   growth,
   loading,
+  divider,
 }: {
-  icon: React.ReactNode;
-  iconBg?: string;
-  iconColor?: string;
   label: string;
   rawValue: number;
   formatter: (n: number) => string;
-  growth: number | null;
+  growth?: number | null;
   loading: boolean;
+  divider?: boolean;
 }) {
   const counted = useCountUp(loading ? 0 : rawValue);
   const display = loading ? "—" : formatter(counted);
 
   return (
-    <div className="glass-card p-5 relative overflow-hidden">
-      {/* Subtle icon — top right, gold, 20px, 40% opacity */}
-      <div style={{ position: "absolute", top: "16px", right: "16px", color: "#C9A84C", opacity: 0.4 }}>
-        {icon}
-      </div>
-
-      {growth != null && (
-        <div className="mb-3">
+    <div
+      style={{
+        padding: "20px 20px 18px",
+        borderLeft: divider ? "1px solid rgba(255,255,255,0.05)" : undefined,
+      }}
+    >
+      <div className="label-card mb-3">{label}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: "8px" }}>
+        <div
+          className="num-metric"
+          style={{ opacity: loading ? 0.3 : 1, transition: "opacity 300ms ease" }}
+        >
+          {display}
+        </div>
+        {growth != null && (
           <span
-            className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
             style={{
               background: growth >= 0 ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)",
               color: growth >= 0 ? "#22c55e" : "#ef4444",
@@ -562,53 +534,8 @@ function MetricCard({
           >
             {growth >= 0 ? "+" : ""}{growth}%
           </span>
-        </div>
-      )}
-
-      {/* Hero number + gold underline via ::after */}
-      <div
-        className="num-hero metric-accent"
-        style={{ opacity: loading ? 0.3 : 1, transition: "opacity 300ms ease" }}
-      >
-        {display}
+        )}
       </div>
-
-      {/* Label */}
-      <div className="label-card mt-3">{label}</div>
     </div>
-  );
-}
-
-function TrophyIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" /><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-      <path d="M4 22h16" /><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-    </svg>
-  );
-}
-function ChartIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" />
-      <line x1="6" y1="20" x2="6" y2="14" /><line x1="2" y1="20" x2="22" y2="20" />
-    </svg>
-  );
-}
-function DollarIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="2" x2="12" y2="22" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
-  );
-}
-function PeopleIcon() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
   );
 }
