@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
+import { ShortcutsPanel, type ShortcutEntry } from "@/app/dashboard/shortcuts-panel";
 import { toast } from "sonner";
 import { dealClosedConfetti, escrowTransitionEffect } from "@/lib/celebrations";
 import {
@@ -74,6 +75,17 @@ const STATUS_TABS: { key: DealStatus | "all" | "escrow"; label: string }[] = [
   { key: "passed", label: "Passed" },
   { key: "closed", label: "Closed" },
   { key: "dead", label: "Dead" },
+];
+
+const PIPELINE_SHORTCUTS: ShortcutEntry[] = [
+  { tokens: ["a"], desc: "All deals", group: "Filter" },
+  { tokens: ["e"], desc: "Escrow", group: "Filter" },
+  { tokens: ["p"], desc: "Pending", group: "Filter" },
+  { tokens: ["j", "k"], sep: "/", desc: "Next / prev card", group: "Navigate" },
+  { tokens: ["Enter"], desc: "Open deal panel", group: "Navigate" },
+  { tokens: ["Esc"], desc: "Close panel", group: "Navigate" },
+  { tokens: ["c"], desc: "Focus cashback inputs", group: "Edit" },
+  { tokens: ["Tab"], desc: "Next cashback input", group: "Edit" },
 ];
 
 type StructureFilter = "all" | "ab_bc" | "seller_finance";
@@ -157,24 +169,77 @@ function IntelligenceBar() {
       </button>
       {open && (
         <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4 xl:grid-cols-8">
-          <MiniStat label="Portfolio AI Fees" value={fmtCompact(fees)} />
-          <MiniStat label="Proj Cashback" value={fmtCompact(cashback)} />
-          <MiniStat label="Close Rate" value={`${closeRate.toFixed(1)}%`} />
-          <MiniStat label="Avg ACQ" value={intel?.avg_acq_grade != null ? intel.avg_acq_grade.toFixed(0) : "—"} />
-          <MiniStat label="Avg STAB" value={intel?.avg_stab_grade != null ? intel.avg_stab_grade.toFixed(0) : "—"} />
-          <MiniStat label="To Escrow" value={intel?.avg_days_to_escrow != null ? `${intel.avg_days_to_escrow.toFixed(0)}d` : "—"} />
-          <MiniStat label="Cashback Rate" value={intel?.buybox_score != null ? `${buybox.toFixed(1)}%` : "—"} />
-          <MiniStat label="In Escrow" value={String(Math.round(inEscrow))} />
+          <MiniStat label="Portfolio AI Fees" value={fmtCompact(fees)} help="Projected Portfolio AI fees across all active deals" />
+          <MiniStat label="Proj Cashback" value={fmtCompact(cashback)} help="Projected cashback at close · active deals" />
+          <MiniStat label="Close Rate" value={`${closeRate.toFixed(1)}%`} help="Closed deals ÷ all worked deals" />
+          <MiniStat label="Avg ACQ" value={intel?.avg_acq_grade != null ? intel.avg_acq_grade.toFixed(0) : "—"} help="Average acquisition grade (0–100) across pipeline deals" />
+          <MiniStat label="Avg STAB" value={intel?.avg_stab_grade != null ? intel.avg_stab_grade.toFixed(0) : "—"} help="Average stabilization grade (0–100) across pipeline deals" />
+          <MiniStat label="To Escrow" value={intel?.avg_days_to_escrow != null ? `${intel.avg_days_to_escrow.toFixed(0)}d` : "—"} help="Average days from submission to entering escrow" />
+          <MiniStat label="Cashback Rate" value={intel?.buybox_score != null ? `${buybox.toFixed(1)}%` : "—"} help="Average cashback as % of purchase price · deals in escrow only" />
+          <MiniStat label="In Escrow" value={String(Math.round(inEscrow))} help="Active deals currently in escrow" />
         </div>
       )}
     </div>
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: string }) {
+function MiniStat({ label, value, help }: { label: string; value: string; help?: string }) {
+  const [showTip, setShowTip] = useState(false);
   return (
     <div>
-      <div className="text-[11px] font-medium uppercase tracking-widest text-white/40">{label}</div>
+      <div
+        className="text-[11px] font-medium uppercase tracking-widest text-white/40"
+        style={{ display: "flex", alignItems: "center", gap: "4px" }}
+      >
+        {label}
+        {help && (
+          <span
+            style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+            onMouseEnter={() => setShowTip(true)}
+            onMouseLeave={() => setShowTip(false)}
+          >
+            <svg
+              width="10" height="10" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ color: "rgba(255,255,255,0.18)", cursor: "help", display: "block" }}
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4M12 8h.01" />
+            </svg>
+            {showTip && (
+              <span
+                role="tooltip"
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 60,
+                  width: "180px",
+                  background: "rgba(10,11,20,0.97)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "8px",
+                  padding: "7px 9px",
+                  fontSize: "11px",
+                  color: "rgba(255,255,255,0.55)",
+                  lineHeight: 1.5,
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+                  pointerEvents: "none",
+                  whiteSpace: "normal",
+                  textTransform: "none",
+                  letterSpacing: 0,
+                  fontWeight: 400,
+                }}
+              >
+                {help}
+              </span>
+            )}
+          </span>
+        )}
+      </div>
       <div className="data-number mt-0.5 text-sm font-medium tabular-nums text-[#c9a84c]">{value}</div>
     </div>
   );
@@ -193,9 +258,45 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
     if (selectedId === id) setSelectedId(null);
   }
 
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelectedId(null);
+      if (e.key === "Escape") { setSelectedId(null); return; }
+
+      // No shortcuts while deal panel is open or inside an input
+      if (selectedIdRef.current) return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      // Status filter shortcuts
+      if (e.key === "a") { setStatus("all"); e.preventDefault(); return; }
+      if (e.key === "e") { setStatus("escrow"); e.preventDefault(); return; }
+      if (e.key === "p") { setStatus("pending"); e.preventDefault(); return; }
+
+      // j / k — navigate between deal cards
+      if (e.key === "j" || e.key === "k") {
+        const cards = Array.from(document.querySelectorAll<HTMLElement>("[data-deal-card]"));
+        if (cards.length === 0) return;
+        const currentIdx = cards.findIndex(
+          (c) => c === document.activeElement || c.contains(document.activeElement),
+        );
+        const delta = e.key === "j" ? 1 : -1;
+        const nextIdx = currentIdx === -1
+          ? (e.key === "j" ? 0 : cards.length - 1)
+          : Math.max(0, Math.min(cards.length - 1, currentIdx + delta));
+        cards[nextIdx]?.focus();
+        e.preventDefault();
+        return;
+      }
+
+      // c — focus first cashback input (batch edit mode)
+      if (e.key === "c") {
+        const first = document.querySelector<HTMLInputElement>("[data-cashback-input]");
+        if (first) { first.focus(); e.preventDefault(); }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -262,11 +363,14 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
         <div className="flex flex-wrap gap-0">
         {STATUS_TABS.map((t) => {
           const active = status === t.key;
+          const shortcutKey = t.key === "all" ? "a" : t.key === "escrow" ? "e" : t.key === "pending" ? "p" : undefined;
           return (
             <button
               key={t.key}
               type="button"
               onClick={() => setStatus(t.key)}
+              aria-keyshortcuts={shortcutKey}
+              aria-pressed={active}
               className="-mb-px flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors"
               style={{
                 borderBottom: active ? "2px solid #C9A84C" : "2px solid transparent",
@@ -378,6 +482,7 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
         </>
       )}
       <AddDealModal open={adding} onClose={() => setAdding(false)} />
+      <ShortcutsPanel shortcuts={PIPELINE_SHORTCUTS} />
     </motion.div>
   );
 }
@@ -1021,6 +1126,7 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
             <span className="text-white/40">$</span>
             <input
               aria-label="Est. net to buyer"
+              data-cashback-input="true"
               type="number"
               value={cbStr}
               disabled={busy}

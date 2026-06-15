@@ -157,6 +157,56 @@ export function DashboardIntel() {
   );
 }
 
+function InfoTooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span
+      style={{ position: "relative", display: "inline-flex", alignItems: "center", verticalAlign: "middle" }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onFocus={() => setShow(true)}
+      onBlur={() => setShow(false)}
+    >
+      <svg
+        width="11" height="11" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        style={{ color: "rgba(255,255,255,0.2)", cursor: "help", display: "block" }}
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 16v-4M12 8h.01" />
+      </svg>
+      {show && (
+        <span
+          role="tooltip"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 60,
+            width: "190px",
+            background: "rgba(10,11,20,0.97)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: "8px",
+            padding: "8px 10px",
+            fontSize: "11px",
+            color: "rgba(255,255,255,0.55)",
+            lineHeight: 1.5,
+            backdropFilter: "blur(12px)",
+            WebkitBackdropFilter: "blur(12px)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+            pointerEvents: "none",
+            whiteSpace: "normal",
+          }}
+        >
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function KpiRow({ intel }: { intel: Intel | null }) {
   const i = intel;
   const closeRateRaw = i?.close_rate ?? 0;
@@ -179,12 +229,14 @@ function KpiRow({ intel }: { intel: Intel | null }) {
     >
       <KpiStat
         label="Close Rate"
+        help="Closed deals as a % of all worked deals"
         value={`${Math.round(closeRate)}%`}
         sub={`${i?.closed_count ?? 0} of ${i?.worked_count ?? 0} worked`}
         valueColor={closeColor}
       />
       <KpiStat
         label="In Escrow"
+        help="Active deals currently in escrow"
         value={String(Math.round(escrow))}
         sub={i == null ? "—" : `${compactMoney(i.escrow_cashback)} proj cashback`}
         sub2={i == null ? "" : `${compactMoney(i.escrow_fees)} proj fees`}
@@ -192,6 +244,7 @@ function KpiRow({ intel }: { intel: Intel | null }) {
       />
       <KpiStat
         label="Pending"
+        help="Deals submitted and awaiting underwriting or offer"
         value={String(Math.round(pending))}
         sub={i == null ? "—" : `${compactMoney(i.pending_cashback)} proj cashback`}
         sub2={i == null ? "" : `${compactMoney(i.pending_fees)} proj fees`}
@@ -199,6 +252,7 @@ function KpiRow({ intel }: { intel: Intel | null }) {
       />
       <KpiStat
         label="Cashback Rate"
+        help="Average cashback at close as % of purchase price · deals in escrow only"
         value={i != null && i.buybox_score == null ? "—" : `${buybox.toFixed(1)}%`}
         sub="avg · deals in escrow"
         valueColor={i?.buybox_score != null ? buyboxColor : undefined}
@@ -210,6 +264,7 @@ function KpiRow({ intel }: { intel: Intel | null }) {
 
 function KpiStat({
   label,
+  help,
   value,
   sub,
   sub2,
@@ -217,6 +272,7 @@ function KpiStat({
   divider,
 }: {
   label: string;
+  help?: string;
   value: string;
   sub?: string;
   sub2?: string;
@@ -230,7 +286,10 @@ function KpiStat({
         borderLeft: divider ? "1px solid rgba(255,255,255,0.05)" : undefined,
       }}
     >
-      <div className="label-card mb-3">{label}</div>
+      <div className="label-card mb-3" style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+        {label}
+        {help && <InfoTooltip text={help} />}
+      </div>
       <div className="num-metric" style={valueColor ? { color: valueColor } : undefined}>
         {value}
       </div>

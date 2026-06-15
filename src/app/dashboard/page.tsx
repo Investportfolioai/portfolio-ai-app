@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AchievementBoard, LiveActivity } from "./achievement-board";
 import { DashboardIntel } from "./dashboard-intel";
+import { DashboardShortcuts } from "./dashboard-shortcuts";
 import { PipelineStatus } from "./pipeline-status";
 
 export const metadata = { title: "Dashboard — Portfolio AI" };
@@ -35,6 +36,9 @@ export default function DashboardHome() {
 
         {/* Live Activity */}
         <LiveActivity />
+
+        {/* Keyboard shortcuts — ? button + g→navigation */}
+        <DashboardShortcuts />
 
         {/* Quick Links */}
         <section>
