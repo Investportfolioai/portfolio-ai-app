@@ -14,13 +14,13 @@ export default async function DashboardLayout({
   if (user.role === "kp" || user.role === "viewer") redirect("/kp/dashboard");
 
   return (
-    <div className="flex min-h-screen w-full">
+    <div className="flex min-h-screen w-full" style={{ background: '#0A0B14' }}>
       <div className="hidden md:flex">
         <Sidebar />
       </div>
-      <div className="flex flex-1 flex-col overflow-x-hidden">
+      <div className="flex flex-1 flex-col overflow-x-hidden" style={{ background: '#0A0B14' }}>
         <TopBar user={user} />
-        <main className="flex-1 bg-[#f8f8fa] pb-16 md:pb-0">{children}</main>
+        <main className="flex-1 pb-16 md:pb-0" style={{ background: '#0A0B14' }}>{children}</main>
       </div>
       <MobileNav />
     </div>
