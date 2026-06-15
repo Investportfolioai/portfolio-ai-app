@@ -600,7 +600,7 @@ function StatusBadge({ status }: { status: DealStatus }) {
         display: "inline-flex", alignItems: "center", gap: "4px",
         background: s.bg, color: s.color,
         borderRadius: "999px", padding: "2px 8px",
-        fontSize: "10px", fontWeight: 600,
+        fontSize: "10px", fontWeight: 700,
         letterSpacing: "0.08em", textTransform: "uppercase",
       }}
     >
@@ -650,7 +650,7 @@ function GradePill({ label, value }: { label: string; value: number }) {
       display: 'inline-flex', alignItems: 'center', gap: '3px',
       background: c.bg, color: c.color,
       borderRadius: '999px', padding: '2px 8px',
-      fontSize: '10px', fontWeight: 600, letterSpacing: '0.04em',
+      fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em',
       fontFamily: 'var(--font-mono), monospace',
     }}>
       {label} {value}
@@ -767,7 +767,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '12px' }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{
-            fontSize: '15px', fontWeight: 500, color: '#f9fafb',
+            fontSize: '15px', fontWeight: 600, color: '#f9fafb',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             fontFamily: 'var(--font-body), sans-serif', fontStyle: 'normal',
           }}>
@@ -789,7 +789,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
         <div>
           <div style={{
             fontFamily: 'var(--font-mono), monospace',
-            fontSize: '1.1rem', fontWeight: 400, color: '#ffffff',
+            fontSize: '1.1rem', fontWeight: 500, color: '#ffffff',
             fontVariantNumeric: 'tabular-nums',
           }}>
             {deal.purchase_price != null ? moneyCompact(deal.purchase_price) : '—'}
@@ -801,7 +801,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
         <div>
           <div style={{
             fontFamily: 'var(--font-mono), monospace',
-            fontSize: '1.1rem', fontWeight: 600,
+            fontSize: '1.1rem', fontWeight: 700,
             color: cashbackPct != null && cashbackPct >= 15 ? '#C9A84C' : '#6b7280',
             fontVariantNumeric: 'tabular-nums',
           }}>
@@ -863,7 +863,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#6b7280' }}>
           {deal.status === "dead" && deadDaysRemaining(deal) != null ? (
-            <span style={{ color: '#dc2626', fontWeight: 500 }}>
+            <span style={{ color: '#dc2626', fontWeight: 600 }}>
               Auto-deletes in {deadDaysRemaining(deal)}d
             </span>
           ) : (
@@ -896,7 +896,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
                     setConfirmDelete(false);
                   }
                 }}
-                style={{ fontSize: '11px', fontWeight: 500, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}
+                style={{ fontSize: '11px', fontWeight: 600, color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}
               >
                 {deleting ? "…" : "Yes, delete"}
               </button>
@@ -1110,7 +1110,7 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                   </div>
                   <h2 style={{
                     margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    fontFamily: 'var(--font-display), serif', fontSize: '1.4rem', fontWeight: 500,
+                    fontFamily: 'var(--font-display), serif', fontSize: '1.4rem', fontWeight: 600,
                     fontStyle: 'normal', color: '#f9fafb', letterSpacing: '-0.01em',
                   }}>
                     {deal.property_address}
@@ -1118,7 +1118,7 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                   {[deal.city, deal.state].filter(Boolean).length > 0 && (
                     <p style={{
                       margin: '2px 0 0', fontFamily: 'var(--font-body), sans-serif',
-                      fontSize: '0.8rem', fontWeight: 400, color: '#6b7280',
+                      fontSize: '0.8rem', fontWeight: 500, color: '#6b7280',
                       letterSpacing: '0.02em', textTransform: 'uppercase',
                     }}>
                       {[deal.city, deal.state].filter(Boolean).join(", ")}
@@ -1135,7 +1135,7 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                         border: '1px solid rgba(34,197,94,0.3)',
                         padding: '3px 10px',
                         fontFamily: 'var(--font-body), sans-serif',
-                        fontSize: '0.7rem', fontWeight: 600,
+                        fontSize: '0.7rem', fontWeight: 700,
                         letterSpacing: '0.06em', textTransform: 'uppercase',
                         background: 'rgba(34,197,94,0.1)',
                         color: '#22c55e', cursor: 'pointer',
@@ -1153,7 +1153,7 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                         border: '1px solid rgba(239,68,68,0.3)',
                         padding: '3px 10px',
                         fontFamily: 'var(--font-body), sans-serif',
-                        fontSize: '0.7rem', fontWeight: 600,
+                        fontSize: '0.7rem', fontWeight: 700,
                         letterSpacing: '0.06em', textTransform: 'uppercase',
                         background: 'rgba(239,68,68,0.1)',
                         color: '#ef4444', cursor: 'pointer',
@@ -1220,7 +1220,7 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                         flexShrink: 0, borderRadius: '999px',
                         background: 'rgba(239,68,68,0.15)',
                         border: '1px solid rgba(239,68,68,0.3)',
-                        color: '#ef4444', padding: '4px 12px', fontSize: '12px', fontWeight: 500,
+                        color: '#ef4444', padding: '4px 12px', fontSize: '12px', fontWeight: 600,
                         cursor: 'pointer', opacity: markingDead ? 0.6 : 1,
                       }}
                     >
@@ -1287,7 +1287,7 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                       flexShrink: 0, borderRadius: '999px',
                       background: 'rgba(34,197,94,0.15)',
                       border: '1px solid rgba(34,197,94,0.3)',
-                      color: '#22c55e', padding: '4px 12px', fontSize: '12px', fontWeight: 500,
+                      color: '#22c55e', padding: '4px 12px', fontSize: '12px', fontWeight: 600,
                       cursor: 'pointer', opacity: markingClosed ? 0.6 : 1,
                     }}
                   >
@@ -1318,7 +1318,7 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                     className="-mb-px inline-flex items-center gap-1 px-3 py-2.5 transition-colors"
                     style={{
                       fontFamily: 'var(--font-body), sans-serif',
-                      fontSize: '0.75rem', fontWeight: 500,
+                      fontSize: '0.75rem', fontWeight: 600,
                       letterSpacing: '0.06em', textTransform: 'uppercase',
                       borderBottom: tab === t ? "2px solid #C9A84C" : "2px solid transparent",
                       color: tab === t ? "#C9A84C" : "#6b7280",
@@ -1485,13 +1485,13 @@ function OverviewTab({
             <dt style={{
               flexShrink: 0,
               fontFamily: 'var(--font-body), sans-serif',
-              fontSize: '0.7rem', fontWeight: 500,
+              fontSize: '0.7rem', fontWeight: 600,
               letterSpacing: '0.08em', textTransform: 'uppercase',
               color: '#4b5563',
             }}>DPTS — Cash to Seller</dt>
             <dd style={{
               fontFamily: 'var(--font-mono), monospace',
-              fontSize: '0.9rem', fontWeight: 400,
+              fontSize: '0.9rem', fontWeight: 500,
               color: '#C9A84C', letterSpacing: '-0.01em',
               fontVariantNumeric: 'tabular-nums', textAlign: 'right',
             }}>
@@ -1809,7 +1809,7 @@ function EditableRow({
       <dt style={{
         flexShrink: 0,
         fontFamily: 'var(--font-body), sans-serif',
-        fontSize: '0.7rem', fontWeight: 500,
+        fontSize: '0.7rem', fontWeight: 600,
         letterSpacing: '0.08em', textTransform: 'uppercase',
         color: '#4b5563',
       }}>{label}</dt>
@@ -1845,7 +1845,7 @@ function EditableRow({
           style={{
             fontFamily: numeric ? 'var(--font-mono), monospace' : 'var(--font-body), sans-serif',
             fontSize: numeric ? '0.9rem' : '0.875rem',
-            fontWeight: numeric ? 400 : 500,
+            fontWeight: numeric ? 500 : 600,
             color: '#f9fafb',
             letterSpacing: numeric ? '-0.01em' : undefined,
             fontVariantNumeric: numeric ? 'tabular-nums' : undefined,
@@ -1901,7 +1901,7 @@ function LtvRow({
       <dt style={{
         flexShrink: 0,
         fontFamily: 'var(--font-body), sans-serif',
-        fontSize: '0.7rem', fontWeight: 500,
+        fontSize: '0.7rem', fontWeight: 600,
         letterSpacing: '0.08em', textTransform: 'uppercase',
         color: '#4b5563',
       }}>LTV %</dt>
@@ -1941,7 +1941,7 @@ function LtvRow({
             onClick={() => { setValue(String(ltvPct)); setEditing(true); }}
             style={{
               fontFamily: 'var(--font-mono), monospace',
-              fontSize: '0.9rem', fontWeight: 400,
+              fontSize: '0.9rem', fontWeight: 500,
               color: '#f9fafb', letterSpacing: '-0.01em',
               fontVariantNumeric: 'tabular-nums',
               textAlign: 'right', background: 'transparent', border: 'none', cursor: 'pointer',
@@ -2724,7 +2724,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <div style={{
         marginBottom: '8px',
         fontFamily: 'var(--font-body), sans-serif',
-        fontSize: '0.6rem', fontWeight: 600,
+        fontSize: '0.6rem', fontWeight: 700,
         letterSpacing: '0.12em', textTransform: 'uppercase',
         color: '#4b5563',
       }}>
@@ -2749,19 +2749,19 @@ function Row({
       <dt style={{
         flexShrink: 0,
         fontFamily: 'var(--font-body), sans-serif',
-        fontSize: '0.7rem', fontWeight: 500,
+        fontSize: '0.7rem', fontWeight: 600,
         letterSpacing: '0.08em', textTransform: 'uppercase',
         color: '#4b5563',
       }}>{label}</dt>
       <dd style={mono ? {
         fontFamily: 'var(--font-mono), monospace',
-        fontSize: '0.9rem', fontWeight: 400,
+        fontSize: '0.9rem', fontWeight: 500,
         color: '#f9fafb', letterSpacing: '-0.01em',
         overflow: 'hidden', textOverflow: 'ellipsis',
         textAlign: 'right', fontVariantNumeric: 'tabular-nums',
       } : {
         fontFamily: 'var(--font-body), sans-serif',
-        fontSize: '0.875rem', fontWeight: 500,
+        fontSize: '0.875rem', fontWeight: 600,
         color: '#f9fafb',
         overflow: 'hidden', textOverflow: 'ellipsis',
         textAlign: 'right',

@@ -118,7 +118,7 @@
   }
   h1, h2 {
     font-family: var(--font-display), serif;
-    font-weight: 300;
+    font-weight: 400;
     letter-spacing: -0.02em;
   }
   .data-number, .font-mono {
@@ -174,13 +174,13 @@
 /* ── Utility tokens ───────────────────────────────────────────────── */
 .metric-value {
   font-size: 2.5rem;
-  font-weight: 300;
+  font-weight: 400;
   letter-spacing: -0.02em;
   color: #ffffff;
 }
 .metric-label {
   font-size: 0.65rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #6b7280;
@@ -209,7 +209,7 @@
 .btn-primary {
   background: #C9A84C;
   color: #0A0B14;
-  font-weight: 600;
+  font-weight: 700;
   border: none;
   transition: all 150ms var(--ease-out);
 }
@@ -232,7 +232,7 @@
 .num-hero {
   font-family: var(--font-display), serif;
   font-size: 2.75rem;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: -0.04em;
   color: var(--text-primary);
   line-height: 1;
@@ -243,7 +243,7 @@
 .num-metric {
   font-family: var(--font-display), serif;
   font-size: 2rem;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: -0.03em;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -253,23 +253,23 @@
 /* Premium display text utilities */
 .text-display {
   font-family: var(--font-display), serif;
-  font-weight: 400;
+  font-weight: 500;
   letter-spacing: -0.02em;
 }
 .text-metric-lg {
   font-family: var(--font-display), serif;
-  font-weight: 400;
+  font-weight: 500;
 }
 .text-metric-md {
   font-family: var(--font-display), serif;
-  font-weight: 400;
+  font-weight: 500;
 }
 
 /* Deal values inline — pipeline rows */
 .num-deal {
   font-family: var(--font-mono);
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--text-gold);
   font-variant-numeric: tabular-nums;
@@ -287,7 +287,7 @@
 /* Card subtitle */
 .label-sub {
   font-size: 0.72rem;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-secondary);
 }
 

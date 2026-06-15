@@ -7,14 +7,14 @@ import { Cormorant_Garamond, DM_Sans, JetBrains_Mono } from "next/font/google";
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],
   variable: "--font-display",
-  weight: ["300", "400", "600"],
+  weight: ["300", "400", "500", "600", "700"],
   style: ["normal", "italic"],
 });
 
 const dmSans = DM_Sans({
   subsets: ["latin"],
   variable: "--font-body",
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const jetbrainsMono = JetBrains_Mono({
