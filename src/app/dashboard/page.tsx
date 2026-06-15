@@ -66,8 +66,8 @@ function QuickLink({
   return (
     <Link
       href={href}
-      className="glass-card group px-4 py-3 min-w-[150px] block"
-      style={{ color: "#fff" }}
+      className="flat-card group block min-w-[150px] px-4 py-3"
+      style={{ color: "#fff", textDecoration: "none" }}
     >
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium">{title}</div>

@@ -144,7 +144,7 @@ function IntelligenceBar() {
   const inEscrow = useCountUp(intel?.deals_in_escrow ?? 0, 1000);
 
   return (
-    <div className="glass-card mb-4 px-4 py-3 text-white">
+    <div className="mb-4 px-4 py-3 text-white" style={{ background: "rgba(26,29,39,0.85)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px" }}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -713,13 +713,6 @@ function RentalToggle({ deal, onChanged }: { deal: Deal; onChanged?: () => void 
   );
 }
 
-const STATUS_LEFT_BORDER: Record<string, string> = {
-  pending: "#818cf8",
-  active:  "#3b82f6",
-  closed:  "#22c55e",
-  dead:    "#6b7280",
-  passed:  "#6b7280",
-};
 
 function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void; onDeleted: (id: string) => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -727,9 +720,6 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
   const [hovered, setHovered] = useState(false);
 
   const locality = [deal.city, deal.state].filter(Boolean).join(", ");
-  const leftBorder = deal.status === "active" && deal.escrow_date
-    ? "#C9A84C"
-    : STATUS_LEFT_BORDER[deal.status] ?? "rgba(201,168,76,0.08)";
 
   const waterfall = deal.purchase_price != null
     ? calculateMorbyWaterfall({
@@ -766,12 +756,9 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
         background: '#1a1d27',
         borderRadius: '12px',
         padding: '16px 20px',
-        borderTop: `1px solid ${hovered ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'}`,
-        borderRight: `1px solid ${hovered ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'}`,
-        borderBottom: `1px solid ${hovered ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'}`,
-        borderLeft: `3px solid ${leftBorder}`,
-        boxShadow: hovered ? '0 0 0 1px rgba(201,168,76,0.4), 0 8px 24px rgba(201,168,76,0.15)' : 'none',
-        transition: 'all 200ms ease',
+        border: `1px solid ${hovered ? 'rgba(201,168,76,0.3)' : 'rgba(255,255,255,0.06)'}`,
+        boxShadow: hovered ? '0 0 0 1px rgba(201,168,76,0.3), 0 8px 24px rgba(201,168,76,0.12)' : 'none',
+        transition: 'border-color 200ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms cubic-bezier(0.4,0,0.2,1)',
         cursor: 'pointer',
       }}
     >

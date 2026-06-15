@@ -242,7 +242,14 @@ function KpiStat({
 
 function Panel({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
   return (
-    <section className="glass-card overflow-hidden">
+    <section
+      style={{
+        background: "rgba(26,29,39,0.85)",
+        border: "1px solid rgba(255,255,255,0.06)",
+        borderRadius: "12px",
+        overflow: "hidden",
+      }}
+    >
       <div className="flex items-center gap-2 px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <span className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>{title}</span>
         <span
