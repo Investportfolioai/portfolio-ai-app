@@ -68,8 +68,6 @@ function gradeBadge(n: number | null, cashback?: number | null) {
   return { letter: n >= 60 ? "D" : "F", bg: "rgba(239,68,68,0.12)", color: "#ef4444", ring: "rgba(239,68,68,0.25)" };
 }
 
-const CARD = {} as const;
-const DIVIDER = { borderColor: "rgba(255,255,255,0.05)" } as const;
 
 function useCountUp(target: number, duration = 1200): number {
   const [value, setValue] = useState(0);
@@ -104,42 +102,8 @@ export function DashboardIntel() {
 
   return (
     <div className="space-y-4">
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard
-          icon={<TargetIcon />}
-          label="Close Rate"
-          numericValue={i?.close_rate ?? 0}
-          valueFmt={(n) => `${Math.round(n)}%`}
-          sub={`${i?.closed_count ?? 0} of ${i?.worked_count ?? 0} worked`}
-          valueColor={(i?.close_rate ?? 0) > 20 ? "#22c55e" : (i?.close_rate ?? 0) > 10 ? "#C9A84C" : "#f59e0b"}
-        />
-        <KpiCard
-          icon={<EscrowIcon />}
-          label="In Escrow"
-          numericValue={i?.escrow_count ?? i?.deals_in_escrow ?? 0}
-          valueFmt={(n) => String(Math.round(n))}
-          sub={i == null ? "loading…" : `${compactMoney(i.escrow_cashback)} proj cashback`}
-          sub2={i == null ? "" : `${compactMoney(i.escrow_fees)} proj fees`}
-        />
-        <KpiCard
-          icon={<ClockIcon />}
-          label="Pending"
-          numericValue={i?.pending_count ?? i?.deals_pending ?? 0}
-          valueFmt={(n) => String(Math.round(n))}
-          sub={i == null ? "loading…" : `${compactMoney(i.pending_cashback)} proj cashback`}
-          sub2={i == null ? "" : `${compactMoney(i.pending_fees)} proj fees`}
-        />
-        <KpiCard
-          icon={<StarIcon />}
-          label="Buybox Score"
-          numericValue={i?.buybox_score ?? 0}
-          valueFmt={(n) => `${n.toFixed(1)}%`}
-          displayOverride={i != null && i.buybox_score == null ? "—" : undefined}
-          sub="avg cashback at close"
-          valueColor={(i?.buybox_score ?? 0) > 20 ? "#22c55e" : (i?.buybox_score ?? 0) > 10 ? "#C9A84C" : "#f59e0b"}
-        />
-      </div>
+      {/* KPI row */}
+      <KpiRow intel={i} />
 
       {/* Pipeline panels */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -193,42 +157,84 @@ export function DashboardIntel() {
   );
 }
 
-function KpiCard({
-  icon,
+function KpiRow({ intel }: { intel: Intel | null }) {
+  const i = intel;
+  const closeRateRaw = i?.close_rate ?? 0;
+  const escrowRaw = i?.escrow_count ?? i?.deals_in_escrow ?? 0;
+  const pendingRaw = i?.pending_count ?? i?.deals_pending ?? 0;
+  const buyboxRaw = i?.buybox_score ?? 0;
+
+  const closeRate = useCountUp(closeRateRaw);
+  const escrow = useCountUp(escrowRaw);
+  const pending = useCountUp(pendingRaw);
+  const buybox = useCountUp(buyboxRaw);
+
+  const closeColor = closeRateRaw > 20 ? "#22c55e" : closeRateRaw > 10 ? "#C9A84C" : "#f59e0b";
+  const buyboxColor = buyboxRaw > 20 ? "#22c55e" : buyboxRaw > 10 ? "#C9A84C" : "#f59e0b";
+
+  return (
+    <div
+      className="grid grid-cols-2 lg:grid-cols-4 overflow-hidden rounded-xl"
+      style={{ background: "rgba(26,29,39,0.7)", border: "1px solid rgba(255,255,255,0.05)" }}
+    >
+      <KpiStat
+        label="Close Rate"
+        value={`${Math.round(closeRate)}%`}
+        sub={`${i?.closed_count ?? 0} of ${i?.worked_count ?? 0} worked`}
+        valueColor={closeColor}
+      />
+      <KpiStat
+        label="In Escrow"
+        value={String(Math.round(escrow))}
+        sub={i == null ? "—" : `${compactMoney(i.escrow_cashback)} proj cashback`}
+        sub2={i == null ? "" : `${compactMoney(i.escrow_fees)} proj fees`}
+        divider
+      />
+      <KpiStat
+        label="Pending"
+        value={String(Math.round(pending))}
+        sub={i == null ? "—" : `${compactMoney(i.pending_cashback)} proj cashback`}
+        sub2={i == null ? "" : `${compactMoney(i.pending_fees)} proj fees`}
+        divider
+      />
+      <KpiStat
+        label="Buybox Score"
+        value={i != null && i.buybox_score == null ? "—" : `${buybox.toFixed(1)}%`}
+        sub="avg cashback at close"
+        valueColor={i?.buybox_score != null ? buyboxColor : undefined}
+        divider
+      />
+    </div>
+  );
+}
+
+function KpiStat({
   label,
-  numericValue,
-  valueFmt,
-  displayOverride,
+  value,
   sub,
   sub2,
   valueColor,
+  divider,
 }: {
-  icon: React.ReactNode;
   label: string;
-  numericValue: number;
-  valueFmt: (n: number) => string;
-  displayOverride?: string;
+  value: string;
   sub?: string;
   sub2?: string;
   valueColor?: string;
+  divider?: boolean;
 }) {
-  const counted = useCountUp(numericValue);
-  const display = displayOverride ?? valueFmt(counted);
   return (
-    <div className="glass-card p-5 relative overflow-hidden">
-      {/* Icon: 28px, gold, top-left */}
-      <div className="mb-4" style={{ color: "#C9A84C" }}>
-        {icon}
-      </div>
-      {/* Medium metric number */}
+    <div
+      style={{
+        padding: "20px 20px 18px",
+        borderLeft: divider ? "1px solid rgba(255,255,255,0.05)" : undefined,
+      }}
+    >
+      <div className="label-card mb-3">{label}</div>
       <div className="num-metric" style={valueColor ? { color: valueColor } : undefined}>
-        {display}
+        {value}
       </div>
-      {/* Gold underline */}
-      <div style={{ width: "32px", height: "2px", background: "#C9A84C", margin: "10px 0 8px" }} />
-      {/* Label */}
-      <div className="label-card">{label}</div>
-      {sub && <div className="label-sub mt-1.5 truncate">{sub}</div>}
+      {sub && <div className="label-sub mt-2 truncate">{sub}</div>}
       {sub2 && <div className="label-sub mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.18)" }}>{sub2}</div>}
     </div>
   );
@@ -355,31 +361,3 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="px-4 py-8 text-center text-sm" style={{ color: "rgba(255,255,255,0.2)" }}>{children}</p>;
 }
 
-function TargetIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
-    </svg>
-  );
-}
-function EscrowIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-    </svg>
-  );
-}
-function ClockIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-    </svg>
-  );
-}
-function StarIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-    </svg>
-  );
-}

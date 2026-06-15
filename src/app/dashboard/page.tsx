@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AchievementBoard, LiveActivity } from "./achievement-board";
 import { DashboardIntel } from "./dashboard-intel";
+import { PipelineStatus } from "./pipeline-status";
 
 export const metadata = { title: "Dashboard — Portfolio AI" };
 export const dynamic = "force-dynamic";
@@ -23,13 +24,16 @@ export default function DashboardHome() {
         zIndex: 0,
       }} />
       <div className="relative mx-auto max-w-7xl space-y-6" style={{ zIndex: 1 }}>
-        {/* Sections 1–4: Achievement Board (time-toggled, recharts, leaderboard, activity) */}
-        <AchievementBoard />
+        {/* Opening beat: pipeline situation at a glance */}
+        <PipelineStatus />
 
-        {/* Section 3: KPI strip + Pipeline panels */}
+        {/* Live operational data: KPI row + pipeline panels */}
         <DashboardIntel />
 
-        {/* Section 4: Live Activity */}
+        {/* Historical context: below the fold */}
+        <AchievementBoard />
+
+        {/* Live Activity */}
         <LiveActivity />
 
         {/* Quick Links */}
