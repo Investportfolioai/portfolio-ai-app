@@ -247,7 +247,8 @@ export function AchievementBoard() {
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-10">
         {/* Left 70%: Top Wholesalers */}
         <div
-          className="lg:col-span-7 glass-card p-5"
+          className="lg:col-span-7 p-5"
+          style={{ background: "rgba(26,29,39,0.85)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px" }}
         >
           <div className="mb-4 flex items-center justify-between gap-3">
             <span className="label-eyebrow">Top Wholesalers</span>
@@ -352,7 +353,7 @@ export function AchievementBoard() {
         {/* Right 30%: Chart + Deal Mix */}
         <div className="lg:col-span-3 flex flex-col gap-3">
           {/* Trend Chart — always renders; flat baseline when no data */}
-          <div className="glass-card p-4 flex-1">
+          <div className="p-4 flex-1" style={{ background: "rgba(26,29,39,0.85)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px" }}>
             <div className="mb-3 flex items-center justify-between">
               <span className="label-eyebrow">12-Week Trend</span>
               <div className="flex gap-1">
@@ -397,7 +398,7 @@ export function AchievementBoard() {
           </div>
 
           {/* Deal Mix */}
-          <div className="glass-card p-4">
+          <div className="p-4" style={{ background: "rgba(26,29,39,0.85)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px" }}>
             <div className="label-eyebrow mb-3">Deal Mix</div>
             {(m?.dealMix ?? []).length === 0 ? (
               <p className="text-xs text-white/20 text-center py-2">No data</p>

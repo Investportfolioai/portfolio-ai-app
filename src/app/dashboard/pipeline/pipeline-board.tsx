@@ -163,7 +163,7 @@ function IntelligenceBar() {
           <MiniStat label="Avg ACQ" value={intel?.avg_acq_grade != null ? intel.avg_acq_grade.toFixed(0) : "—"} />
           <MiniStat label="Avg STAB" value={intel?.avg_stab_grade != null ? intel.avg_stab_grade.toFixed(0) : "—"} />
           <MiniStat label="To Escrow" value={intel?.avg_days_to_escrow != null ? `${intel.avg_days_to_escrow.toFixed(0)}d` : "—"} />
-          <MiniStat label="Buybox" value={intel?.buybox_score != null ? `${buybox.toFixed(1)}%` : "—"} />
+          <MiniStat label="Cashback Rate" value={intel?.buybox_score != null ? `${buybox.toFixed(1)}%` : "—"} />
           <MiniStat label="In Escrow" value={String(Math.round(inEscrow))} />
         </div>
       )}
@@ -655,16 +655,23 @@ function PendingGradeBadge() {
   );
 }
 
+const GRADE_FULL_PILL: Record<string, string> = { ACQ: "Acquisition", STAB: "Stabilization" };
+
 function GradePill({ label, value }: { label: string; value: number }) {
   const c = gradeColors(value);
+  const fullLabel = GRADE_FULL_PILL[label] ?? label;
+  const tier = value >= 80 ? "good" : value >= 60 ? "fair" : value >= 40 ? "weak" : "poor";
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '3px',
-      background: c.bg, color: c.color,
-      borderRadius: '999px', padding: '2px 8px',
-      fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em',
-      fontFamily: 'var(--font-mono), monospace',
-    }}>
+    <span
+      title={`${fullLabel} grade: ${value}/100 (${tier})`}
+      aria-label={`${fullLabel} grade: ${value} out of 100, ${tier}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: '3px',
+        background: c.bg, color: c.color,
+        borderRadius: '999px', padding: '2px 8px',
+        fontSize: '10px', fontWeight: 700, letterSpacing: '0.04em',
+        fontFamily: 'var(--font-mono), monospace',
+      }}>
       {label} {value}
     </span>
   );

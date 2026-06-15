@@ -264,11 +264,21 @@ function Panel({ title, count, children }: { title: string; count: number; child
   );
 }
 
+const GRADE_FULL: Record<string, string> = { ACQ: "Acquisition", STAB: "Stabilization" };
+const GRADE_THRESHOLD: Record<string, string> = { A: "≥90", B: "≥80", C: "≥70", D: "≥60", F: "<60", "—": "not graded" };
+
 function GradePill({ label, badge }: { label: string; badge: ReturnType<typeof gradeBadge> }) {
+  const fullLabel = GRADE_FULL[label] ?? label;
+  const threshold = GRADE_THRESHOLD[badge.letter] ?? "";
+  const titleText = badge.letter === "—"
+    ? `${fullLabel} grade: not yet graded`
+    : `${fullLabel} grade: ${badge.letter} (${threshold})`;
   return (
     <span
       className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
       style={{ background: badge.bg, color: badge.color, border: `1px solid ${badge.ring}` }}
+      title={titleText}
+      aria-label={titleText}
     >
       {label} {badge.letter}
     </span>
