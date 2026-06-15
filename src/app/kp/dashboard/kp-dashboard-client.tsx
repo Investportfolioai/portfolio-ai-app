@@ -73,7 +73,7 @@ function projFee(cashback: number | null): string {
 function acqBadgeCls(g: number | null): string {
   if (g == null) return "bg-white/10 text-white/50 ring-white/15";
   if (g >= 90) return "bg-emerald-500/15 text-emerald-300 ring-emerald-400/30";
-  if (g >= 80) return "bg-[#D4AF37]/15 text-[#D4AF37] ring-[#D4AF37]/40";
+  if (g >= 80) return "bg-[#C9A84C]/15 text-[#C9A84C] ring-[#C9A84C]/40";
   if (g >= 70) return "bg-orange-500/15 text-orange-300 ring-orange-400/30";
   return "bg-rose-500/15 text-rose-300 ring-rose-400/30";
 }
@@ -91,7 +91,7 @@ function tabCls(active: boolean) {
   return `
     -mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors
     ${active
-      ? "border-[#D4AF37] text-[#D4AF37]"
+      ? "border-[#C9A84C] text-[#C9A84C]"
       : "border-transparent text-gray-500 hover:text-gray-300"}
   `.trim();
 }
@@ -283,10 +283,10 @@ function IntelSection({ deals }: { deals: KpDealRich[] }) {
                 <Line
                   type="monotone"
                   dataKey="value"
-                  stroke="#D4AF37"
+                  stroke="#C9A84C"
                   strokeWidth={2}
                   dot={false}
-                  activeDot={{ fill: "#D4AF37", r: 4, strokeWidth: 0 }}
+                  activeDot={{ fill: "#C9A84C", r: 4, strokeWidth: 0 }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -328,7 +328,7 @@ function KpiCard({
   return (
     <div className="rounded-xl bg-[#1a1f2e] border border-white/10 p-5">
       <p className="text-[10px] font-semibold tracking-widest text-gray-500 uppercase mb-2">{label}</p>
-      <p className={`text-2xl font-bold tabular-nums ${gold ? "text-[#D4AF37]" : "text-white"}`}>
+      <p className={`text-2xl font-bold tabular-nums ${gold ? "text-[#C9A84C]" : "text-white"}`}>
         {value}
       </p>
     </div>
@@ -382,7 +382,7 @@ function IntelDealsTab({ deals }: { deals: KpDealRich[] }) {
               <td className="px-4 py-3 text-right tabular-nums text-white/70">
                 {d.acquisition_grade ?? "—"}
               </td>
-              <td className="px-4 py-3 text-right tabular-nums text-[#D4AF37]">
+              <td className="px-4 py-3 text-right tabular-nums text-[#C9A84C]">
                 {projFee(d.cashback_at_close)}
               </td>
             </tr>
@@ -438,7 +438,7 @@ function EarningsTab({ deals }: { deals: KpDealRich[] }) {
                     {statusKey}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-[#D4AF37]">
+                <td className="px-4 py-3 text-right tabular-nums text-[#C9A84C]">
                   {projFee(d.cashback_at_close)}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums text-white/70">
@@ -637,7 +637,7 @@ function DealCard({ deal, actionable }: { deal: KpDeal; actionable?: boolean }) 
           <button
             disabled={pending}
             onClick={() => respond("accepted")}
-            className="rounded-lg bg-[#D4AF37] px-4 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-[#C9A84C] px-4 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
           >
             Accept
           </button>
@@ -718,7 +718,7 @@ function SreoTab({ sreo }: { sreo: KpSreo[] }) {
         </h2>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="rounded-lg bg-[#D4AF37] px-3 py-1.5 text-xs font-semibold text-black hover:opacity-90"
+          className="rounded-lg bg-[#C9A84C] px-3 py-1.5 text-xs font-semibold text-black hover:opacity-90"
         >
           {open ? "Cancel" : "Add Property"}
         </button>
@@ -738,7 +738,7 @@ function SreoTab({ sreo }: { sreo: KpSreo[] }) {
             <button
               disabled={pending}
               onClick={submit}
-              className="rounded-lg bg-[#D4AF37] px-4 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
+              className="rounded-lg bg-[#C9A84C] px-4 py-2 text-xs font-semibold text-black hover:opacity-90 disabled:opacity-50"
             >
               Save Property
             </button>
@@ -843,7 +843,7 @@ function SreoInput({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-white/10 bg-[#0d1117] px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 focus:border-[#D4AF37]"
+        className="w-full rounded-lg border border-white/10 bg-[#0d1117] px-3 py-2 text-sm text-white outline-none placeholder:text-gray-600 focus:border-[#C9A84C]"
       />
     </label>
   );

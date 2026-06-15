@@ -63,7 +63,7 @@ export function MobileNav() {
             key={item.href}
             href={item.href}
             className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition-colors ${
-              active ? "text-[#d4af37]" : "text-white/40 hover:text-white/70"
+              active ? "text-[#C9A84C]" : "text-white/40 hover:text-white/70"
             }`}
           >
             {item.icon}

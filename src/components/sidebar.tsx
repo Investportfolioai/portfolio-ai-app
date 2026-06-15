@@ -83,10 +83,10 @@ export function Sidebar() {
               aria-current={active ? "page" : undefined}
               className={
                 active
-                  ? `${base} border-l-2 border-[#C9A84C] pl-[10px] text-[#C9A84C]`
+                  ? `${base} text-[#C9A84C]`
                   : `${base} text-sidebar-foreground/55 hover:text-[#C9A84C] hover:[text-shadow:0_0_8px_rgba(201,168,76,0.35)]`
               }
-              style={active ? { background: "rgba(201,168,76,0.06)" } : undefined}
+              style={active ? { background: "rgba(201,168,76,0.06)", boxShadow: "inset 2px 0 0 #C9A84C" } : undefined}
             >
               {Icon && <Icon className="h-4 w-4 shrink-0" />}
               {item.label}

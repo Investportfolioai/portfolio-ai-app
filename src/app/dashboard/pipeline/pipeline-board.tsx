@@ -1515,7 +1515,7 @@ function OverviewTab({
         {liveWaterfall != null && (
           <div className="flex items-center justify-between gap-4 border-t border-border px-3 py-2.5">
             <dt className="shrink-0 text-sm text-muted-foreground">Est. Net to Buyer</dt>
-            <dd className={`data-number text-right text-sm font-bold tabular-nums ${liveWaterfall.netToBuyer >= 0 ? "text-[#D4AF37]" : "text-rose-500"}`}>
+            <dd className={`data-number text-right text-sm font-bold tabular-nums ${liveWaterfall.netToBuyer >= 0 ? "text-[#C9A84C]" : "text-rose-500"}`}>
               {money(liveWaterfall.netToBuyer)}
               <span className="ml-1.5 text-xs font-normal text-muted-foreground">({liveWaterfall.cashbackPct.toFixed(1)}%)</span>
             </dd>
@@ -1965,7 +1965,7 @@ function WaterfallBreakdown({ w, ltvPct }: { w: WaterfallResult; ltvPct: number 
   const neg = (v: number) => (
     <span className="data-number tabular-nums text-rose-500">–{money(v)}</span>
   );
-  const netColor = w.netToBuyer >= 0 ? "text-[#D4AF37] font-bold" : "text-rose-500 font-bold";
+  const netColor = w.netToBuyer >= 0 ? "text-[#C9A84C] font-bold" : "text-rose-500 font-bold";
   return (
     <div className="rounded-xl border border-border bg-secondary/40 px-4 py-3 text-xs">
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
@@ -2183,7 +2183,7 @@ function AiTab({
                 <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Net to Buyer</p>
                 <div className="flex justify-between">
                   <span className="font-semibold text-foreground">NET TO BUYER</span>
-                  <span className="data-number font-bold tabular-nums text-[#D4AF37]">
+                  <span className="data-number font-bold tabular-nums text-[#C9A84C]">
                     {money(uw.cashback_amount)}
                     {uw.cashback_pct != null && <span className="ml-1.5 font-normal text-muted-foreground">({uw.cashback_pct.toFixed(1)}%)</span>}
                   </span>
@@ -2309,7 +2309,7 @@ function DocumentsTab({
         }}
         className={`flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-8 text-center transition-colors ${
           dragOver
-            ? "border-[#D4AF37] bg-[#D4AF37]/5"
+            ? "border-[#C9A84C] bg-[#C9A84C]/5"
             : "border-white/20 bg-[#1a1f2e] hover:border-white/40"
         } ${uploading ? "pointer-events-none opacity-60" : ""}`}
       >

@@ -70,9 +70,7 @@ export async function ImpactBoard() {
     <section className="mb-6 overflow-hidden rounded-2xl bg-[#0f1c3f]">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/10 px-6 py-3">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-white/40">
-          Impact Board
-        </span>
+        <span className="label-eyebrow">Impact Board</span>
         <span className="text-[10px] text-white/20">all time · closed deals only</span>
       </div>
 
@@ -89,14 +87,12 @@ export async function ImpactBoard() {
           >
             <div
               className={`font-mono text-4xl font-semibold tabular-nums leading-none xl:text-5xl ${
-                m.gold ? "text-[#d4af37]" : "text-white"
+                m.gold ? "text-[#C9A84C]" : "text-white"
               }`}
             >
               {m.value}
             </div>
-            <div className="mt-2 text-[10px] font-medium uppercase tracking-widest text-white/35">
-              {m.label}
-            </div>
+            <div className="label-card mt-2">{m.label}</div>
           </div>
         ))}
       </div>
@@ -105,9 +101,7 @@ export async function ImpactBoard() {
       <div className="grid grid-cols-1 divide-y divide-white/10 md:grid-cols-2 md:divide-x md:divide-y-0">
         {/* Top Wholesalers */}
         <div className="px-6 py-5">
-          <div className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-white/30">
-            Top Wholesalers
-          </div>
+          <div className="label-eyebrow mb-4">Top Wholesalers</div>
           {topWholesalers.length === 0 ? (
             <p className="text-xs text-white/25">No wholesale submissions yet.</p>
           ) : (
@@ -120,7 +114,7 @@ export async function ImpactBoard() {
                     </span>
                     <span className="truncate text-sm text-white/75">{email}</span>
                   </div>
-                  <span className="shrink-0 font-mono text-sm font-medium text-[#d4af37]">
+                  <span className="shrink-0 font-mono text-sm font-medium text-[#C9A84C]">
                     {count} {count === 1 ? "deal" : "deals"}
                   </span>
                 </li>
@@ -131,9 +125,7 @@ export async function ImpactBoard() {
 
         {/* Closed by Year */}
         <div className="px-6 py-5">
-          <div className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-white/30">
-            Closed by Year
-          </div>
+          <div className="label-eyebrow mb-4">Closed by Year</div>
           {sortedYears.length === 0 ? (
             <p className="text-xs text-white/25">No closed deals yet.</p>
           ) : (
@@ -144,7 +136,7 @@ export async function ImpactBoard() {
                   <li key={yr} className="flex items-start justify-between gap-4">
                     <span className="text-sm font-medium text-white/75">{yr}</span>
                     <div className="text-right">
-                      <span className="font-mono text-sm font-medium text-[#d4af37]">
+                      <span className="font-mono text-sm font-medium text-[#C9A84C]">
                         {addrs.length} {addrs.length === 1 ? "deal" : "deals"}
                       </span>
                       {addrs.length <= 3 && (
