@@ -332,11 +332,18 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
           <div
             onClick={() => setSelectedId(null)}
             style={{
-              position: 'fixed', inset: 0,
-              background: 'rgba(0,0,0,0.4)',
-              backdropFilter: 'blur(4px)',
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              backdropFilter: 'blur(2px)',
+              WebkitBackdropFilter: 'blur(2px)',
               zIndex: 40,
+              cursor: 'pointer',
             }}
+            aria-hidden="true"
           />
           <div
             style={{
@@ -762,7 +769,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
           <div style={{
             fontSize: '15px', fontWeight: 500, color: '#f9fafb',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontFamily: 'var(--font-display), serif', fontStyle: 'italic',
+            fontFamily: 'var(--font-body), sans-serif', fontStyle: 'normal',
           }}>
             {deal.property_address}
           </div>
@@ -1089,28 +1096,47 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
   }
 
   return (
-    <>
-              <div className="flex items-start justify-between gap-4 bg-primary px-6 py-5 text-primary-foreground">
-                <div className="min-w-0">
-                  <div className="mb-2 flex items-center gap-2">
+    <div className="deal-panel-dark" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              {/* Header */}
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px',
+                background: '#0f111c', borderBottom: '1px solid rgba(255,255,255,0.06)',
+                padding: '16px 20px', flexShrink: 0,
+              }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <StructureBadge structure={deal.structure_type} dark />
                     <StatusBadge status={deal.status} />
                   </div>
-                  <h2 className="truncate text-xl text-primary-foreground">
+                  <h2 style={{
+                    margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    fontFamily: 'var(--font-display), serif', fontSize: '1.25rem', fontWeight: 400,
+                    fontStyle: 'normal', color: '#ffffff', letterSpacing: '-0.01em',
+                  }}>
                     {deal.property_address}
                   </h2>
                   {[deal.city, deal.state].filter(Boolean).length > 0 && (
-                    <p className="text-sm text-primary-foreground/70">
+                    <p style={{
+                      margin: '2px 0 0', fontFamily: 'var(--font-body), sans-serif',
+                      fontSize: '0.8rem', color: '#6b7280',
+                    }}>
                       {[deal.city, deal.state].filter(Boolean).join(", ")}
                     </p>
                   )}
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+                <div style={{ display: 'flex', flexShrink: 0, alignItems: 'center', gap: '4px' }}>
                   {deal.status !== "dead" && deal.status !== "closed" && deal.status !== "passed" && (
                     <button
                       type="button"
                       onClick={() => setConfirmingClosed(true)}
-                      className="rounded-full border border-emerald-400/40 px-2.5 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/20"
+                      style={{
+                        borderRadius: '999px',
+                        border: '1px solid rgba(34,197,94,0.3)',
+                        padding: '3px 10px',
+                        fontSize: '11px', fontWeight: 500,
+                        background: 'rgba(34,197,94,0.1)',
+                        color: '#22c55e', cursor: 'pointer',
+                      }}
                     >
                       Mark Closed
                     </button>
@@ -1119,7 +1145,14 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                     <button
                       type="button"
                       onClick={() => setConfirmingDead(true)}
-                      className="rounded-full border border-white/20 px-2.5 py-1 text-[11px] font-medium text-primary-foreground/80 transition-colors hover:bg-white/10"
+                      style={{
+                        borderRadius: '999px',
+                        border: '1px solid rgba(239,68,68,0.3)',
+                        padding: '3px 10px',
+                        fontSize: '11px', fontWeight: 500,
+                        background: 'rgba(239,68,68,0.1)',
+                        color: '#ef4444', cursor: 'pointer',
+                      }}
                     >
                       Mark Dead
                     </button>
@@ -1128,7 +1161,10 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                     type="button"
                     onClick={onClose}
                     aria-label="Close"
-                    className="rounded-md p-1 text-primary-foreground/70 transition-colors hover:bg-white/10 hover:text-primary-foreground"
+                    style={{
+                      borderRadius: '6px', padding: '4px', background: 'transparent',
+                      border: 'none', color: '#6b7280', cursor: 'pointer',
+                    }}
                   >
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
                       <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -1138,18 +1174,26 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
               </div>
 
               {confirmingDead && (
-                <div className="flex flex-col gap-2 border-b border-border bg-secondary px-4 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="shrink-0 text-xs text-muted-foreground">Reason</span>
+                <div style={{
+                  display: 'flex', flexDirection: 'column', gap: '8px',
+                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  background: 'rgba(255,255,255,0.03)',
+                  padding: '8px 16px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ flexShrink: 0, fontSize: '12px', color: '#6b7280' }}>Reason</span>
                     <select
                       value={deadReason}
                       onChange={(e) => setDeadReason(e.target.value)}
-                      className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-sm focus:border-accent focus:outline-none"
+                      style={{
+                        minWidth: 0, flex: 1, borderRadius: '6px',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'rgba(255,255,255,0.06)',
+                        color: '#f9fafb', padding: '4px 8px', fontSize: '14px',
+                      }}
                     >
                       {DEAD_REASONS.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
+                        <option key={r} value={r}>{r}</option>
                       ))}
                     </select>
                     <button
@@ -1167,19 +1211,30 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                           toast.success("Deal marked as dead");
                         })
                       }
-                      className="shrink-0 rounded-full bg-destructive/90 px-3 py-1 text-xs font-medium text-white hover:bg-destructive disabled:opacity-60"
+                      style={{
+                        flexShrink: 0, borderRadius: '999px',
+                        background: 'rgba(239,68,68,0.15)',
+                        border: '1px solid rgba(239,68,68,0.3)',
+                        color: '#ef4444', padding: '4px 12px', fontSize: '12px', fontWeight: 500,
+                        cursor: 'pointer', opacity: markingDead ? 0.6 : 1,
+                      }}
                     >
                       {markingDead ? "…" : "Confirm Dead"}
                     </button>
                     <button
                       type="button"
                       onClick={() => setConfirmingDead(false)}
-                      className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
+                      style={{
+                        flexShrink: 0, borderRadius: '999px',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        color: '#6b7280', padding: '4px 12px', fontSize: '12px', cursor: 'pointer',
+                      }}
                     >
                       Cancel
                     </button>
                   </div>
-                  <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                  <label style={{ display: 'flex', cursor: 'pointer', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#6b7280' }}>
                     <input
                       type="checkbox"
                       checked={intentionalPass}
@@ -1192,8 +1247,13 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
               )}
 
               {confirmingClosed && (
-                <div className="flex items-center gap-2 border-b border-border bg-secondary px-4 py-2">
-                  <span className="text-xs text-muted-foreground">Mark this deal as closed?</span>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  background: 'rgba(255,255,255,0.03)',
+                  padding: '8px 16px',
+                }}>
+                  <span style={{ fontSize: '12px', color: '#6b7280' }}>Mark this deal as closed?</span>
                   <button
                     type="button"
                     disabled={markingClosed}
@@ -1218,14 +1278,25 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                         }
                       });
                     }}
-                    className="shrink-0 rounded-full bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                    style={{
+                      flexShrink: 0, borderRadius: '999px',
+                      background: 'rgba(34,197,94,0.15)',
+                      border: '1px solid rgba(34,197,94,0.3)',
+                      color: '#22c55e', padding: '4px 12px', fontSize: '12px', fontWeight: 500,
+                      cursor: 'pointer', opacity: markingClosed ? 0.6 : 1,
+                    }}
                   >
                     {markingClosed ? "…" : "Confirm Closed"}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmingClosed(false)}
-                    className="shrink-0 rounded-full bg-card px-3 py-1 text-xs text-muted-foreground"
+                    style={{
+                      flexShrink: 0, borderRadius: '999px',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      color: '#6b7280', padding: '4px 12px', fontSize: '12px', cursor: 'pointer',
+                    }}
                   >
                     Cancel
                   </button>
@@ -1297,7 +1368,7 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                   </motion.div>
                 </AnimatePresence>
               </div>
-    </>
+    </div>
   );
 }
 
