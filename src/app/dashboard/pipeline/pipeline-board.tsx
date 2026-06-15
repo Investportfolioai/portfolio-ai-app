@@ -230,15 +230,22 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
 
   const [adding, setAdding] = useState(false);
   const [panelMounted, setPanelMounted] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<Element | null>(null);
 
   const selected = deals.find((d) => d.id === selectedId) ?? null;
 
   useEffect(() => {
     if (!selected) {
       setPanelMounted(false);
+      (triggerRef.current as HTMLElement | null)?.focus();
       return;
     }
-    const rafId = requestAnimationFrame(() => setPanelMounted(true));
+    triggerRef.current = document.activeElement;
+    const rafId = requestAnimationFrame(() => {
+      setPanelMounted(true);
+      panelRef.current?.focus();
+    });
     return () => cancelAnimationFrame(rafId);
   }, [selected?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -346,6 +353,11 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
             aria-hidden="true"
           />
           <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={selected.property_address}
+            tabIndex={-1}
             style={{
               position: 'fixed', top: 0, right: 0, bottom: 0,
               width: '480px',
@@ -960,15 +972,35 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
 
   function save() {
     if (editValue === null) return;
+    const prevNum = deal.cashback_at_close;
     const num = editValue === "" ? null : Number(editValue);
     start(async () => {
-      await fetch("/api/deals/escrow", {
+      const res = await fetch("/api/deals/escrow", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deal_id: deal.id, cashback_at_close: num }),
       });
+      if (!res.ok) {
+        toast.error("Failed to save — check connection and retry");
+        setEditValue(null);
+        return;
+      }
       setEditValue(null);
       router.refresh();
+      toast("Cashback updated", {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            await fetch("/api/deals/escrow", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ deal_id: deal.id, cashback_at_close: prevNum }),
+            });
+            router.refresh();
+          },
+        },
+        duration: 5000,
+      });
     });
   }
 
@@ -990,6 +1022,7 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
           <div className="flex items-center rounded-md border border-white/10 bg-white/5 px-2 py-0.5">
             <span className="text-white/40">$</span>
             <input
+              aria-label="Est. net to buyer"
               type="number"
               value={cbStr}
               disabled={busy}

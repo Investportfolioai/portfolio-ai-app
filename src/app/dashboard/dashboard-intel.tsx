@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { toast } from "sonner";
 import { money, moneyCompact } from "@/lib/format";
 import { portfolioAiFee } from "@/lib/types";
 
@@ -268,13 +269,34 @@ function EscrowRow({ deal, onSaved }: { deal: EscrowDeal; onSaved: () => void })
   const cbPct = cbNum != null && deal.purchase_price ? (cbNum / deal.purchase_price) * 100 : null;
 
   function save() {
+    const prevNum = deal.cashback_at_close;
+    const num = cashback === "" ? null : cbNum;
     start(async () => {
-      await fetch("/api/deals/escrow", {
+      const res = await fetch("/api/deals/escrow", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deal_id: deal.id, cashback_at_close: cashback === "" ? null : cbNum }),
+        body: JSON.stringify({ deal_id: deal.id, cashback_at_close: num }),
       });
+      if (!res.ok) {
+        toast.error("Failed to save — check connection and retry");
+        setCashback(prevNum != null ? String(prevNum) : "");
+        return;
+      }
       onSaved();
+      toast("Cashback updated", {
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            await fetch("/api/deals/escrow", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ deal_id: deal.id, cashback_at_close: prevNum }),
+            });
+            onSaved();
+          },
+        },
+        duration: 5000,
+      });
     });
   }
 
@@ -302,6 +324,7 @@ function EscrowRow({ deal, onSaved }: { deal: EscrowDeal; onSaved: () => void })
       >
         <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>$</span>
         <input
+          aria-label="Cashback at close"
           type="number"
           value={cashback}
           disabled={busy}
