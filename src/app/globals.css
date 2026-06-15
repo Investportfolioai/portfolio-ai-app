@@ -61,7 +61,6 @@
   --text-secondary: #a1a1aa;
   --text-muted: #52525b;
   --text-gold: #C9A84C;
-  --font-display: 'DM Sans', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
   /* ── Emil easing tokens ──────────────────────────────────────────── */
@@ -275,13 +274,23 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Section eyebrow label */
+/* Section eyebrow label — use only for section-level grouping headers */
 .label-eyebrow {
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: rgba(255,255,255,0.3);
+}
+
+/* Metric card label — identifies a hero or KPI number, needs to be readable */
+.label-card {
+  font-family: var(--font-body), sans-serif;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
 }
 
 /* Card subtitle */

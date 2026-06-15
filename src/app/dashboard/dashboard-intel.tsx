@@ -226,7 +226,7 @@ function KpiCard({
       {/* Gold underline */}
       <div style={{ width: "32px", height: "2px", background: "#C9A84C", margin: "10px 0 8px" }} />
       {/* Label */}
-      <div className="label-eyebrow">{label}</div>
+      <div className="label-card">{label}</div>
       {sub && <div className="label-sub mt-1.5 truncate">{sub}</div>}
       {sub2 && <div className="label-sub mt-0.5 truncate" style={{ color: "rgba(255,255,255,0.18)" }}>{sub2}</div>}
     </div>

@@ -283,9 +283,7 @@ export function AchievementBoard() {
           className="lg:col-span-7 glass-card p-5"
         >
           <div className="mb-4 flex items-center justify-between gap-3">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
-              Top Wholesalers
-            </span>
+            <span className="label-eyebrow">Top Wholesalers</span>
             <div className="flex rounded-lg border border-white/10 p-0.5">
               {(["deals", "volume", "fees", "sellers"] as const).map((t) => (
                 <button
@@ -389,9 +387,7 @@ export function AchievementBoard() {
           {/* Trend Chart — always renders; flat baseline when no data */}
           <div className="glass-card p-4 flex-1">
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
-                12-Week Trend
-              </span>
+              <span className="label-eyebrow">12-Week Trend</span>
               <div className="flex gap-1">
                 {(["deals", "volume", "fees"] as ChartTab[]).map((t) => (
                   <button
@@ -435,9 +431,7 @@ export function AchievementBoard() {
 
           {/* Deal Mix */}
           <div className="glass-card p-4">
-            <div className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-white/30">
-              Deal Mix
-            </div>
+            <div className="label-eyebrow mb-3">Deal Mix</div>
             {(m?.dealMix ?? []).length === 0 ? (
               <p className="text-xs text-white/20 text-center py-2">No data</p>
             ) : (
@@ -486,9 +480,7 @@ export function LiveActivityFeed({ activity }: { activity: ActivityItem[] }) {
     <div className="glass-card overflow-hidden">
       <div className="flex items-center gap-2 px-5 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
         <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e] animate-pulse" />
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-white/30">
-          Live Activity
-        </span>
+        <span className="label-eyebrow">Live Activity</span>
       </div>
       {activity.length === 0 ? (
         <p className="px-5 py-6 text-center text-sm text-white/20">No activity yet.</p>
@@ -582,7 +574,7 @@ function MetricCard({
       </div>
 
       {/* Label */}
-      <div className="label-eyebrow mt-3">{label}</div>
+      <div className="label-card mt-3">{label}</div>
     </div>
   );
 }
