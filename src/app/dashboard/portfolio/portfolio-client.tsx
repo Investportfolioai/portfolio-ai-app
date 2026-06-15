@@ -320,7 +320,7 @@ function StatCard({
         className={`mt-1 tabular-nums ${big ? "text-xl" : "text-lg"} ${
           gold ? "text-[#c9a84c]" : cls
         }`}
-        style={{ fontFamily: "var(--font-display), serif", fontWeight: 500 }}
+        style={{ fontFamily: "var(--font-body), sans-serif", fontWeight: 600 }}
       >
         {value}
       </p>
@@ -462,7 +462,7 @@ function IntelMetricCard({
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-4">
       <p className="text-[10px] uppercase tracking-widest text-white/40">{label}</p>
-      <p className={`mt-2 text-xl tabular-nums ${cls}`} style={{ fontFamily: "var(--font-display), serif", fontWeight: 500 }}>{value}</p>
+      <p className={`mt-2 text-xl tabular-nums ${cls}`} style={{ fontFamily: "var(--font-body), sans-serif", fontWeight: 600 }}>{value}</p>
     </div>
   );
 }
