@@ -29,7 +29,7 @@ export type DealStage =
 export type ExitStrategy = "sell" | "refi" | "hold" | "assignment";
 
 /** Platform roles (enum `public.user_role`). */
-export type UserRole = "owner" | "partner" | "kp" | "viewer";
+export type UserRole = "owner" | "partner" | "kp" | "viewer" | "tc";
 
 /** KP assignment response status (deal_kps.status). */
 export type AssignmentStatus = "pending" | "accepted" | "declined";
@@ -471,6 +471,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   partner: "Partner",
   kp: "KP",
   viewer: "Viewer",
+  tc: "TC",
 };
 
 /** Stage ordering for sorting / column layout. */

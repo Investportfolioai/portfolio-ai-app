@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendKpInvite } from "@/lib/email";
+import { sendKpInvite, sendTcInvite } from "@/lib/email";
 import type { LenderType, UserRole } from "@/lib/types";
 
 export type Result = { ok: true } | { ok: false; error: string };
@@ -98,6 +98,135 @@ export async function resendKpInvite(kpId: string): Promise<Result> {
     await sendKpInvite({ email: kp.email, name: kp.full_name, inviteUrl: linkData.properties.action_link });
   } catch (e) {
     console.error("resendKpInvite email failed:", e);
+    return { ok: false, error: "Could not send invite email." };
+  }
+
+  return { ok: true };
+}
+
+export interface NewTc {
+  name: string;
+  email: string;
+  phone: string;
+  tabs: Array<"lending" | "documents">;
+  dealIds: string[];
+}
+
+/**
+ * Invite a Transaction Coordinator: same auth flow as createKp but redirects
+ * to /tc/setup and seeds tc_tab_grants + deal_tcs on creation.
+ */
+export async function createTc(input: NewTc): Promise<Result> {
+  const name = input.name.trim();
+  const email = input.email.trim();
+  if (!name) return { ok: false, error: "Name is required." };
+  if (!email) return { ok: false, error: "Email is required to invite a TC." };
+  if (!input.tabs.length) return { ok: false, error: "Grant at least one tab." };
+
+  const session = await createClient();
+  const { data: allowed } = await session.rpc("is_owner_or_partner");
+  if (!allowed) return { ok: false, error: "Not authorized." };
+
+  const admin = createAdminClient();
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: "invite",
+    email,
+    options: {
+      data: { role: "tc", full_name: name },
+      redirectTo: `${base}/tc/setup`,
+    },
+  });
+  if (linkError || !linkData?.user) {
+    return { ok: false, error: linkError?.message ?? "Could not create auth account." };
+  }
+
+  const tcId = linkData.user.id;
+
+  const { error: insertError } = await admin.from("users").insert({
+    id: tcId,
+    full_name: name,
+    email,
+    phone: input.phone.trim() || null,
+    role: "tc",
+  });
+  if (insertError) return { ok: false, error: insertError.message };
+
+  if (input.tabs.length) {
+    const { error: tabError } = await admin.from("tc_tab_grants").insert(
+      input.tabs.map((tab) => ({ tc_id: tcId, tab })),
+    );
+    if (tabError) return { ok: false, error: tabError.message };
+  }
+
+  if (input.dealIds.length) {
+    const { error: dealError } = await admin.from("deal_tcs").insert(
+      input.dealIds.map((deal_id) => ({ deal_id, tc_id: tcId })),
+    );
+    if (dealError) return { ok: false, error: dealError.message };
+  }
+
+  // Fetch deal addresses for the invite email
+  let dealAddresses: string[] = [];
+  if (input.dealIds.length) {
+    const { data: dealRows } = await admin
+      .from("deals")
+      .select("property_address")
+      .in("id", input.dealIds);
+    dealAddresses = (dealRows ?? []).map((d) => d.property_address);
+  }
+
+  try {
+    await sendTcInvite({
+      email,
+      name,
+      inviteUrl: linkData.properties.action_link,
+      tabs: input.tabs,
+      dealAddresses,
+    });
+  } catch (e) {
+    console.error("sendTcInvite failed:", e);
+  }
+
+  revalidatePath("/dashboard/kps");
+  return { ok: true };
+}
+
+/** Re-send a magic link to an existing TC. */
+export async function resendTcInvite(tcId: string): Promise<Result> {
+  const session = await createClient();
+  const { data: allowed } = await session.rpc("is_owner_or_partner");
+  if (!allowed) return { ok: false, error: "Not authorized." };
+
+  const admin = createAdminClient();
+  const { data: tc } = await admin
+    .from("users")
+    .select("email, full_name")
+    .eq("id", tcId)
+    .maybeSingle();
+  if (!tc?.email) return { ok: false, error: "TC has no email on file." };
+
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+  const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+    type: "magiclink",
+    email: tc.email,
+    options: { redirectTo: `${base}/tc/setup` },
+  });
+  if (linkError || !linkData?.properties?.action_link) {
+    return { ok: false, error: linkError?.message ?? "Could not generate invite link." };
+  }
+
+  try {
+    await sendTcInvite({
+      email: tc.email,
+      name: tc.full_name,
+      inviteUrl: linkData.properties.action_link,
+      tabs: [],
+      dealAddresses: [],
+    });
+  } catch (e) {
+    console.error("resendTcInvite email failed:", e);
     return { ok: false, error: "Could not send invite email." };
   }
 

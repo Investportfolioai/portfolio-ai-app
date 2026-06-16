@@ -12,6 +12,7 @@ export default async function DashboardLayout({
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user.role === "kp" || user.role === "viewer") redirect("/kp/dashboard");
+  if (user.role === "tc") redirect("/tc/dashboard");
 
   return (
     <div className="flex min-h-screen w-full" style={{ background: '#0A0B14' }}>

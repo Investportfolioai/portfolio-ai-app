@@ -153,6 +153,44 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+export interface TcInviteEmail {
+  email: string;
+  name: string | null;
+  inviteUrl: string;
+  tabs: string[];
+  dealAddresses: string[];
+}
+
+/** Send a branded invite email so a TC can set up their account. Best-effort. */
+export async function sendTcInvite(invite: TcInviteEmail): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key || !invite.email) {
+    console.warn("RESEND_API_KEY / email missing — skipping TC invite.");
+    return;
+  }
+  const resend = new Resend(key);
+  const greeting = invite.name ? `Hi ${invite.name} —` : "Hi —";
+  const tabList = invite.tabs.map((t) => `<li style="margin-bottom:2px">${t.charAt(0).toUpperCase() + t.slice(1)}</li>`).join("");
+  const dealList = invite.dealAddresses.map((a) => `<li style="margin-bottom:2px">${a}</li>`).join("");
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0a0a0a;line-height:1.6;max-width:560px">
+      <h2 style="color:#0f1c3f;margin:0 0 4px">You've been invited as a Transaction Coordinator</h2>
+      <p style="color:#6e6e73;margin:0 0 16px">${greeting} you've been added as a Transaction Coordinator. Click below to set up your account.</p>
+      ${invite.tabs.length ? `<p style="margin:0 0 4px;font-size:13px;color:#6e6e73">Access granted to:</p><ul style="margin:0 0 12px;padding-left:18px;font-size:13px">${tabList}</ul>` : ""}
+      ${invite.dealAddresses.length ? `<p style="margin:0 0 4px;font-size:13px;color:#6e6e73">Assigned deals:</p><ul style="margin:0 0 16px;padding-left:18px;font-size:13px">${dealList}</ul>` : ""}
+      <a href="${invite.inviteUrl}" style="background:#0f1c3f;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-size:14px;font-weight:600;display:inline-block">Set up your account</a>
+      <p style="color:#6e6e73;font-size:12px;margin-top:24px">This link expires in 24 hours. If you weren't expecting this, you can safely ignore it.</p>
+    </div>`;
+
+  await resend.emails.send({
+    from: FROM,
+    to: invite.email,
+    replyTo: REPLY_TO,
+    subject: "You've been invited as a Transaction Coordinator — Portfolio AI",
+    html,
+  });
+}
+
 export interface KpDealBrief {
   kpEmail: string;
   kpName: string | null;

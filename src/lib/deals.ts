@@ -332,6 +332,55 @@ export async function getRecentActivity(limit = 10): Promise<RecentActivity[]> {
   }));
 }
 
+export interface TransactionCoordinator {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  tabs: string[];
+  deals_count: number;
+}
+
+/** All TCs with their granted tabs and deal counts. */
+export async function getTransactionCoordinators(): Promise<TransactionCoordinator[]> {
+  const supabase = await createClient();
+  const [{ data: users }, { data: tabs }, { data: deals }] = await Promise.all([
+    supabase.from("users").select("id, full_name, email").eq("role", "tc").order("full_name"),
+    supabase.from("tc_tab_grants").select("tc_id, tab"),
+    supabase.from("deal_tcs").select("tc_id"),
+  ]);
+
+  const tabMap = new Map<string, string[]>();
+  for (const t of (tabs ?? [])) {
+    const list = tabMap.get(t.tc_id) ?? [];
+    list.push(t.tab);
+    tabMap.set(t.tc_id, list);
+  }
+
+  const countMap = new Map<string, number>();
+  for (const d of (deals ?? [])) {
+    countMap.set(d.tc_id, (countMap.get(d.tc_id) ?? 0) + 1);
+  }
+
+  return ((users ?? []) as { id: string; full_name: string | null; email: string | null }[]).map(
+    (u) => ({
+      ...u,
+      tabs: tabMap.get(u.id) ?? [],
+      deals_count: countMap.get(u.id) ?? 0,
+    }),
+  );
+}
+
+/** Active deals list for the TC invite modal (id + address only). */
+export async function getActiveDealsForTcInvite(): Promise<{ id: string; property_address: string }[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("deals")
+    .select("id, property_address")
+    .in("status", ["active", "pending"])
+    .order("property_address");
+  return (data ?? []) as { id: string; property_address: string }[];
+}
+
 /** Milestones for a deal, soonest target first. */
 export async function getDealMilestones(dealId: string) {
   const supabase = await createClient();

@@ -20,6 +20,7 @@ const NAV: NavItem[] = [
   { label: "Portfolio", href: "/dashboard/portfolio" },
   { label: "Deals", href: "/dashboard/deals" },
   { label: "Underwriting", href: "/dashboard/underwriting" },
+  { label: "Lending", href: "/dashboard/lending" },
   { label: "Key Principals", href: "/dashboard/kps" },
   { label: "Lenders", href: "/dashboard/lenders" },
   { label: "Documents", href: "/dashboard/documents" },
