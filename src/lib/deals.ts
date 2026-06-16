@@ -25,7 +25,7 @@ const BASE_COLUMNS = `
   assignment_fee, origination_fee, exit_strategy, lender_name, quote_number,
   acquisition_date, projected_close_date, owner_id, coowner_id,
   ai_summary, notes, created_at, updated_at,
-  tc_fee, attorney_fee, pm_fee, wholesaler_name,
+  tc_fee, attorney_fee, pm_fee, dpts_override, wholesaler_name,
   owner:owner_id(${PRINCIPAL}),
   coowner:coowner_id(${PRINCIPAL})
 `;

@@ -633,6 +633,7 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   tc_fee: { label: "TC Fee", numeric: true },
   attorney_fee: { label: "Attorney Fee", numeric: true },
   pm_fee: { label: "PM Fee", numeric: true },
+  dpts_override: { label: "Down Payment to Seller", numeric: true },
   wholesaler_name: { label: "Wholesaler Name", numeric: false },
 };
 
@@ -640,7 +641,7 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
 const WATERFALL_RECALC_FIELDS = new Set([
   "purchase_price", "ltv_percent", "seller_note_amount",
   "assignment_fee", "realtor_commission", "insurance_annual", "taxes_annual",
-  "tc_fee", "attorney_fee", "pm_fee",
+  "tc_fee", "attorney_fee", "pm_fee", "dpts_override",
 ]);
 
 export async function updateDealField(
@@ -681,7 +682,7 @@ async function recalcAndWriteWaterfall(dealId: string): Promise<void> {
   const admin = createAdminClient();
   const { data: row } = await admin
     .from("deals")
-    .select("purchase_price, ltv_percent, seller_note_amount, assignment_fee, realtor_commission, insurance_annual, taxes_annual, tc_fee, attorney_fee, pm_fee, status")
+    .select("purchase_price, ltv_percent, seller_note_amount, assignment_fee, realtor_commission, insurance_annual, taxes_annual, tc_fee, attorney_fee, pm_fee, dpts_override, status")
     .eq("id", dealId)
     .single();
   // Don't overwrite cashback on closed deals — that value was set at actual close.
@@ -697,6 +698,7 @@ async function recalcAndWriteWaterfall(dealId: string): Promise<void> {
     tc_fee: row.tc_fee ?? null,
     attorney_fee: row.attorney_fee ?? null,
     pm_fee: row.pm_fee ?? null,
+    dpts_override: row.dpts_override ?? null,
   });
   await admin.from("deals").update({
     cashback_at_close: w.netToBuyer,

@@ -58,7 +58,7 @@ import {
 
 type Extraction = Extract<UploadResult, { ok: true }>["extraction"];
 
-const ASSET_TYPES = ["Multifamily", "Commercial", "Mixed Use", "Industrial", "Land"];
+const ASSET_TYPES = ["Single Family Residential", "Multifamily", "Commercial", "Mixed Use", "Industrial", "Land"];
 
 const DEAD_REASONS = [
   "Not a fit",
@@ -308,7 +308,7 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
     for (const d of deals) {
       if (d.status === "active" || d.status === "pending") c.all += 1;
       if (d.status === "active" && d.escrow_date) c.escrow += 1;
-      if (d.status === "pending") c.pending += 1;
+      if ((d.status === "active" && !d.escrow_date) || d.status === "pending") c.pending += 1;
       if (d.status === "passed") c.passed += 1;
       if (d.status === "closed") c.closed += 1;
       if (d.status === "dead") c.dead += 1;
@@ -320,7 +320,8 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
     const matchStatus = (d: Deal) => {
       if (status === "all") return d.status === "active" || d.status === "pending";
       if (status === "escrow") return d.status === "active" && !!d.escrow_date;
-      return d.status === status; // pending | passed | dead
+      if (status === "pending") return (d.status === "active" && !d.escrow_date) || d.status === "pending";
+      return d.status === status; // passed | dead | closed
     };
     return deals.filter(
       (d) =>
@@ -558,7 +559,23 @@ function AddDealModal({ open, onClose }: { open: boolean; onClose: () => void })
         </div>
         <form onSubmit={onSubmit} className="space-y-4 px-6 py-5">
           <ModalField label="Property address" name="property_address" required />
-          <ModalSelect label="Asset type" name="asset_type" options={ASSET_TYPES} />
+          <label className="block">
+            <span className="mb-1.5 block text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+              Asset type
+            </span>
+            <select
+              name="asset_type"
+              defaultValue="Single Family Residential"
+              className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="Single Family Residential">Single Family Residential</option>
+              <option value="Multifamily">Multifamily</option>
+              <option value="Commercial">Commercial</option>
+              <option value="Mixed Use">Mixed Use</option>
+              <option value="Industrial">Industrial</option>
+              <option value="Land">Land</option>
+            </select>
+          </label>
           <div className="grid grid-cols-2 gap-3">
             <ModalField label="Purchase price" name="purchase_price" type="number" />
             <ModalField label="ARV" name="arv" type="number" />
@@ -845,6 +862,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
         tc_fee: deal.tc_fee,
         attorney_fee: deal.attorney_fee,
         pm_fee: deal.pm_fee,
+        dpts_override: deal.dpts_override ?? null,
       })
     : null;
 
@@ -1053,6 +1071,7 @@ function CardCashback({ deal, escrow }: { deal: Deal; escrow: boolean }) {
         tc_fee: deal.tc_fee,
         attorney_fee: deal.attorney_fee,
         pm_fee: deal.pm_fee,
+        dpts_override: deal.dpts_override ?? null,
       })
     : null;
 
@@ -1173,6 +1192,15 @@ function Metric({
 
 const TABS = ["Overview", "AI Underwriting", "Timeline", "Documents", "KPs", "Activity"] as const;
 type Tab = (typeof TABS)[number];
+
+const TAB_LABELS: Record<Tab, string> = {
+  "Overview": "OVERVIEW",
+  "AI Underwriting": "AI",
+  "Timeline": "TIMELINE",
+  "Documents": "DOCS",
+  "KPs": "KPS",
+  "Activity": "ACTIVITY",
+};
 
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
@@ -1452,16 +1480,16 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                     key={t}
                     type="button"
                     onClick={() => setTab(t)}
-                    className="-mb-px inline-flex items-center gap-1 px-3 py-2.5 transition-colors"
+                    className="-mb-px inline-flex items-center gap-1 px-2 py-2 transition-colors"
                     style={{
                       fontFamily: 'var(--font-body), sans-serif',
-                      fontSize: '0.75rem', fontWeight: 600,
-                      letterSpacing: '0.06em', textTransform: 'uppercase',
+                      fontSize: '0.65rem', fontWeight: 600,
+                      letterSpacing: '0.04em', textTransform: 'uppercase',
                       borderBottom: tab === t ? "2px solid #C9A84C" : "2px solid transparent",
                       color: tab === t ? "#C9A84C" : "#6b7280",
                     }}
                   >
-                    {t}
+                    {TAB_LABELS[t]}
                     {t === "AI Underwriting" && running && (
                       <span className="ml-0.5 h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "#C9A84C" }} />
                     )}
@@ -1469,7 +1497,7 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                 ))}
               </div>
 
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto min-h-0">
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={tab}
@@ -1546,6 +1574,7 @@ function OverviewTab({
   const [liveTcFee, setLiveTcFee] = useState<number>(deal.tc_fee ?? 0);
   const [liveAttorneyFee, setLiveAttorneyFee] = useState<number>(deal.attorney_fee ?? 0);
   const [livePmFee, setLivePmFee] = useState<number>(deal.pm_fee ?? 0);
+  const [liveDptsOverride, setLiveDptsOverride] = useState<number | null>(deal.dpts_override ?? null);
 
   // Reset live state when a different deal is opened
   useEffect(() => {
@@ -1559,6 +1588,7 @@ function OverviewTab({
     setLiveTcFee(deal.tc_fee ?? 0);
     setLiveAttorneyFee(deal.attorney_fee ?? 0);
     setLivePmFee(deal.pm_fee ?? 0);
+    setLiveDptsOverride(deal.dpts_override ?? null);
   }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function makeOnSaved(field: string) {
@@ -1581,6 +1611,7 @@ function OverviewTab({
         tc_fee: liveTcFee,
         attorney_fee: liveAttorneyFee,
         pm_fee: livePmFee,
+        dpts_override: liveDptsOverride,
       })
     : null;
 
@@ -1711,6 +1742,12 @@ function OverviewTab({
           raw={deal.pm_fee ?? null} display={money(deal.pm_fee)}
           onSaved={makeOnSaved("pm_fee")}
           onLiveChange={(v) => setLivePmFee(v === "" ? 0 : Number(v))}
+        />
+        <EditableRow
+          dealId={deal.id} field="dpts_override" label="Down Payment to Seller" numeric
+          raw={deal.dpts_override ?? null} display={deal.dpts_override != null ? money(deal.dpts_override) : "— (auto)"}
+          onSaved={makeOnSaved("dpts_override")}
+          onLiveChange={(v) => setLiveDptsOverride(v === "" ? null : Number(v))}
         />
       </Section>
 
@@ -2277,6 +2314,7 @@ function AiTab({
         tc_fee: deal.tc_fee,
         attorney_fee: deal.attorney_fee,
         pm_fee: deal.pm_fee,
+        dpts_override: deal.dpts_override ?? null,
       })
     : null;
   const cashflow = deal.ai_analysis?.cashflow ?? null;
@@ -2911,11 +2949,17 @@ function Row({
 
 function EmptyState({ hasDeals }: { hasDeals: boolean }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border bg-card py-16 text-center">
-      <p className="text-sm font-medium text-primary">
+    <div
+      className="rounded-2xl py-16 text-center"
+      style={{
+        background: "#1a1d27",
+        border: "2px dashed rgba(255,255,255,0.08)",
+      }}
+    >
+      <p className="text-sm font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>
         {hasDeals ? "No deals match this filter" : "No deals yet"}
       </p>
-      <p className="mt-1 text-xs text-muted-foreground">
+      <p className="mt-1 text-xs" style={{ color: "rgba(255,255,255,0.35)" }}>
         {hasDeals
           ? "Try a different status or structure."
           : "Deals appear here once they're submitted or added."}

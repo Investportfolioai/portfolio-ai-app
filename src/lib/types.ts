@@ -140,6 +140,8 @@ export interface Deal {
   tc_fee: number | null;
   attorney_fee: number | null;
   pm_fee: number | null;
+  /** Manual override for the DPTS (Down Payment to Seller) waterfall line. When set, replaces purchase_price − seller_note_amount. */
+  dpts_override: number | null;
   wholesaler_name: string | null;
 
   /** Underwriting scores, 0–100, nullable (see migration 20260603010003). */
@@ -250,6 +252,7 @@ export interface WaterfallInput {
   tc_fee?: number | null;
   attorney_fee?: number | null;
   pm_fee?: number | null;
+  dpts_override?: number | null;
 }
 
 export interface WaterfallResult {

@@ -25,14 +25,14 @@ export default function DashboardHome() {
         zIndex: 0,
       }} />
       <div className="relative mx-auto max-w-7xl space-y-6" style={{ zIndex: 1 }}>
-        {/* Opening beat: pipeline situation at a glance */}
-        <PipelineStatus />
+        {/* Historical context */}
+        <AchievementBoard />
 
         {/* Live operational data: KPI row + pipeline panels */}
         <DashboardIntel />
 
-        {/* Historical context: below the fold */}
-        <AchievementBoard />
+        {/* Pipeline situation at a glance */}
+        <PipelineStatus />
 
         {/* Live Activity */}
         <LiveActivity />

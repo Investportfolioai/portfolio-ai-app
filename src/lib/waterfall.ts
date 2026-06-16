@@ -12,7 +12,7 @@ export function calculateMorbyWaterfall(input: WaterfallInput): WaterfallResult 
   const prepaidTaxes = input.taxes_annual ?? contractPrice * 0.012;
   const realtorCommission = input.realtor_commission ?? 0;
   const sellerNoteBalance = input.seller_note_amount ?? 0;
-  const dpts = contractPrice - sellerNoteBalance; // DPTS = cash to seller = purchase_price − seller note balance
+  const dpts = input.dpts_override != null ? input.dpts_override : contractPrice - sellerNoteBalance;
   const assignmentFee = input.assignment_fee ?? 0;
 
   const tcFee = input.tc_fee ?? 0;
