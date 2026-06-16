@@ -777,6 +777,46 @@ function PendingGradeBadge() {
   );
 }
 
+/** Card-level status pill — exact GradePill structure, no dot.
+ *  active + escrow_date → "Escrow" (green); active/pending → "Pending" (amber). */
+function DealCardStatusPill({ deal }: { deal: Deal }) {
+  if (deal.status === "active" && deal.escrow_date) {
+    return (
+      <span
+        title="Status: In escrow"
+        aria-label="Status: Escrow"
+        style={{
+          display: "inline-flex", alignItems: "center", gap: "3px",
+          background: "rgba(34,197,94,0.12)", color: "#22c55e",
+          borderRadius: "999px", padding: "2px 8px",
+          fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em",
+          fontFamily: "var(--font-mono), monospace",
+        }}
+      >
+        Escrow
+      </span>
+    );
+  }
+  if (deal.status === "active" || deal.status === "pending") {
+    return (
+      <span
+        title="Status: Pending"
+        aria-label="Status: Pending"
+        style={{
+          display: "inline-flex", alignItems: "center", gap: "3px",
+          background: "rgba(245,158,11,0.12)", color: "#f59e0b",
+          borderRadius: "999px", padding: "2px 8px",
+          fontSize: "10px", fontWeight: 700, letterSpacing: "0.04em",
+          fontFamily: "var(--font-mono), monospace",
+        }}
+      >
+        Pending
+      </span>
+    );
+  }
+  return <StatusBadge status={deal.status} />;
+}
+
 const GRADE_FULL_PILL: Record<string, string> = { ACQ: "Acquisition", STAB: "Stabilization" };
 
 function GradePill({ label, value }: { label: string; value: number }) {
@@ -970,7 +1010,7 @@ function DealCard({ deal, onOpen, onDeleted }: { deal: Deal; onOpen: () => void;
           <span style={{ fontSize: '10px', color: '#6b7280', fontStyle: 'italic' }}>Pending</span>
         )}
         <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '10px' }}>·</span>
-        <StatusBadge status={deal.status} />
+        <DealCardStatusPill deal={deal} />
         {deal.escrow_date && daysInEscrow != null && (
           <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono), monospace', color: '#6b7280' }}>
             {daysInEscrow}d
