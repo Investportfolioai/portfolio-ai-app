@@ -43,15 +43,6 @@ export async function searchDealThreads(params: {
 }): Promise<GmailThread[]> {
   if (!isGmailConfigured()) return [];
 
-  const { google } = await import("googleapis");
-  const oauth2 = new google.auth.OAuth2(
-    process.env.GMAIL_CLIENT_ID,
-    process.env.GMAIL_CLIENT_SECRET,
-  );
-  oauth2.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
-
-  const gmail = google.gmail({ version: "v1", auth: oauth2 });
-
   // Build search query: lender name + property address keywords
   const terms: string[] = [];
   if (params.lenderName) terms.push(`"${params.lenderName}"`);
@@ -61,6 +52,15 @@ export async function searchDealThreads(params: {
   const q = terms.length ? terms.join(" OR ") : params.propertyAddress;
 
   try {
+    const { google } = await import("googleapis");
+    const oauth2 = new google.auth.OAuth2(
+      process.env.GMAIL_CLIENT_ID,
+      process.env.GMAIL_CLIENT_SECRET,
+    );
+    oauth2.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
+
+    const gmail = google.gmail({ version: "v1", auth: oauth2 });
+
     const listRes = await gmail.users.threads.list({
       userId: "me",
       q,

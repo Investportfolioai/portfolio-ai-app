@@ -86,26 +86,32 @@ async function LendingDetailContent({ dealId }: { dealId: string }) {
   ]);
 
   const [{ data: checklistRows }, { data: readinessRows }, { data: drafts }, gmailResult] = await Promise.all([
-    supabase
-      .from("lending_checklist_items")
-      .select("id, stage, position, item_text, completed, completed_at")
-      .eq("deal_id", dealId)
-      .order("stage")
-      .order("position"),
-    supabase
-      .from("lender_readiness_docs")
-      .select("id, doc_name, asset_class, received, received_at, position")
-      .eq("deal_id", dealId)
-      .order("position"),
-    supabase
-      .from("addendum_drafts")
-      .select("id, title, content, status, version, created_at")
-      .eq("deal_id", dealId)
-      .order("version", { ascending: false }),
+    Promise.resolve(
+      supabase
+        .from("lending_checklist_items")
+        .select("id, stage, position, item_text, completed, completed_at")
+        .eq("deal_id", dealId)
+        .order("stage")
+        .order("position"),
+    ).catch(() => ({ data: null })),
+    Promise.resolve(
+      supabase
+        .from("lender_readiness_docs")
+        .select("id, doc_name, asset_class, received, received_at, position")
+        .eq("deal_id", dealId)
+        .order("position"),
+    ).catch(() => ({ data: null })),
+    Promise.resolve(
+      supabase
+        .from("addendum_drafts")
+        .select("id, title, content, status, version, created_at")
+        .eq("deal_id", dealId)
+        .order("version", { ascending: false }),
+    ).catch(() => ({ data: null })),
     getDealGmailThreads({
       lenderName: (deal as { lender_name: string | null }).lender_name,
       propertyAddress: (deal as { property_address: string }).property_address,
-    }),
+    }).catch(() => ({ threads: [] as GmailThread[], configured: false })),
   ]);
 
   const checklist = (checklistRows ?? []) as ChecklistItem[];
