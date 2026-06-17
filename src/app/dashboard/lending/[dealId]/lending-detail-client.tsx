@@ -440,7 +440,7 @@ function ChecklistRow({ item, dealId }: { item: ChecklistItem; dealId: string })
     const next = !optimisticCompleted;
     start(async () => {
       setOptimistic(next);
-      await toggleChecklistItem(item.id, next);
+      await toggleChecklistItem(item.id, next, dealId);
     });
   }
 
@@ -560,7 +560,7 @@ function ReadinessDocRow({ doc, dealId }: { doc: ReadinessDoc; dealId: string })
     const next = !optimisticReceived;
     start(async () => {
       setOptimistic(next);
-      await toggleReadinessDoc(doc.id, next);
+      await toggleReadinessDoc(doc.id, next, dealId);
     });
   }
 

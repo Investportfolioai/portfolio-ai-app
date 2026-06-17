@@ -92,6 +92,7 @@ export async function seedDealReadinessDocs(
 export async function toggleChecklistItem(
   itemId: string,
   completed: boolean,
+  dealId: string,
 ): Promise<LendingResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Not authorized." };
@@ -107,6 +108,7 @@ export async function toggleChecklistItem(
     .eq("id", itemId);
 
   if (error) return { ok: false, error: error.message };
+  revalidatePath(`/dashboard/lending/${dealId}`);
   return { ok: true };
 }
 
@@ -114,6 +116,7 @@ export async function toggleChecklistItem(
 export async function toggleReadinessDoc(
   docId: string,
   received: boolean,
+  dealId: string,
 ): Promise<LendingResult> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Not authorized." };
@@ -128,6 +131,7 @@ export async function toggleReadinessDoc(
     .eq("id", docId);
 
   if (error) return { ok: false, error: error.message };
+  revalidatePath(`/dashboard/lending/${dealId}`);
   return { ok: true };
 }
 
