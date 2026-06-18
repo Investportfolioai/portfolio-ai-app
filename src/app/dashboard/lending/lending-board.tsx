@@ -4,14 +4,14 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import type { LendingDeal } from "./page";
 
-const STAGE_LABEL: Record<string, string> = {
-  prospecting: "Prospecting",
-  structuring: "Structuring",
+const LENDING_STAGE_LABEL: Record<string, string> = {
   loi: "LOI",
-  contract: "Contract",
-  rehab: "Rehab",
-  stabilizing: "Stabilizing",
-  exited: "Exited",
+  purchase_contract: "Purchase Contract",
+  emd_setup: "EMD & Deal Setup",
+  lender_submission: "Lender Submission",
+  appraisal_insurance: "Appraisal & Insurance",
+  clear_to_close: "Clear to Close",
+  closed: "Closed",
 };
 
 function pct(done: number, total: number): number {
@@ -281,7 +281,7 @@ function DealRow({ deal }: { deal: LendingDeal }) {
             color: "rgba(255,255,255,0.6)",
           }}
         >
-          {STAGE_LABEL[deal.stage] ?? deal.stage}
+          {LENDING_STAGE_LABEL[deal.effective_stage] ?? deal.effective_stage}
         </span>
       </div>
 

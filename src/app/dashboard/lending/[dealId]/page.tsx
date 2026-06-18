@@ -2,7 +2,8 @@ import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
-import { seedDealChecklist, seedDealReadinessDocs, getDealGmailThreads, isGmailConfigured } from "../lending-actions";
+import { canManage } from "@/lib/permissions";
+import { seedDealChecklist, seedDealReadinessDocs, getDealGmailThreads } from "../lending-actions";
 import type { GmailThread } from "@/lib/gmail";
 import { LendingDetailClient } from "./lending-detail-client";
 
@@ -58,6 +59,20 @@ const LENDING_STAGES = [
   "closed",
 ] as const;
 
+function computeAutoStage(
+  byStage: Map<string, ChecklistItem[]>,
+  stageOrder: readonly string[],
+): string {
+  let hasAnyItems = false;
+  for (const stage of stageOrder) {
+    const items = byStage.get(stage) ?? [];
+    if (items.length === 0) continue;
+    hasAnyItems = true;
+    if (!items.every((i) => i.completed)) return stage;
+  }
+  return hasAnyItems ? "closed" : "loi";
+}
+
 async function LendingDetailContent({ dealId }: { dealId: string }) {
   const user = await getSessionUser();
   if (!user) redirect("/login");
@@ -66,7 +81,7 @@ async function LendingDetailContent({ dealId }: { dealId: string }) {
 
   const { data: deal } = await supabase
     .from("deals")
-    .select("id, property_address, stage, status, lender_name, ai_analysis, purchase_price")
+    .select("id, property_address, stage, status, stage_override, lender_name, ai_analysis, purchase_price")
     .eq("id", dealId)
     .maybeSingle();
 
@@ -129,16 +144,22 @@ async function LendingDetailContent({ dealId }: { dealId: string }) {
     byStage.set(item.stage, list);
   }
 
+  const stageOverride = (deal as { stage_override: string | null }).stage_override;
+  const effectiveStage = stageOverride ?? computeAutoStage(byStage, LENDING_STAGES);
+
   return (
     <LendingDetailClient
       deal={{
         id: deal.id,
         property_address: (deal as { property_address: string }).property_address,
         stage: (deal as { stage: string }).stage,
+        stage_override: stageOverride,
         lender_name: (deal as { lender_name: string | null }).lender_name,
         asset_type: assetType,
         asset_class: assetClass,
       }}
+      effectiveStage={effectiveStage}
+      canEditStage={canManage(user.role)}
       checklistByStage={Object.fromEntries(byStage)}
       stageOrder={LENDING_STAGES as unknown as string[]}
       readinessDocs={readinessDocs}

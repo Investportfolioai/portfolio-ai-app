@@ -35,7 +35,7 @@ async function TcLendingContent({ dealId }: { dealId: string }) {
 
   const { data: deal } = await supabase
     .from("deals")
-    .select("id, property_address, stage, status, lender_name, ai_analysis, purchase_price")
+    .select("id, property_address, stage, status, stage_override, lender_name, ai_analysis, purchase_price")
     .eq("id", dealId)
     .maybeSingle();
 
@@ -85,16 +85,32 @@ async function TcLendingContent({ dealId }: { dealId: string }) {
     byStage.set(item.stage, list);
   }
 
+  const stageOverride = (deal as { stage_override: string | null }).stage_override;
+  let effectiveStage = stageOverride;
+  if (!effectiveStage) {
+    let hasAnyItems = false;
+    for (const stage of LENDING_STAGES) {
+      const items = byStage.get(stage) ?? [];
+      if (items.length === 0) continue;
+      hasAnyItems = true;
+      if (!items.every((i) => i.completed)) { effectiveStage = stage; break; }
+    }
+    if (!effectiveStage) effectiveStage = hasAnyItems ? "closed" : "loi";
+  }
+
   return (
     <LendingDetailClient
       deal={{
         id: deal.id,
         property_address: (deal as { property_address: string }).property_address,
         stage: (deal as { stage: string }).stage,
+        stage_override: stageOverride,
         lender_name: (deal as { lender_name: string | null }).lender_name,
         asset_type: assetType,
         asset_class: assetClass,
       }}
+      effectiveStage={effectiveStage}
+      canEditStage={false}
       checklistByStage={Object.fromEntries(byStage)}
       stageOrder={LENDING_STAGES as unknown as string[]}
       readinessDocs={readinessDocs}

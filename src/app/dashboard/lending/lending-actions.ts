@@ -112,6 +112,26 @@ export async function toggleChecklistItem(
   return { ok: true };
 }
 
+/** Set or clear the manual lending stage override on a deal. */
+export async function setDealStageOverride(
+  dealId: string,
+  stage: string | null,
+): Promise<LendingResult> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("deals")
+    .update({ stage_override: stage })
+    .eq("id", dealId);
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath(`/dashboard/lending/${dealId}`);
+  revalidatePath("/dashboard/lending");
+  return { ok: true };
+}
+
 /** Toggle a lender readiness doc received state. */
 export async function toggleReadinessDoc(
   docId: string,

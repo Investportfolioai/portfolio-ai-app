@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useOptimistic } from "react";
 import Link from "next/link";
-import { toggleChecklistItem, toggleReadinessDoc, createAddendumDraft, draftGmailReply } from "../lending-actions";
+import { toggleChecklistItem, toggleReadinessDoc, createAddendumDraft, draftGmailReply, setDealStageOverride } from "../lending-actions";
 import type { ChecklistItem, ReadinessDoc, AddendumDraft, GmailThread } from "./page";
 
 // ---------------------------------------------------------------------------
@@ -43,10 +43,13 @@ interface Props {
     id: string;
     property_address: string;
     stage: string;
+    stage_override: string | null;
     lender_name: string | null;
     asset_type: string;
     asset_class: "commercial" | "residential";
   };
+  effectiveStage: string;
+  canEditStage: boolean;
   checklistByStage: Record<string, ChecklistItem[]>;
   stageOrder: string[];
   readinessDocs: ReadinessDoc[];
@@ -61,6 +64,8 @@ interface Props {
 
 export function LendingDetailClient({
   deal,
+  effectiveStage,
+  canEditStage,
   checklistByStage,
   stageOrder,
   readinessDocs,
@@ -128,6 +133,13 @@ export function LendingDetailClient({
                 Lender: {deal.lender_name}
               </span>
             )}
+            <StageOverrideDropdown
+              dealId={deal.id}
+              stageOverride={deal.stage_override}
+              effectiveStage={effectiveStage}
+              stageOrder={stageOrder}
+              canEdit={canEditStage}
+            />
           </div>
         </div>
 
@@ -238,6 +250,82 @@ function ProgressBar({ value, color }: { value: number; color: string }) {
           transition: "width 400ms ease",
         }}
       />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Stage override dropdown
+// ---------------------------------------------------------------------------
+
+function StageOverrideDropdown({
+  dealId,
+  stageOverride,
+  effectiveStage,
+  stageOrder,
+  canEdit,
+}: {
+  dealId: string;
+  stageOverride: string | null;
+  effectiveStage: string;
+  stageOrder: string[];
+  canEdit: boolean;
+}) {
+  const [optimisticOverride, setOptimisticOverride] = useOptimistic(stageOverride);
+  const [, start] = useTransition();
+  const isOverridden = optimisticOverride !== null;
+
+  function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const val = e.target.value;
+    const next = val === "__auto__" ? null : val;
+    start(async () => {
+      setOptimisticOverride(next);
+      await setDealStageOverride(dealId, next);
+    });
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+      <span
+        style={{
+          fontSize: "10px",
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          color: "rgba(255,255,255,0.25)",
+        }}
+      >
+        Stage
+      </span>
+      <select
+        value={optimisticOverride ?? "__auto__"}
+        onChange={handleChange}
+        disabled={!canEdit}
+        aria-label="Deal lending stage"
+        style={{
+          background: canEdit ? "rgba(255,255,255,0.06)" : "transparent",
+          border: canEdit
+            ? `1px solid ${isOverridden ? "rgba(201,168,76,0.4)" : "rgba(255,255,255,0.1)"}`
+            : "none",
+          borderRadius: "8px",
+          padding: "3px 8px",
+          fontSize: "11px",
+          fontWeight: isOverridden ? 600 : 400,
+          color: isOverridden
+            ? (canEdit ? "#C9A84C" : "rgba(201,168,76,0.55)")
+            : "rgba(255,255,255,0.45)",
+          cursor: canEdit ? "pointer" : "default",
+          outline: "none",
+          fontFamily: "var(--font-body, DM Sans, sans-serif)",
+          appearance: canEdit ? "auto" : "none",
+          pointerEvents: canEdit ? "auto" : "none",
+        }}
+      >
+        <option value="__auto__">Auto — {STAGE_META[effectiveStage]?.label ?? effectiveStage}</option>
+        {stageOrder.map((s) => (
+          <option key={s} value={s}>{STAGE_META[s]?.label ?? s}</option>
+        ))}
+      </select>
     </div>
   );
 }

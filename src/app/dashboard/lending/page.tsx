@@ -11,6 +11,7 @@ export type LendingDeal = {
   id: string;
   property_address: string;
   stage: string;
+  effective_stage: string;
   status: string;
   lender_name: string | null;
   asset_type: string | null;
@@ -20,6 +21,24 @@ export type LendingDeal = {
   readiness_done: number;
 };
 
+const BOARD_STAGE_ORDER = [
+  "loi", "purchase_contract", "emd_setup", "lender_submission",
+  "appraisal_insurance", "clear_to_close", "closed",
+] as const;
+
+function computeBoardAutoStage(
+  stageMap: Map<string, { total: number; done: number }>,
+): string {
+  let hasAnyItems = false;
+  for (const stage of BOARD_STAGE_ORDER) {
+    const s = stageMap.get(stage);
+    if (!s || s.total === 0) continue;
+    hasAnyItems = true;
+    if (s.done < s.total) return stage;
+  }
+  return hasAnyItems ? "closed" : "loi";
+}
+
 async function LendingContent() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
@@ -28,7 +47,7 @@ async function LendingContent() {
 
   const { data: deals } = await supabase
     .from("deals")
-    .select("id, property_address, stage, status, lender_name, ai_analysis")
+    .select("id, property_address, stage, status, stage_override, lender_name, ai_analysis")
     .in("status", ["active", "pending"])
     .order("property_address");
 
@@ -38,7 +57,7 @@ async function LendingContent() {
     dealIds.length
       ? supabase
           .from("lending_checklist_items")
-          .select("deal_id, completed")
+          .select("deal_id, stage, completed")
           .in("deal_id", dealIds)
       : Promise.resolve({ data: [] }),
     dealIds.length
@@ -51,11 +70,19 @@ async function LendingContent() {
 
   // Build per-deal summary maps
   const checkMap = new Map<string, { total: number; done: number }>();
-  for (const r of (checklistRows ?? []) as { deal_id: string; completed: boolean }[]) {
+  const checkByDealStage = new Map<string, Map<string, { total: number; done: number }>>();
+  for (const r of (checklistRows ?? []) as { deal_id: string; stage: string; completed: boolean }[]) {
     const cur = checkMap.get(r.deal_id) ?? { total: 0, done: 0 };
     cur.total += 1;
     if (r.completed) cur.done += 1;
     checkMap.set(r.deal_id, cur);
+
+    let stageMap = checkByDealStage.get(r.deal_id);
+    if (!stageMap) { stageMap = new Map(); checkByDealStage.set(r.deal_id, stageMap); }
+    const sc = stageMap.get(r.stage) ?? { total: 0, done: 0 };
+    sc.total += 1;
+    if (r.completed) sc.done += 1;
+    stageMap.set(r.stage, sc);
   }
 
   const readyMap = new Map<string, { total: number; done: number }>();
@@ -71,12 +98,14 @@ async function LendingContent() {
     property_address: string;
     stage: string;
     status: string;
+    stage_override: string | null;
     lender_name: string | null;
     ai_analysis: { extracted_deal_data?: { property_type?: string } } | null;
   }[]).map((d) => ({
     id: d.id,
     property_address: d.property_address,
     stage: d.stage,
+    effective_stage: d.stage_override ?? computeBoardAutoStage(checkByDealStage.get(d.id) ?? new Map()),
     status: d.status,
     lender_name: d.lender_name,
     asset_type: d.ai_analysis?.extracted_deal_data?.property_type ?? null,
