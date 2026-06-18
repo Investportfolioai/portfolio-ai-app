@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
 import { fireWebhookById } from "@/lib/webhooks";
+import { seedDealChecklistAdmin, seedDealReadinessDocsAdmin } from "@/lib/lending-seed";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,29 @@ export async function POST(req: Request) {
     .update({ escrow_date: new Date().toISOString(), status: "active" })
     .eq("id", body.deal_id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  // Seed lending checklist + readiness docs immediately; mark LOI & Purchase Contract complete.
+  const { data: deal } = await admin
+    .from("deals")
+    .select("ai_analysis")
+    .eq("id", body.deal_id)
+    .maybeSingle();
+
+  const propertyType: string =
+    (deal as { ai_analysis?: { extracted_deal_data?: { property_type?: string } } | null } | null)
+      ?.ai_analysis?.extracted_deal_data?.property_type ?? "";
+  const assetClass: "commercial" | "residential" =
+    propertyType.toLowerCase() === "commercial" ? "commercial" : "residential";
+
+  await Promise.all([
+    seedDealChecklistAdmin(body.deal_id, true).catch((e) =>
+      console.error("lending checklist seed failed:", e),
+    ),
+    seedDealReadinessDocsAdmin(body.deal_id, assetClass).catch((e) =>
+      console.error("lending readiness seed failed:", e),
+    ),
+  ]);
+
   fireWebhookById("deal.escrow", body.deal_id);
   return NextResponse.json({ ok: true });
 }

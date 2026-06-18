@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
-import { seedDealChecklist, seedDealReadinessDocs, getDealGmailThreads } from "../lending-actions";
+import { getDealGmailThreads } from "../lending-actions";
 import type { GmailThread } from "@/lib/gmail";
 import { LendingDetailClient } from "./lending-detail-client";
 
@@ -93,12 +93,6 @@ async function LendingDetailContent({ dealId }: { dealId: string }) {
 
   const assetClass: "commercial" | "residential" =
     assetType.toLowerCase() === "commercial" ? "commercial" : "residential";
-
-  // Auto-seed on first view (idempotent)
-  await Promise.all([
-    seedDealChecklist(dealId),
-    seedDealReadinessDocs(dealId, assetClass),
-  ]);
 
   const [{ data: checklistRows }, { data: readinessRows }, { data: drafts }, gmailResult] = await Promise.all([
     Promise.resolve(

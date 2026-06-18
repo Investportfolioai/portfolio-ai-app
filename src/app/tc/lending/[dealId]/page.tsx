@@ -4,7 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/auth";
 import { LendingDetailClient } from "@/app/dashboard/lending/[dealId]/lending-detail-client";
 import type { ChecklistItem, ReadinessDoc, AddendumDraft } from "@/app/dashboard/lending/[dealId]/page";
-import { seedDealChecklist, seedDealReadinessDocs } from "@/app/dashboard/lending/lending-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -47,12 +46,6 @@ async function TcLendingContent({ dealId }: { dealId: string }) {
 
   const assetClass: "commercial" | "residential" =
     assetType.toLowerCase() === "commercial" ? "commercial" : "residential";
-
-  // Seed on first view (idempotent — owner-level server action)
-  await Promise.all([
-    seedDealChecklist(dealId),
-    seedDealReadinessDocs(dealId, assetClass),
-  ]);
 
   const [{ data: checklistRows }, { data: readinessRows }, { data: drafts }] = await Promise.all([
     supabase
