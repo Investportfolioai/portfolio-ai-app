@@ -48,7 +48,8 @@ async function LendingContent() {
   const { data: deals } = await supabase
     .from("deals")
     .select("id, property_address, stage, status, stage_override, lender_name, ai_analysis")
-    .in("status", ["active", "pending"])
+    .eq("status", "active")
+    .not("escrow_date", "is", null)
     .order("property_address");
 
   const dealIds = (deals ?? []).map((d) => d.id);
