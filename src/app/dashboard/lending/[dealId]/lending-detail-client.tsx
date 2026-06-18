@@ -187,7 +187,7 @@ export function LendingDetailClient({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "24px", alignItems: "start", minWidth: "640px" }}>
           {/* Left: checklist stepper */}
           <div>
-            <SectionLabel>7-Stage Checklist</SectionLabel>
+            <SectionLabel>{stageOrder.length}-Stage Checklist</SectionLabel>
             <ChecklistStepper
               stages={stageOrder}
               byStage={checklistByStage}
@@ -273,19 +273,23 @@ function StageOverrideDropdown({
 }) {
   const [optimisticOverride, setOptimisticOverride] = useOptimistic(stageOverride);
   const [, start] = useTransition();
+  const [stageError, setStageError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
   const isOverridden = optimisticOverride !== null;
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
     const next = val === "__auto__" ? null : val;
+    setStageError(null);
     start(async () => {
       setOptimisticOverride(next);
-      await setDealStageOverride(dealId, next);
+      const res = await setDealStageOverride(dealId, next);
+      if (!res.ok) setStageError(res.error);
     });
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "5px", flexWrap: "wrap" }}>
       <span
         style={{
           fontSize: "10px",
@@ -300,8 +304,15 @@ function StageOverrideDropdown({
       <select
         value={optimisticOverride ?? "__auto__"}
         onChange={handleChange}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         disabled={!canEdit}
         aria-label="Deal lending stage"
+        title={
+          isOverridden
+            ? `Manually set to ${STAGE_META[optimisticOverride!]?.label ?? optimisticOverride}. Select "Auto" to restore checklist-computed stage.`
+            : "Stage is auto-computed from checklist progress."
+        }
         style={{
           background: canEdit ? "rgba(255,255,255,0.06)" : "transparent",
           border: canEdit
@@ -315,7 +326,8 @@ function StageOverrideDropdown({
             ? (canEdit ? "#C9A84C" : "rgba(201,168,76,0.55)")
             : "rgba(255,255,255,0.45)",
           cursor: canEdit ? "pointer" : "default",
-          outline: "none",
+          outline: canEdit && focused ? "2px solid rgba(201,168,76,0.5)" : "none",
+          outlineOffset: "2px",
           fontFamily: "var(--font-body, DM Sans, sans-serif)",
           appearance: canEdit ? "auto" : "none",
           pointerEvents: canEdit ? "auto" : "none",
@@ -326,6 +338,25 @@ function StageOverrideDropdown({
           <option key={s} value={s}>{STAGE_META[s]?.label ?? s}</option>
         ))}
       </select>
+      {isOverridden && canEdit && (
+        <span
+          style={{
+            fontSize: "9px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.06em",
+            color: "rgba(201,168,76,0.7)",
+            background: "rgba(201,168,76,0.1)",
+            padding: "1px 5px",
+            borderRadius: "3px",
+          }}
+        >
+          Override
+        </span>
+      )}
+      {stageError && (
+        <span style={{ fontSize: "10px", color: "#ef4444", width: "100%" }}>{stageError}</span>
+      )}
     </div>
   );
 }
@@ -523,70 +554,80 @@ function StageAccordion({
 function ChecklistRow({ item, dealId }: { item: ChecklistItem; dealId: string }) {
   const [optimisticCompleted, setOptimistic] = useOptimistic(item.completed);
   const [, start] = useTransition();
+  const [rowError, setRowError] = useState<string | null>(null);
 
   function toggle() {
     const next = !optimisticCompleted;
+    setRowError(null);
     start(async () => {
       setOptimistic(next);
-      await toggleChecklistItem(item.id, next, dealId);
+      const res = await toggleChecklistItem(item.id, next, dealId);
+      if (!res.ok) setRowError(res.error);
     });
   }
 
   return (
-    <label
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: "10px",
-        padding: "8px 16px",
-        cursor: "pointer",
-        transition: "background 150ms ease",
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLLabelElement).style.background = "rgba(255,255,255,0.02)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLLabelElement).style.background = "transparent"; }}
-    >
-      <input
-        type="checkbox"
-        checked={optimisticCompleted}
-        onChange={toggle}
-        style={{ position: "absolute", opacity: 0, width: "1px", height: "1px", pointerEvents: "none" }}
-      />
-      <div
-        aria-hidden="true"
+    <div>
+      <label
         style={{
-          width: "16px",
-          height: "16px",
-          borderRadius: "4px",
-          border: optimisticCompleted
-            ? "1px solid rgba(34,197,94,0.6)"
-            : "1px solid rgba(255,255,255,0.2)",
-          background: optimisticCompleted ? "rgba(34,197,94,0.15)" : "transparent",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          marginTop: "1px",
-          transition: "background 150ms ease, border-color 150ms ease",
+          alignItems: "flex-start",
+          gap: "10px",
+          padding: "8px 16px",
+          cursor: "pointer",
+          transition: "background 150ms ease",
         }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLLabelElement).style.background = "rgba(255,255,255,0.02)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLLabelElement).style.background = "transparent"; }}
       >
-        {optimisticCompleted && (
-          <svg aria-hidden="true" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 13l4 4L19 7" />
-          </svg>
-        )}
-      </div>
-      <span
-        style={{
-          fontSize: "13px",
-          color: optimisticCompleted ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.8)",
-          textDecoration: optimisticCompleted ? "line-through" : "none",
-          lineHeight: "1.4",
-          transition: "color 150ms ease",
-        }}
-      >
-        {item.item_text}
-      </span>
-    </label>
+        <input
+          type="checkbox"
+          checked={optimisticCompleted}
+          onChange={toggle}
+          style={{ position: "absolute", opacity: 0, width: "1px", height: "1px", pointerEvents: "none" }}
+        />
+        <div
+          aria-hidden="true"
+          style={{
+            width: "16px",
+            height: "16px",
+            borderRadius: "4px",
+            border: optimisticCompleted
+              ? "1px solid rgba(34,197,94,0.6)"
+              : "1px solid rgba(255,255,255,0.2)",
+            background: optimisticCompleted ? "rgba(34,197,94,0.15)" : "transparent",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            marginTop: "1px",
+            transition: "background 150ms ease, border-color 150ms ease",
+          }}
+        >
+          {optimisticCompleted && (
+            <svg aria-hidden="true" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </div>
+        <span
+          style={{
+            fontSize: "13px",
+            color: optimisticCompleted ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.8)",
+            textDecoration: optimisticCompleted ? "line-through" : "none",
+            lineHeight: "1.4",
+            transition: "color 150ms ease",
+          }}
+        >
+          {item.item_text}
+        </span>
+      </label>
+      {rowError && (
+        <p style={{ fontSize: "10px", color: "#ef4444", margin: "0 0 4px 42px" }}>
+          Failed to save — {rowError}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -643,64 +684,74 @@ function ReadinessPanel({ docs, dealId }: { docs: ReadinessDoc[]; dealId: string
 function ReadinessDocRow({ doc, dealId }: { doc: ReadinessDoc; dealId: string }) {
   const [optimisticReceived, setOptimistic] = useOptimistic(doc.received);
   const [, start] = useTransition();
+  const [rowError, setRowError] = useState<string | null>(null);
 
   function toggle() {
     const next = !optimisticReceived;
+    setRowError(null);
     start(async () => {
       setOptimistic(next);
-      await toggleReadinessDoc(doc.id, next, dealId);
+      const res = await toggleReadinessDoc(doc.id, next, dealId);
+      if (!res.ok) setRowError(res.error);
     });
   }
 
   return (
-    <div
-      role="checkbox"
-      aria-checked={optimisticReceived}
-      tabIndex={0}
-      onClick={toggle}
-      onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle(); } }}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        padding: "6px 0",
-        borderBottom: "1px solid rgba(255,255,255,0.03)",
-        cursor: "pointer",
-      }}
-    >
+    <div>
       <div
-        aria-hidden="true"
+        role="checkbox"
+        aria-checked={optimisticReceived}
+        tabIndex={0}
+        onClick={toggle}
+        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle(); } }}
         style={{
-          width: "14px",
-          height: "14px",
-          borderRadius: "3px",
-          border: optimisticReceived
-            ? "1px solid rgba(34,197,94,0.6)"
-            : "1px solid rgba(255,255,255,0.15)",
-          background: optimisticReceived ? "rgba(34,197,94,0.15)" : "transparent",
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          transition: "background 150ms ease, border-color 150ms ease",
+          gap: "8px",
+          padding: "6px 0",
+          borderBottom: "1px solid rgba(255,255,255,0.03)",
+          cursor: "pointer",
         }}
       >
-        {optimisticReceived && (
-          <svg aria-hidden="true" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 13l4 4L19 7" />
-          </svg>
-        )}
+        <div
+          aria-hidden="true"
+          style={{
+            width: "14px",
+            height: "14px",
+            borderRadius: "3px",
+            border: optimisticReceived
+              ? "1px solid rgba(34,197,94,0.6)"
+              : "1px solid rgba(255,255,255,0.25)",
+            background: optimisticReceived ? "rgba(34,197,94,0.15)" : "transparent",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            transition: "background 150ms ease, border-color 150ms ease",
+          }}
+        >
+          {optimisticReceived && (
+            <svg aria-hidden="true" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </div>
+        <span
+          style={{
+            fontSize: "12px",
+            color: optimisticReceived ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.7)",
+            textDecoration: optimisticReceived ? "line-through" : "none",
+            transition: "color 150ms ease",
+          }}
+        >
+          {doc.doc_name}
+        </span>
       </div>
-      <span
-        style={{
-          fontSize: "12px",
-          color: optimisticReceived ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.7)",
-          textDecoration: optimisticReceived ? "line-through" : "none",
-          transition: "color 150ms ease",
-        }}
-      >
-        {doc.doc_name}
-      </span>
+      {rowError && (
+        <p style={{ fontSize: "10px", color: "#ef4444", margin: "0 0 2px 22px" }}>
+          Failed to save — {rowError}
+        </p>
+      )}
     </div>
   );
 }
@@ -908,10 +959,10 @@ function DraftRow({ draft, dealId }: { draft: AddendumDraft; dealId: string }) {
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", padding: "12px" }}>
           <pre
             style={{
-              fontSize: "11px",
-              color: "rgba(255,255,255,0.7)",
+              fontSize: "12px",
+              color: "rgba(255,255,255,0.75)",
               whiteSpace: "pre-wrap",
-              fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+              fontFamily: "var(--font-body, DM Sans, sans-serif)",
               lineHeight: 1.6,
               margin: 0,
               maxHeight: "240px",

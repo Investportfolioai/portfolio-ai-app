@@ -258,11 +258,30 @@ function DealRow({ deal }: { deal: LendingDeal }) {
       />
 
       {/* Col 1: address + lender */}
-      <div style={{ position: "relative", zIndex: 1 }}>
-        <div style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "2px" }}>
+      <div style={{ position: "relative", zIndex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: "14px",
+            fontWeight: 600,
+            color: "#fff",
+            marginBottom: "2px",
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
           {deal.property_address}
         </div>
-        <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)" }}>
+        <div
+          style={{
+            fontSize: "11px",
+            color: "rgba(255,255,255,0.4)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {deal.lender_name ?? "No lender set"} · {deal.asset_type ?? "—"}
         </div>
       </div>
