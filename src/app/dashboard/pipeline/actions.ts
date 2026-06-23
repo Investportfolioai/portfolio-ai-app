@@ -260,6 +260,9 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       `- Funding Gap (pass-through): $${waterfall.fundingGap.toFixed(0)}\n` +
       `- TL Fee (3.5% of gap): $${waterfall.tlFee.toFixed(0)}\n` +
       `- Closing Costs (2.5%): $${waterfall.closingCosts.toFixed(0)}\n` +
+      `- Lender Origination (2% of loan): $${waterfall.lenderOriginationFee.toFixed(0)}\n` +
+      `- Broker Fee (2% of loan): $${waterfall.brokerFee.toFixed(0)}\n` +
+      `- Underwriting Fee: $${waterfall.underwritingFee.toFixed(0)}\n` +
       `- Prepaid Insurance: $${waterfall.prepaidInsurance.toFixed(0)}\n` +
       `- Prepaid Taxes: $${waterfall.prepaidTaxes.toFixed(0)}\n` +
       (waterfall.realtorCommission > 0 ? `- Realtor Commission: $${waterfall.realtorCommission.toFixed(0)}\n` : "") +

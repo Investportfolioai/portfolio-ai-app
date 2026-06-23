@@ -2300,6 +2300,18 @@ function WaterfallBreakdown({ w, ltvPct }: { w: WaterfallResult; ltvPct: number 
           {neg(w.closingCosts)}
         </div>
         <div className="flex justify-between">
+          <span>Lender Origination (2%)</span>
+          {neg(w.lenderOriginationFee)}
+        </div>
+        <div className="flex justify-between">
+          <span>Broker Fee (2%)</span>
+          {neg(w.brokerFee)}
+        </div>
+        <div className="flex justify-between">
+          <span>Underwriting Fee</span>
+          {neg(w.underwritingFee)}
+        </div>
+        <div className="flex justify-between">
           <span>Prepaid Insurance</span>
           {neg(w.prepaidInsurance)}
         </div>

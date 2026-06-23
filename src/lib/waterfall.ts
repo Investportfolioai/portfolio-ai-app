@@ -19,7 +19,11 @@ export function calculateMorbyWaterfall(input: WaterfallInput): WaterfallResult 
   const attorneyFee = input.attorney_fee ?? 0;
   const pmFee = input.pm_fee ?? 0;
 
-  const preCreditPartner = dscrLoan - tlFee - closingCosts - prepaidInsurance - prepaidTaxes - realtorCommission - dpts - assignmentFee - tcFee - attorneyFee - pmFee;
+  const lenderOriginationFee = dscrLoan * 0.02;
+  const brokerFee = dscrLoan * 0.02;
+  const underwritingFee = 2500;
+
+  const preCreditPartner = dscrLoan - tlFee - closingCosts - prepaidInsurance - prepaidTaxes - realtorCommission - dpts - assignmentFee - tcFee - attorneyFee - pmFee - lenderOriginationFee - brokerFee - underwritingFee;
   const creditPartnerFee = preCreditPartner > 0 ? preCreditPartner * 0.05 : 0;
   const netToBuyer = preCreditPartner - creditPartnerFee;
   const portfolioAIFee = netToBuyer > 0 ? netToBuyer * 0.10 : 0;
@@ -29,6 +33,9 @@ export function calculateMorbyWaterfall(input: WaterfallInput): WaterfallResult 
     fundingGap,
     tlFee,
     closingCosts,
+    lenderOriginationFee,
+    brokerFee,
+    underwritingFee,
     prepaidInsurance,
     prepaidTaxes,
     realtorCommission,

@@ -260,6 +260,9 @@ export interface WaterfallResult {
   fundingGap: number;
   tlFee: number;
   closingCosts: number;
+  lenderOriginationFee: number;
+  brokerFee: number;
+  underwritingFee: number;
   prepaidInsurance: number;
   prepaidTaxes: number;
   realtorCommission: number;
