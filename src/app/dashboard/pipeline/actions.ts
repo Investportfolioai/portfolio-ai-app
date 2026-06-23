@@ -871,3 +871,16 @@ export async function updateDealAiField(
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
 }
+
+export async function saveNotes(dealId: string, notes: string): Promise<ActionState> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("deals")
+    .update({ notes: notes.trim() || null })
+    .eq("id", dealId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/dashboard/pipeline");
+  return { ok: true };
+}

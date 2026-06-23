@@ -1,4 +1,5 @@
 import { getDeals } from "@/lib/deals";
+import { getSessionUser } from "@/lib/auth";
 import { PipelineBoard } from "./pipeline-board";
 
 export const metadata = { title: "Pipeline — Portfolio AI" };
@@ -7,7 +8,7 @@ export const metadata = { title: "Pipeline — Portfolio AI" };
 export const dynamic = "force-dynamic";
 
 export default async function PipelinePage() {
-  const deals = await getDeals();
+  const [deals, user] = await Promise.all([getDeals(), getSessionUser()]);
 
   return (
     <div className="fade-up mx-auto max-w-7xl px-8 py-8" style={{ background: "#0A0B14", minHeight: "100vh" }}>
@@ -22,7 +23,7 @@ export default async function PipelinePage() {
         </p>
       </header>
 
-      <PipelineBoard deals={deals} />
+      <PipelineBoard deals={deals} userRole={user?.role ?? null} />
     </div>
   );
 }

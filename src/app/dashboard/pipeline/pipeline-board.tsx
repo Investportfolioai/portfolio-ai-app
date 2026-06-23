@@ -55,6 +55,7 @@ import {
   getAvailableKps,
   removeKpAssignment,
 } from "./kp-actions";
+import { saveNotes } from "./actions";
 
 type Extraction = Extract<UploadResult, { ok: true }>["extraction"];
 
@@ -245,7 +246,7 @@ function MiniStat({ label, value, help }: { label: string; value: string; help?:
   );
 }
 
-export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
+export function PipelineBoard({ deals: initialDeals, userRole }: { deals: Deal[]; userRole: string | null }) {
   const [status, setStatus] = useState<DealStatus | "all" | "escrow">("all");
   const [structure, setStructure] = useState<StructureFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -478,7 +479,7 @@ export function PipelineBoard({ deals: initialDeals }: { deals: Deal[] }) {
               transition: 'transform 250ms cubic-bezier(0.4,0,0.2,1), opacity 250ms cubic-bezier(0.4,0,0.2,1)',
             }}
           >
-            <DealPanel deal={selected} onClose={() => setSelectedId(null)} />
+            <DealPanel deal={selected} onClose={() => setSelectedId(null)} userRole={userRole} />
           </div>
         </>
       )}
@@ -1230,7 +1231,99 @@ function Metric({
 // Detail panel (4 tabs)
 // ---------------------------------------------------------------------------
 
-const TABS = ["Overview", "AI Underwriting", "Timeline", "Documents", "KPs", "Activity"] as const;
+function NotesTab({
+  dealId,
+  initialNotes,
+  canEdit,
+}: {
+  dealId: string;
+  initialNotes: string | null;
+  canEdit: boolean;
+}) {
+  const [value, setValue] = useState(initialNotes ?? "");
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [, start] = useTransition();
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setValue(initialNotes ?? "");
+  }, [dealId, initialNotes]);
+
+  function handleBlur() {
+    if (!canEdit) return;
+    start(async () => {
+      setError(null);
+      const res = await saveNotes(dealId, value);
+      if (res.ok) {
+        setSaved(true);
+        if (fadeTimer.current) clearTimeout(fadeTimer.current);
+        fadeTimer.current = setTimeout(() => setSaved(false), 2000);
+      } else {
+        setError(res.error ?? "Failed to save.");
+      }
+    });
+  }
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+        <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.25)" }}>
+          Notes
+        </div>
+        <div style={{
+          fontSize: "11px",
+          color: "#22c55e",
+          opacity: saved ? 1 : 0,
+          transition: "opacity 400ms ease",
+          pointerEvents: "none",
+        }}>
+          Saved
+        </div>
+      </div>
+      {error && (
+        <p style={{ fontSize: "11px", color: "#ef4444", marginBottom: "8px" }}>{error}</p>
+      )}
+      <textarea
+        value={value}
+        onChange={(e) => { if (canEdit) setValue(e.target.value); }}
+        onBlur={handleBlur}
+        readOnly={!canEdit}
+        placeholder="Add notes about this deal..."
+        rows={12}
+        style={{
+          width: "100%",
+          background: "rgba(26,29,39,0.85)",
+          border: "1px solid rgba(255,255,255,0.10)",
+          borderRadius: "10px",
+          padding: "14px 16px",
+          fontSize: "14px",
+          fontFamily: "var(--font-body), DM Sans, sans-serif",
+          color: "#fff",
+          resize: "vertical",
+          outline: "none",
+          lineHeight: 1.6,
+          boxSizing: "border-box",
+          cursor: canEdit ? "text" : "default",
+          opacity: canEdit ? 1 : 0.7,
+        }}
+        onFocus={(e) => {
+          if (canEdit) e.currentTarget.style.borderColor = "rgba(201,168,76,0.5)";
+        }}
+        onBlurCapture={(e) => {
+          e.currentTarget.style.borderColor = "rgba(255,255,255,0.10)";
+        }}
+      />
+      {!canEdit && (
+        <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginTop: "8px" }}>
+          Read-only — only owners and partners can edit notes.
+        </p>
+      )}
+    </div>
+  );
+}
+
+const TABS = ["Overview", "AI Underwriting", "Timeline", "Documents", "Notes", "KPs", "Activity"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -1238,6 +1331,7 @@ const TAB_LABELS: Record<Tab, string> = {
   "AI Underwriting": "AI",
   "Timeline": "TIMELINE",
   "Documents": "DOCS",
+  "Notes": "NOTES",
   "KPs": "KPS",
   "Activity": "ACTIVITY",
 };
@@ -1253,7 +1347,7 @@ function fmtDateTime(iso: string): string {
   });
 }
 
-function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
+function DealPanel({ deal, onClose, userRole }: { deal: Deal; onClose: () => void; userRole: string | null }) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("Overview");
   const [detail, setDetail] = useState<DealDetail | null>(null);
@@ -1572,6 +1666,13 @@ function DealPanel({ deal, onClose }: { deal: Deal; onClose: () => void }) {
                         loading={loadingDetail}
                         detail={detail}
                         onChanged={onChanged}
+                      />
+                    )}
+                    {tab === "Notes" && (
+                      <NotesTab
+                        dealId={deal.id}
+                        initialNotes={deal.notes}
+                        canEdit={userRole === "owner" || userRole === "partner"}
                       />
                     )}
                     {tab === "KPs" && <KpsTab dealId={deal.id} onChanged={onChanged} />}
