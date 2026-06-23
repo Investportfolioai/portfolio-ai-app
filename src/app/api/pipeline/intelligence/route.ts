@@ -82,11 +82,11 @@ export async function GET() {
     deals.filter(isPending).map((d) => d.stabilization_grade).filter((g): g is number => g != null),
   );
 
-  // Close rate only counts deals that reached escrow — dead deals with no
-  // escrow_date never got to a decision point and are excluded entirely.
-  const eligibleClosed = deals.filter((d) => d.status === "closed" && d.escrow_date != null).length;
-  const eligibleDead = deals.filter((d) => d.status === "dead" && d.escrow_date != null).length;
-  const eligibleTotal = eligibleClosed + eligibleDead;
+  // Close rate = closed ÷ (closed + passed). Dead deals are excluded entirely —
+  // they were abandoned before real evaluation, not lost after a decision point.
+  const eligibleClosed = deals.filter((d) => d.status === "closed").length;
+  const eligiblePassed = deals.filter((d) => d.status === "passed").length;
+  const eligibleTotal = eligibleClosed + eligiblePassed;
   const close_rate = eligibleTotal === 0 ? 100 : (eligibleClosed / eligibleTotal) * 100;
   const closedCount = eligibleClosed;
   const resolvedCount = eligibleTotal;

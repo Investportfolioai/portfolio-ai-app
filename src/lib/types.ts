@@ -401,20 +401,17 @@ export function capitalRunwayMultiple(
 }
 
 /**
- * Portfolio AI fee = 10% of cashback at close. When cashback isn't set yet,
- * estimate it from the standard Morby structure
- * (first lien 75% − purchase price + seller carry) and take 10%. Never negative.
+ * Portfolio AI fee = 10% of cashback at close. Returns null when cashback_at_close
+ * is not yet set — no estimation, since the broken fallback (-25% pp + seller carry)
+ * ignored TL fee, closing costs, insurance, taxes, and DPTS.
  */
 export function portfolioAiFee(opts: {
   cashback_at_close?: number | null;
   purchase_price?: number | null;
   seller_carry_amount?: number | null;
 }): number | null {
-  const { cashback_at_close, purchase_price, seller_carry_amount } = opts;
-  if (cashback_at_close != null) return Math.max(0, cashback_at_close * 0.1);
-  if (purchase_price == null) return null;
-  const estCashback = purchase_price * 0.75 - purchase_price + (seller_carry_amount ?? 0);
-  return Math.max(0, estCashback * 0.1);
+  if (opts.cashback_at_close != null) return Math.max(0, opts.cashback_at_close * 0.1);
+  return null;
 }
 
 /**
