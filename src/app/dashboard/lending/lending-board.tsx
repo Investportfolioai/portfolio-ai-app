@@ -258,7 +258,7 @@ function DealRow({ deal }: { deal: LendingDeal }) {
       />
 
       {/* Col 1: address + lender */}
-      <div style={{ position: "relative", zIndex: 1, minWidth: 0 }}>
+      <div style={{ position: "relative", zIndex: 1, minWidth: 0, pointerEvents: "none" }}>
         <div
           style={{
             fontSize: "14px",
@@ -287,7 +287,7 @@ function DealRow({ deal }: { deal: LendingDeal }) {
       </div>
 
       {/* Col 2: stage */}
-      <div style={{ position: "relative", zIndex: 1 }}>
+      <div style={{ position: "relative", zIndex: 1, pointerEvents: "none" }}>
         <span
           style={{
             display: "inline-flex",
@@ -305,7 +305,7 @@ function DealRow({ deal }: { deal: LendingDeal }) {
       </div>
 
       {/* Col 3: checklist % */}
-      <div style={{ position: "relative", zIndex: 1 }}>
+      <div style={{ position: "relative", zIndex: 1, pointerEvents: "none" }}>
         {deal.checklist_total > 0 ? (
           <div>
             <ReadinessBar value={checkPct} />
@@ -319,7 +319,7 @@ function DealRow({ deal }: { deal: LendingDeal }) {
       </div>
 
       {/* Col 4: readiness score */}
-      <div style={{ position: "relative", zIndex: 1 }}>
+      <div style={{ position: "relative", zIndex: 1, pointerEvents: "none" }}>
         {deal.readiness_total > 0 ? (
           <div>
             <ReadinessBar value={readyPct} />
