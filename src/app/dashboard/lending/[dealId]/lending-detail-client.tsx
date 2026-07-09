@@ -553,10 +553,11 @@ function StageAccordion({
 
 function ChecklistRow({ item, dealId }: { item: ChecklistItem; dealId: string }) {
   const [optimisticCompleted, setOptimistic] = useOptimistic(item.completed);
-  const [, start] = useTransition();
+  const [pending, start] = useTransition();
   const [rowError, setRowError] = useState<string | null>(null);
 
   function toggle() {
+    if (pending) return;
     const next = !optimisticCompleted;
     setRowError(null);
     start(async () => {
@@ -584,6 +585,7 @@ function ChecklistRow({ item, dealId }: { item: ChecklistItem; dealId: string })
           type="checkbox"
           checked={optimisticCompleted}
           onChange={toggle}
+          disabled={pending}
           style={{ position: "absolute", opacity: 0, width: "1px", height: "1px", pointerEvents: "none" }}
         />
         <div
@@ -683,10 +685,11 @@ function ReadinessPanel({ docs, dealId }: { docs: ReadinessDoc[]; dealId: string
 
 function ReadinessDocRow({ doc, dealId }: { doc: ReadinessDoc; dealId: string }) {
   const [optimisticReceived, setOptimistic] = useOptimistic(doc.received);
-  const [, start] = useTransition();
+  const [pending, start] = useTransition();
   const [rowError, setRowError] = useState<string | null>(null);
 
   function toggle() {
+    if (pending) return;
     const next = !optimisticReceived;
     setRowError(null);
     start(async () => {
@@ -701,6 +704,7 @@ function ReadinessDocRow({ doc, dealId }: { doc: ReadinessDoc; dealId: string })
       <div
         role="checkbox"
         aria-checked={optimisticReceived}
+        aria-disabled={pending}
         tabIndex={0}
         onClick={toggle}
         onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle(); } }}
@@ -1134,8 +1138,13 @@ function ExportDocxButton({ content, title }: { content: string; title: string }
       const a = document.createElement("a");
       a.href = url;
       a.download = `${title.replace(/[^a-z0-9]/gi, "_")}.docx`;
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      // Defer cleanup so the browser finishes reading the blob before revoke.
+      setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, 1000);
     });
   }
 
