@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fireWebhook } from "@/lib/webhooks";
+import { POST as runBackgroundUnderwriting } from "@/app/api/underwriting/background/route";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -128,17 +129,22 @@ export async function POST(req: Request) {
     created_at: new Date().toISOString(),
   }).catch((err) => console.error("Webhook failed silently:", err));
 
-  // Trigger background underwriting — fire-and-forget, submit returns immediately
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (appUrl) {
-    fetch(`${appUrl}/api/underwriting/background`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dealId, name, email, phone, hasDeck }),
-    }).catch((err) => console.error("[submit] background underwriting trigger failed:", err));
-  } else {
-    console.warn("[submit] NEXT_PUBLIC_APP_URL not set — background underwriting skipped");
-  }
+  // Trigger background underwriting in-process via after(): the handler runs
+  // AFTER the response is sent (Vercel keeps the function alive to finish it),
+  // and calling it directly avoids any self-HTTP / NEXT_PUBLIC_APP_URL dependency.
+  after(async () => {
+    try {
+      await runBackgroundUnderwriting(
+        new Request("http://internal/api/underwriting/background", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dealId, name, email, phone, hasDeck }),
+        }),
+      );
+    } catch (err) {
+      console.error("[submit] background underwriting trigger failed:", err);
+    }
+  });
 
   return NextResponse.json({ ok: true, deal_id: dealId });
 }
