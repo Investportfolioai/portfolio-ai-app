@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
-import { canManage } from "@/lib/permissions";
+import { canManagePortfolio } from "@/lib/permissions";
 import { POST as parseDocument } from "../parse-document/route";
 
 export const runtime = "nodejs";
@@ -20,7 +20,7 @@ const ALLOWED_MIME = new Set([
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let form: FormData;
   try {
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const holdingId = new URL(req.url).searchParams.get("holding_id");
   if (!holdingId) return NextResponse.json({ error: "Missing holding_id" }, { status: 400 });
@@ -117,7 +117,7 @@ export async function GET(req: Request) {
 export async function DELETE(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });

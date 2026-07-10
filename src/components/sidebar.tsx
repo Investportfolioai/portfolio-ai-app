@@ -26,7 +26,7 @@ const NAV: NavItem[] = [
   { label: "Documents", href: "/dashboard/documents" },
 ];
 
-export function Sidebar() {
+export function Sidebar({ canSeePortfolio }: { canSeePortfolio: boolean }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -55,7 +55,7 @@ export function Sidebar() {
       </div>
 
       <nav className="mt-2 flex-1 px-3">
-        {NAV.map((item) => {
+        {NAV.filter((item) => item.href !== "/dashboard/portfolio" || canSeePortfolio).map((item) => {
           const active = item.href
             ? item.href === "/dashboard"
               ? pathname === "/dashboard"

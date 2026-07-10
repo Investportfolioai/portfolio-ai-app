@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { canManagePortfolio } from "@/lib/permissions";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -82,6 +83,7 @@ const empty = (v: unknown) => v === null || v === undefined || v === "" || v ===
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: { holding_id?: string; file_url?: string; doc_type?: string };
   try {

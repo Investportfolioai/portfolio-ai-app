@@ -48,12 +48,12 @@ const NAV = [
   },
 ];
 
-export function MobileNav() {
+export function MobileNav({ canSeePortfolio }: { canSeePortfolio: boolean }) {
   const pathname = usePathname();
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 flex border-t border-sidebar-border bg-sidebar md:hidden">
-      {NAV.map((item) => {
+      {NAV.filter((item) => item.href !== "/dashboard/portfolio" || canSeePortfolio).map((item) => {
         const active =
           item.href === "/dashboard"
             ? pathname === "/dashboard"

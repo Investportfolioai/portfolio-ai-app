@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/auth";
+import { canManagePortfolio } from "@/lib/permissions";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PortfolioClient, type PortfolioDeal, type ChartPoint } from "./portfolio-client";
 import { backfillSnapshots } from "./actions";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function PortfolioPage() {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (!canManagePortfolio(user.role)) redirect("/dashboard");
 
   // Backfill synthetic monthly snapshots when real data is sparse.
   // Fast-exits (one COUNT query) once ≥3 rows exist.

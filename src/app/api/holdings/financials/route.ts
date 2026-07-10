@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
-import { canManage } from "@/lib/permissions";
+import { canManagePortfolio } from "@/lib/permissions";
 import { netCashflow } from "@/lib/cashflow";
 
 export const runtime = "nodejs";
@@ -33,7 +33,7 @@ async function getOrCreate(admin: ReturnType<typeof createAdminClient>, holdingI
 export async function GET(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const holdingId = new URL(req.url).searchParams.get("holding_id");
   if (!holdingId) return NextResponse.json({ error: "Missing holding_id" }, { status: 400 });
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
 export async function PATCH(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: Record<string, unknown>;
   try {

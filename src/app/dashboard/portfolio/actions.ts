@@ -2,6 +2,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
+import { canManagePortfolio } from "@/lib/permissions";
 
 /**
  * Backfill synthetic monthly snapshots for each holding so the portfolio
@@ -16,7 +17,7 @@ import { getSessionUser } from "@/lib/auth";
  */
 export async function backfillSnapshots(): Promise<void> {
   const user = await getSessionUser();
-  if (!user) return;
+  if (!user || !canManagePortfolio(user.role)) return;
 
   const admin = createAdminClient();
 

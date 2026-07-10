@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { getSessionUser } from "@/lib/auth";
+import { canManagePortfolio } from "@/lib/permissions";
 
 export default async function SandboxLayout({
   children,
@@ -12,9 +13,11 @@ export default async function SandboxLayout({
   if (!user) redirect("/login");
   if (user.role === "kp" || user.role === "viewer") redirect("/kp/dashboard");
 
+  const canSeePortfolio = canManagePortfolio(user.role);
+
   return (
     <div className="flex min-h-screen w-full">
-      <Sidebar />
+      <Sidebar canSeePortfolio={canSeePortfolio} />
       <div className="flex flex-1 flex-col overflow-x-hidden">
         <TopBar user={user} />
         <main className="flex-1 bg-[#f8f8fa]">{children}</main>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
-import { canManage } from "@/lib/permissions";
+import { canManagePortfolio } from "@/lib/permissions";
 import { netCashflow } from "@/lib/cashflow";
 import { getZillowAVM } from "@/lib/zillow";
 import { getBalloonStatus } from "@/lib/balloon";
@@ -30,7 +30,7 @@ export async function GET() {
   try {
     const user = await getSessionUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const admin = createAdminClient();
     const { data: holdings, error } = await admin
@@ -86,7 +86,7 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
@@ -135,7 +135,7 @@ export async function PATCH(req: Request) {
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: Record<string, unknown>;
   try {
@@ -191,7 +191,7 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!canManage(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!canManagePortfolio(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const id = new URL(req.url).searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });

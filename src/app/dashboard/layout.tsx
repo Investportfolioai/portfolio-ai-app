@@ -3,6 +3,7 @@ import { Sidebar } from "@/components/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
 import { TopBar } from "@/components/top-bar";
 import { getSessionUser } from "@/lib/auth";
+import { canManagePortfolio } from "@/lib/permissions";
 
 export default async function DashboardLayout({
   children,
@@ -14,16 +15,18 @@ export default async function DashboardLayout({
   if (user.role === "kp" || user.role === "viewer") redirect("/kp/dashboard");
   if (user.role === "tc") redirect("/tc/dashboard");
 
+  const canSeePortfolio = canManagePortfolio(user.role);
+
   return (
     <div className="flex min-h-screen w-full" style={{ background: '#0A0B14' }}>
       <div className="hidden md:flex">
-        <Sidebar />
+        <Sidebar canSeePortfolio={canSeePortfolio} />
       </div>
       <div className="flex flex-1 flex-col overflow-x-hidden" style={{ background: '#0A0B14' }}>
         <TopBar user={user} />
         <main className="flex-1 pb-16 md:pb-0" style={{ background: '#0A0B14' }}>{children}</main>
       </div>
-      <MobileNav />
+      <MobileNav canSeePortfolio={canSeePortfolio} />
     </div>
   );
 }
