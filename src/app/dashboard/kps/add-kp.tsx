@@ -86,6 +86,7 @@ export function AddKpButton() {
                   <select name="role" defaultValue="kp" className="w-full rounded-md border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent">
                     <option value="kp">KP</option>
                     <option value="partner">Partner</option>
+                    <option value="manager">Manager</option>
                     <option value="viewer">Viewer</option>
                   </select>
                 </label>
