@@ -202,12 +202,12 @@ export async function getDealDetail(dealId: string): Promise<DealDetail> {
 
 /**
  * Manually run (or re-run) underwriting on a deal using its stored PDFs.
- * Owner/partner only. Does NOT run on accept — triggered from the AI tab.
+ * Owner/partner/manager only. Does NOT run on accept — triggered from the AI tab.
  */
 export async function runUnderwriting(dealId: string): Promise<ActionState> {
   // Authorize via the SECURITY DEFINER role check (works without users_select RLS).
   const session = await createClient();
-  const { data: allowed } = await session.rpc("is_owner_or_partner");
+  const { data: allowed } = await session.rpc("is_deal_manager");
   if (!allowed) return { ok: false, error: "Not authorized." };
 
   const admin = createAdminClient();
@@ -379,7 +379,7 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
 
 /**
  * Set a deal's rental strategy (ltr/str) and re-underwrite with the matching
- * rental-comp search. Owner/partner only.
+ * rental-comp search. Owner/partner/manager only.
  */
 export async function setRentalStrategy(
   dealId: string,
@@ -389,7 +389,7 @@ export async function setRentalStrategy(
     return { ok: false, error: "Invalid strategy." };
   }
   const session = await createClient();
-  const { data: allowed } = await session.rpc("is_owner_or_partner");
+  const { data: allowed } = await session.rpc("is_deal_manager");
   if (!allowed) return { ok: false, error: "Not authorized." };
 
   const admin = createAdminClient();
@@ -768,7 +768,7 @@ export async function uploadDealDocument(
   formData: FormData,
 ): Promise<UploadResult> {
   const session = await createClient();
-  const { data: allowed } = await session.rpc("is_owner_or_partner");
+  const { data: allowed } = await session.rpc("is_deal_manager");
   if (!allowed) return { ok: false, error: "Not authorized." };
 
   const file = formData.get("file");
