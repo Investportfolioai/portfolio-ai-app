@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { underwriteDeal, type UnderwritingOutput } from "@/lib/underwriting";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendSubmissionNotification } from "@/lib/email";
+import { calculateMorbyWaterfall } from "@/lib/waterfall";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -110,6 +111,74 @@ export async function POST(req: Request) {
     console.error("[bg-underwriting] deal update failed:", updateError.message);
   } else {
     console.log(`[bg-underwriting] deal ${dealId} updated with underwriting results`);
+  }
+
+  // Waterfall: populate cashback_at_close, credit_partner_fee, portfolio_ai_fee in the same
+  // pass as grades. Only runs for Morby/creative/seller_finance structures. Guards:
+  // - seller_note_amount must be non-null (null → DPTS = full purchase_price → garbage negative netToBuyer)
+  // - purchase_price must be non-null (waterfall requires it)
+  // - deal must not be closed (closed cashback was set at actual close)
+  // - result must be sane (no NaN, netToBuyer >= 0)
+  if (!updateError) {
+    const structType = ((d.structure_type ?? "creative") as string).toLowerCase();
+    const isMorbyDeal =
+      structType === "morby" || structType === "creative" || structType === "seller_finance";
+
+    if (isMorbyDeal) {
+      const { data: dealRow } = await admin
+        .from("deals")
+        .select(
+          "purchase_price, ltv_percent, seller_note_amount, assignment_fee, realtor_commission, insurance_annual, taxes_annual, tc_fee, attorney_fee, pm_fee, dpts_override, status",
+        )
+        .eq("id", dealId)
+        .maybeSingle();
+
+      if (!dealRow || dealRow.purchase_price == null) {
+        console.log(`[bg-underwriting] waterfall skipped for ${dealId}: purchase_price missing`);
+      } else if (dealRow.seller_note_amount == null) {
+        console.log(`[bg-underwriting] waterfall skipped for ${dealId}: seller_note_amount missing`);
+      } else if (dealRow.status === "closed") {
+        console.log(`[bg-underwriting] waterfall skipped for ${dealId}: deal is closed`);
+      } else {
+        const w = calculateMorbyWaterfall({
+          purchase_price: dealRow.purchase_price,
+          ltv_percent: dealRow.ltv_percent ?? null,
+          seller_note_amount: dealRow.seller_note_amount,
+          assignment_fee: dealRow.assignment_fee ?? null,
+          realtor_commission: dealRow.realtor_commission ?? null,
+          insurance_annual: dealRow.insurance_annual ?? null,
+          taxes_annual: dealRow.taxes_annual ?? null,
+          tc_fee: dealRow.tc_fee ?? null,
+          attorney_fee: dealRow.attorney_fee ?? null,
+          pm_fee: dealRow.pm_fee ?? null,
+          dpts_override: dealRow.dpts_override ?? null,
+        });
+        const hasNaN = (Object.values(w) as unknown[]).some(
+          (v) => typeof v === "number" && isNaN(v),
+        );
+        if (hasNaN || w.netToBuyer < 0) {
+          console.warn(
+            `[bg-underwriting] waterfall skipped for ${dealId}: invalid result (netToBuyer=${w.netToBuyer.toFixed(0)}, hasNaN=${hasNaN})`,
+          );
+        } else {
+          const { error: wErr } = await admin
+            .from("deals")
+            .update({
+              cashback_at_close: w.netToBuyer,
+              credit_partner_fee: w.creditPartnerFee,
+              portfolio_ai_fee: w.portfolioAIFee,
+            })
+            .eq("id", dealId);
+          if (wErr) {
+            console.error(`[bg-underwriting] waterfall write failed for ${dealId}:`, wErr.message);
+          } else {
+            console.log(
+              `[bg-underwriting] waterfall written for ${dealId}: netToBuyer=${w.netToBuyer.toFixed(0)} (${w.cashbackPct.toFixed(1)}%)`,
+            );
+          }
+        }
+      }
+    }
   }
 
   // Send submission notification email once underwriting grades are available
