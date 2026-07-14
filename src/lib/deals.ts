@@ -21,11 +21,13 @@ const PRINCIPAL = "id, full_name, role, email";
 const BASE_COLUMNS = `
   id, property_address, city, state, structure_type, stage,
   purchase_price, arv, loan_amount, initial_advance, holdback,
-  interest_rate, ltv, equity_spread, seller_note_amount, seller_note_rate,
+  interest_rate, ltv, ltv_percent, equity_spread, seller_note_amount, seller_note_rate,
   assignment_fee, origination_fee, exit_strategy, lender_name, quote_number,
   acquisition_date, projected_close_date, owner_id, coowner_id,
   ai_summary, notes, created_at, updated_at,
   tc_fee, attorney_fee, pm_fee, dpts_override, wholesaler_name,
+  realtor_commission, insurance_annual, taxes_annual,
+  hoa_monthly, first_lien_monthly, seller_carry_monthly,
   owner:owner_id(${PRINCIPAL}),
   coowner:coowner_id(${PRINCIPAL})
 `;
