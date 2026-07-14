@@ -216,7 +216,7 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
   const { data: dealMeta } = await admin
     .from("deals")
     .select(
-      "rental_strategy, structure_type, purchase_price, seller_note_amount, ltv_percent, assignment_fee, realtor_commission, insurance_annual, taxes_annual, hoa_monthly, first_lien_monthly, seller_carry_monthly",
+      "rental_strategy, structure_type, purchase_price, seller_note_amount, ltv_percent, assignment_fee, realtor_commission, insurance_annual, taxes_annual, hoa_monthly, first_lien_monthly, seller_carry_monthly, tc_fee, attorney_fee, pm_fee, dpts_override",
     )
     .eq("id", dealId)
     .maybeSingle();
@@ -246,6 +246,10 @@ export async function runUnderwriting(dealId: string): Promise<ActionState> {
       realtor_commission: realtorCommission,
       insurance_annual: insuranceAnnual,
       taxes_annual: taxesAnnual,
+      tc_fee: (dealMeta?.tc_fee as number | null) ?? null,
+      attorney_fee: (dealMeta?.attorney_fee as number | null) ?? null,
+      pm_fee: (dealMeta?.pm_fee as number | null) ?? null,
+      dpts_override: (dealMeta?.dpts_override as number | null) ?? null,
     };
     waterfall = calculateMorbyWaterfall(waterfallInput);
     console.log(
@@ -679,6 +683,15 @@ export async function updateDealField(
 
   revalidatePath("/dashboard/pipeline");
   return { ok: true, waterfallUpdated };
+}
+
+/** Re-compute the Morby waterfall from stored DB fields and write back the results. */
+export async function recomputeWaterfall(dealId: string): Promise<ActionState> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
+  await recalcAndWriteWaterfall(dealId);
+  revalidatePath("/dashboard/pipeline");
+  return { ok: true };
 }
 
 async function recalcAndWriteWaterfall(dealId: string): Promise<void> {
