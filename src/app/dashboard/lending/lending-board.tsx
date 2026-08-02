@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { daysUntil } from "@/lib/types";
 import type { LendingDeal } from "./page";
 
 const LENDING_STAGE_LABEL: Record<string, string> = {
@@ -55,6 +56,57 @@ function ReadinessBar({ value }: { value: number }) {
         {value}%
       </span>
     </div>
+  );
+}
+
+function EmdPill({ hardDate }: { hardDate: string | null }) {
+  if (!hardDate) return null;
+  const days = daysUntil(hardDate);
+  const hard = days < 0;
+
+  let bg: string;
+  let color: string;
+  const label = hard ? "HARD" : `${days}d`;
+  if (hard) {
+    bg = "#ef4444";
+    color = "#fff";
+  } else if (days < 4) {
+    bg = "rgba(239,68,68,0.12)";
+    color = "#ef4444";
+  } else if (days <= 7) {
+    bg = "rgba(249,115,22,0.12)";
+    color = "#f97316";
+  } else {
+    bg = "rgba(34,197,94,0.12)";
+    color = "#22c55e";
+  }
+
+  return (
+    <span
+      title={`EMD hard date: ${hardDate}`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "4px",
+        borderRadius: "999px",
+        padding: "2px 8px",
+        fontSize: "10px",
+        fontWeight: 700,
+        background: bg,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ letterSpacing: "0.04em" }}>EMD</span>
+      <span
+        style={{
+          fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+          fontVariantNumeric: "tabular-nums",
+        }}
+      >
+        {label}
+      </span>
+    </span>
   );
 }
 
@@ -284,6 +336,11 @@ function DealRow({ deal }: { deal: LendingDeal }) {
         >
           {deal.lender_name ?? "No lender set"} · {deal.asset_type ?? "—"}
         </div>
+        {deal.emd_hard_date && (
+          <div style={{ marginTop: "6px" }}>
+            <EmdPill hardDate={deal.emd_hard_date} />
+          </div>
+        )}
       </div>
 
       {/* Col 2: stage */}

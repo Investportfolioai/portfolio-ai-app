@@ -13,7 +13,7 @@ import {
   extractDocumentUpdates,
   type DocExtraction,
 } from "@/lib/underwriting";
-import type { DealStatus, UnderwritingOutput, DealMilestone, WaterfallInput, CashflowInput } from "@/lib/types";
+import type { DealStatus, UnderwritingOutput, DealMilestone, WaterfallInput, CashflowInput, EmdEvent } from "@/lib/types";
 import { calculateMorbyWaterfall, calculateCashflow } from "@/lib/waterfall";
 import { fireWebhookById } from "@/lib/webhooks";
 
@@ -50,6 +50,7 @@ export interface DealDetail {
   activity: ActivityEntry[];
   documents: DocumentEntry[];
   milestones: DealMilestone[];
+  emdEvents: EmdEvent[];
 }
 
 const BUCKET = "deal-documents";
@@ -154,7 +155,7 @@ export async function negotiateDeal(
 export async function getDealDetail(dealId: string): Promise<DealDetail> {
   const supabase = await createClient();
 
-  const [activityRes, docsRes, milestonesRes] = await Promise.all([
+  const [activityRes, docsRes, milestonesRes, emdEventsRes] = await Promise.all([
     supabase
       .from("deal_activity")
       .select("id, action, note, created_at")
@@ -170,10 +171,16 @@ export async function getDealDetail(dealId: string): Promise<DealDetail> {
       .select("id, deal_id, label, target_date, milestone_type, source, created_at")
       .eq("deal_id", dealId)
       .order("target_date", { ascending: true }),
+    supabase
+      .from("emd_events")
+      .select("id, deal_id, event_type, detail, created_at")
+      .eq("deal_id", dealId)
+      .order("created_at", { ascending: false }),
   ]);
 
   const activity = (activityRes.data ?? []) as ActivityEntry[];
   const milestones = (milestonesRes.data ?? []) as DealMilestone[];
+  const emdEvents = (emdEventsRes.data ?? []) as EmdEvent[];
 
   // Sign storage paths with the service role (private bucket).
   const admin = createAdminClient();
@@ -197,7 +204,7 @@ export async function getDealDetail(dealId: string): Promise<DealDetail> {
     }),
   );
 
-  return { activity, documents, milestones };
+  return { activity, documents, milestones, emdEvents };
 }
 
 /**
@@ -616,7 +623,7 @@ export async function markDealClosed(
 }
 
 /** Item 4 — inline field edit on the Overview tab. */
-const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
+const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean; date?: boolean }> = {
   property_address: { label: "Address", numeric: false },
   purchase_price: { label: "Purchase Price", numeric: true },
   arv: { label: "ARV", numeric: true },
@@ -642,6 +649,11 @@ const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean }> = {
   pm_fee: { label: "PM Fee", numeric: true },
   dpts_override: { label: "Down Payment to Seller", numeric: true },
   wholesaler_name: { label: "Wholesaler Name", numeric: false },
+  // EMD intelligence (migration 20260802010000)
+  emd_amount: { label: "EMD Amount", numeric: true },
+  emd_hard_date: { label: "EMD Hard Date", numeric: false, date: true },
+  emd_extension_count: { label: "EMD Extensions", numeric: true },
+  emd_notes: { label: "EMD Notes", numeric: false },
 };
 
 // Fields whose changes require a waterfall write-back to cashback_at_close et al.
@@ -671,9 +683,45 @@ export async function updateDealField(
     parsed = value.trim() || null;
   }
   const supabase = await createClient();
-  const { error } = await supabase.from("deals").update({ [field]: parsed }).eq("id", dealId);
+
+  // emd_hard_date / emd_extension_count carry emd_events side effects — read
+  // the prior value first so we can tell whether it actually changed.
+  let beforeEmd: { emd_hard_date: string | null; emd_extension_count: number } | null = null;
+  if (field === "emd_hard_date" || field === "emd_extension_count") {
+    const { data } = await supabase
+      .from("deals")
+      .select("emd_hard_date, emd_extension_count")
+      .eq("id", dealId)
+      .single();
+    beforeEmd = data;
+  }
+
+  const updates: Record<string, string | number | null> = { [field]: parsed };
+  if (field === "emd_hard_date" && beforeEmd && beforeEmd.emd_hard_date !== parsed) {
+    // A new hard date invalidates any reminders already sent against the old one.
+    updates.emd_reminder_7_sent_at = null;
+    updates.emd_reminder_4_sent_at = null;
+    updates.emd_appraisal_reminder_sent_at = null;
+  }
+
+  const { error } = await supabase.from("deals").update(updates).eq("id", dealId);
   if (error) return { ok: false, error: error.message };
   await logActivity(dealId, "field_edited", `${meta.label} → ${value.trim() || "—"}`);
+
+  if (field === "emd_hard_date" && beforeEmd && beforeEmd.emd_hard_date !== parsed) {
+    await supabase.from("emd_events").insert({
+      deal_id: dealId,
+      event_type: "date_changed",
+      detail: `${beforeEmd.emd_hard_date ?? "unset"} → ${parsed ?? "unset"}`,
+    });
+  }
+  if (field === "emd_extension_count" && beforeEmd && beforeEmd.emd_extension_count !== parsed) {
+    await supabase.from("emd_events").insert({
+      deal_id: dealId,
+      event_type: "extension_granted",
+      detail: `${beforeEmd.emd_extension_count} → ${parsed}`,
+    });
+  }
 
   let waterfallUpdated = false;
   if (WATERFALL_RECALC_FIELDS.has(field)) {

@@ -28,6 +28,8 @@ const BASE_COLUMNS = `
   tc_fee, attorney_fee, pm_fee, dpts_override, wholesaler_name,
   realtor_commission, insurance_annual, taxes_annual,
   hoa_monthly, first_lien_monthly, seller_carry_monthly,
+  emd_amount, emd_hard_date, emd_extension_count, emd_notes, appraisal_received_at,
+  emd_reminder_7_sent_at, emd_reminder_4_sent_at, emd_appraisal_reminder_sent_at,
   owner:owner_id(${PRINCIPAL}),
   coowner:coowner_id(${PRINCIPAL})
 `;
@@ -391,6 +393,18 @@ export async function getDealMilestones(dealId: string) {
     .select("id, deal_id, label, target_date, milestone_type, source, created_at")
     .eq("deal_id", dealId)
     .order("target_date", { ascending: true });
+  if (error) return [];
+  return data ?? [];
+}
+
+/** EMD events for a deal (reminders, extensions, date changes), newest first. */
+export async function getEmdEvents(dealId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("emd_events")
+    .select("id, deal_id, event_type, detail, created_at")
+    .eq("deal_id", dealId)
+    .order("created_at", { ascending: false });
   if (error) return [];
   return data ?? [];
 }

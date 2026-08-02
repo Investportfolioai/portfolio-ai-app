@@ -19,6 +19,7 @@ export type LendingDeal = {
   checklist_done: number;
   readiness_total: number;
   readiness_done: number;
+  emd_hard_date: string | null;
 };
 
 const BOARD_STAGE_ORDER = [
@@ -47,7 +48,7 @@ async function LendingContent() {
 
   const { data: deals } = await supabase
     .from("deals")
-    .select("id, property_address, stage, status, stage_override, lender_name, ai_analysis")
+    .select("id, property_address, stage, status, stage_override, lender_name, ai_analysis, emd_hard_date")
     .eq("status", "active")
     .not("escrow_date", "is", null)
     .order("property_address");
@@ -102,6 +103,7 @@ async function LendingContent() {
     stage_override: string | null;
     lender_name: string | null;
     ai_analysis: { extracted_deal_data?: { property_type?: string } } | null;
+    emd_hard_date: string | null;
   }[]).map((d) => ({
     id: d.id,
     property_address: d.property_address,
@@ -114,6 +116,7 @@ async function LendingContent() {
     checklist_done: checkMap.get(d.id)?.done ?? 0,
     readiness_total: readyMap.get(d.id)?.total ?? 0,
     readiness_done: readyMap.get(d.id)?.done ?? 0,
+    emd_hard_date: d.emd_hard_date,
   }));
 
   return <LendingBoard deals={lendingDeals} />;

@@ -17,8 +17,10 @@ import {
   type AvailableKp,
   type WaterfallResult,
   type CashflowResult,
+  type EmdEvent,
   ASSIGNMENT_STATUS_LABELS,
   MILESTONE_LABELS,
+  EMD_EVENT_LABELS,
   STATUS_LABELS,
   STRUCTURE_LABELS,
   capitalRunwayMultiple,
@@ -1656,6 +1658,7 @@ function DealPanel({ deal, onClose, userRole }: { deal: Deal; onClose: () => voi
                       <TimelineTab
                         dealId={deal.id}
                         milestones={detail?.milestones ?? []}
+                        emdEvents={detail?.emdEvents ?? []}
                         loading={loadingDetail}
                         onChanged={onChanged}
                       />
@@ -1892,8 +1895,86 @@ function OverviewTab({
         />
       </Section>
 
+      <Section title="EMD · click to edit">
+        <EditableRow
+          dealId={deal.id} field="emd_amount" label="Amount" numeric
+          raw={deal.emd_amount} display={money(deal.emd_amount)}
+          onSaved={makeOnSaved("emd_amount")}
+        />
+        <EditableRow
+          dealId={deal.id} field="emd_hard_date" label="Hard Date" date
+          raw={deal.emd_hard_date} display={deal.emd_hard_date ?? "—"}
+          onSaved={makeOnSaved("emd_hard_date")}
+        />
+        <EmdExtensionRow dealId={deal.id} count={deal.emd_extension_count} onSaved={makeOnSaved("emd_extension_count")} />
+        <EditableRow
+          dealId={deal.id} field="emd_notes" label="Notes" raw={deal.emd_notes} display={deal.emd_notes ?? "—"}
+          onSaved={makeOnSaved("emd_notes")}
+        />
+      </Section>
+
       <WholesalerActions deal={deal} onChanged={onChanged} />
       <EscrowAction deal={deal} onChanged={onChanged} />
+    </div>
+  );
+}
+
+/** Extensions row: +/- stepper writing straight to emd_extension_count. */
+function EmdExtensionRow({
+  dealId,
+  count,
+  onSaved,
+}: {
+  dealId: string;
+  count: number;
+  onSaved: () => void;
+}) {
+  const [busy, startSave] = useTransition();
+
+  function bump(delta: number) {
+    const next = Math.max(0, count + delta);
+    if (next === count) return;
+    startSave(async () => {
+      const res = await updateDealField(dealId, "emd_extension_count", String(next));
+      if (res.ok) onSaved();
+    });
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-4 px-3 py-2.5">
+      <dt style={{
+        flexShrink: 0,
+        fontFamily: 'var(--font-body), sans-serif',
+        fontSize: '0.7rem', fontWeight: 600,
+        letterSpacing: '0.08em', textTransform: 'uppercase',
+        color: '#4b5563',
+      }}>Extensions</dt>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={busy || count <= 0}
+          onClick={() => bump(-1)}
+          className="flex h-6 w-6 items-center justify-center rounded-md border border-border bg-secondary text-sm text-foreground disabled:opacity-40"
+        >
+          −
+        </button>
+        <span style={{
+          fontFamily: 'var(--font-mono), monospace',
+          fontSize: '0.9rem', fontWeight: 500,
+          color: '#f9fafb', minWidth: '16px', textAlign: 'center',
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {count}
+        </span>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => bump(1)}
+          className="flex h-6 w-6 items-center justify-center rounded-md border border-border bg-secondary text-sm text-foreground disabled:opacity-40"
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }
@@ -2085,6 +2166,7 @@ function EditableRow({
   raw,
   display,
   numeric,
+  date,
   ai,
   onSaved,
   onLiveChange,
@@ -2095,6 +2177,7 @@ function EditableRow({
   raw: string | number | null;
   display: string;
   numeric?: boolean;
+  date?: boolean;
   ai?: boolean;
   onSaved: () => void;
   onLiveChange?: (value: string) => void;
@@ -2132,7 +2215,7 @@ function EditableRow({
         <div className="flex items-center gap-1">
           <input
             autoFocus
-            type={numeric ? "number" : "text"}
+            type={date ? "date" : numeric ? "number" : "text"}
             value={value}
             onChange={(e) => { setValue(e.target.value); onLiveChange?.(e.target.value); }}
             onKeyDown={(e) => {
@@ -2158,11 +2241,11 @@ function EditableRow({
             setEditing(true);
           }}
           style={{
-            fontFamily: numeric ? 'var(--font-mono), monospace' : 'var(--font-body), sans-serif',
-            fontSize: numeric ? '0.9rem' : '0.875rem',
-            fontWeight: numeric ? 500 : 600,
+            fontFamily: numeric || date ? 'var(--font-mono), monospace' : 'var(--font-body), sans-serif',
+            fontSize: numeric || date ? '0.9rem' : '0.875rem',
+            fontWeight: numeric || date ? 500 : 600,
             color: '#f9fafb',
-            letterSpacing: numeric ? '-0.01em' : undefined,
+            letterSpacing: numeric || date ? '-0.01em' : undefined,
             fontVariantNumeric: numeric ? 'tabular-nums' : undefined,
             textAlign: 'right', background: 'transparent', border: 'none',
             cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -2734,11 +2817,13 @@ function DocumentsTab({
 function TimelineTab({
   dealId,
   milestones,
+  emdEvents,
   loading,
   onChanged,
 }: {
   dealId: string;
   milestones: DealMilestone[];
+  emdEvents: EmdEvent[];
   loading: boolean;
   onChanged: () => void;
 }) {
@@ -2856,6 +2941,29 @@ function TimelineTab({
           {adding ? "Adding…" : "Add Milestone"}
         </button>
       </div>
+
+      {emdEvents.length > 0 && (
+        <div>
+          <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+            EMD Events
+          </div>
+          <ul className="space-y-3">
+            {emdEvents.map((e) => (
+              <li key={e.id} className="border-l-2 border-accent/40 pl-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-primary">
+                    {EMD_EVENT_LABELS[e.event_type]}
+                  </span>
+                  <span className="data-number text-[11px] text-muted-foreground">
+                    {fmtDateTime(e.created_at)}
+                  </span>
+                </div>
+                {e.detail && <p className="mt-0.5 text-sm text-muted-foreground">{e.detail}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

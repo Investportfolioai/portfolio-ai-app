@@ -181,6 +181,16 @@ export interface Deal {
   kp_count: number;
   /** Days until the nearest upcoming milestone (derived; null if none). */
   next_milestone_days: number | null;
+
+  /** EMD intelligence (migration 20260802010000). */
+  emd_amount: number | null;
+  emd_hard_date: string | null;
+  emd_extension_count: number;
+  emd_notes: string | null;
+  appraisal_received_at: string | null;
+  emd_reminder_7_sent_at: string | null;
+  emd_reminder_4_sent_at: string | null;
+  emd_appraisal_reminder_sent_at: string | null;
 }
 
 /** Deal workflow status (enum `public.deal_status`). */
@@ -235,6 +245,35 @@ export function deadDaysRemaining(
 ): number | null {
   if (deal.status !== "dead" || !deal.status_changed_at) return null;
   return Math.max(0, DEAD_DEAL_TTL_DAYS - daysSince(deal.status_changed_at));
+}
+
+// ---------------------------------------------------------------------------
+// EMD events (emd_events table, migration 20260802010000)
+// ---------------------------------------------------------------------------
+
+export type EmdEventType =
+  | "reminder_7"
+  | "reminder_4"
+  | "appraisal_alert"
+  | "extension_granted"
+  | "went_hard"
+  | "date_changed";
+
+export const EMD_EVENT_LABELS: Record<EmdEventType, string> = {
+  reminder_7: "7-Day Reminder Sent",
+  reminder_4: "4-Day Reminder Sent",
+  appraisal_alert: "Appraisal Alert Sent",
+  extension_granted: "Extension Granted",
+  went_hard: "EMD Went Hard",
+  date_changed: "Hard Date Changed",
+};
+
+export interface EmdEvent {
+  id: string;
+  deal_id: string;
+  event_type: EmdEventType;
+  detail: string | null;
+  created_at: string;
 }
 
 // ---------------------------------------------------------------------------
