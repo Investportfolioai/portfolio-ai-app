@@ -56,9 +56,15 @@ function emailBody(params: {
 }
 
 /**
- * Daily EMD reminder sweep — 7-day / 4-day escalating reminders and an
- * appraisal-received alert, each guarded by a sent-stamp so it fires exactly
- * once per hard date (changing emd_hard_date resets the stamps; see
+ * Daily EMD reminder sweep. Each hard date gets at most one email per run:
+ * a past-hard-date deal gets a single "went hard" alert (permanently, via the
+ * went_hard emd_event — no further 7/4-day or appraisal reminders after
+ * that); otherwise, if both the 7-day and 4-day thresholds are crossed
+ * unstamped in the same run (e.g. a deal enters the system already inside
+ * the 4-day window), only the more urgent 4-day reminder is sent and the
+ * skipped 7-day threshold is backfill-stamped silently — no email, no
+ * emd_event — so it never fires late. Stamps guard every send so it fires
+ * exactly once per hard date (changing emd_hard_date resets the stamps; see
  * updateDealField in pipeline/actions.ts). CRON_SECRET-guarded; folded into
  * /api/cron/daily rather than given its own vercel.json entry — Hobby caps
  * cron jobs at 2, both already claimed by daily + snapshot.
@@ -83,15 +89,69 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const deals = (data ?? []) as EmdCandidate[];
+  const dealIds = deals.map((d) => d.id);
+
+  const { data: hardEventRows } = dealIds.length
+    ? await admin.from("emd_events").select("deal_id").eq("event_type", "went_hard").in("deal_id", dealIds)
+    : { data: [] as { deal_id: string }[] };
+  const alreadyHard = new Set((hardEventRows ?? []).map((r) => r.deal_id));
+
+  let wentHard = 0;
   let reminder7 = 0;
   let reminder4 = 0;
   let appraisalAlerts = 0;
 
-  for (const deal of (data ?? []) as EmdCandidate[]) {
+  for (const deal of deals) {
     const days = daysUntil(deal.emd_hard_date);
     const address = deal.property_address;
 
-    if (days <= 7 && !deal.emd_reminder_7_sent_at) {
+    // Past-hard-date takes priority and permanently silences 7/4-day + appraisal reminders.
+    if (days <= 0) {
+      if (!alreadyHard.has(deal.id)) {
+        try {
+          await sendReminder({
+            subject: `EMD IS NOW HARD on ${address}`,
+            html: emailBody({
+              address,
+              days,
+              amount: deal.emd_amount,
+              extensions: deal.emd_extension_count,
+              lede: "The EMD hard date has passed — earnest money is no longer refundable.",
+            }),
+          });
+          const now = new Date().toISOString();
+          await admin
+            .from("deals")
+            .update({ emd_reminder_7_sent_at: now, emd_reminder_4_sent_at: now, emd_appraisal_reminder_sent_at: now })
+            .eq("id", deal.id);
+          await admin.from("emd_events").insert({ deal_id: deal.id, event_type: "went_hard", detail: `hard date ${deal.emd_hard_date}` });
+          wentHard++;
+        } catch (e) {
+          console.error(`emd-reminders: went-hard alert failed for ${deal.id}:`, e);
+        }
+      }
+      continue;
+    }
+
+    const due7 = days <= 7 && !deal.emd_reminder_7_sent_at;
+    const due4 = days <= 4 && !deal.emd_reminder_4_sent_at;
+
+    if (due4) {
+      try {
+        await sendReminder({
+          subject: `EMD URGENT — ${days}d to hard date — ${address}`,
+          html: emailBody({ address, days, amount: deal.emd_amount, extensions: deal.emd_extension_count }),
+        });
+        const updates: Record<string, string> = { emd_reminder_4_sent_at: new Date().toISOString() };
+        if (due7) updates.emd_reminder_7_sent_at = new Date().toISOString(); // backfill silently — no email, no event
+        await admin.from("deals").update(updates).eq("id", deal.id);
+        await admin.from("emd_events").insert({ deal_id: deal.id, event_type: "reminder_4", detail: `${days}d to hard date` });
+        reminder4++;
+      } catch (e) {
+        console.error(`emd-reminders: 4-day reminder failed for ${deal.id}:`, e);
+      }
+    } else if (due7) {
       try {
         await sendReminder({
           subject: `EMD reminder — ${days}d to hard date — ${address}`,
@@ -105,25 +165,10 @@ export async function GET(req: Request) {
       }
     }
 
-    if (days <= 4 && !deal.emd_reminder_4_sent_at) {
-      try {
-        await sendReminder({
-          subject: `EMD URGENT — ${days}d to hard date — ${address}`,
-          html: emailBody({ address, days, amount: deal.emd_amount, extensions: deal.emd_extension_count }),
-        });
-        await admin.from("deals").update({ emd_reminder_4_sent_at: new Date().toISOString() }).eq("id", deal.id);
-        await admin.from("emd_events").insert({ deal_id: deal.id, event_type: "reminder_4", detail: `${days}d to hard date` });
-        reminder4++;
-      } catch (e) {
-        console.error(`emd-reminders: 4-day reminder failed for ${deal.id}:`, e);
-      }
-    }
-
     if (deal.appraisal_received_at && !deal.emd_appraisal_reminder_sent_at) {
       try {
-        const daysLabel = days < 0 ? 0 : days;
         await sendReminder({
-          subject: `APPRAISAL BACK — ${daysLabel} days until EMD hard on ${address}`,
+          subject: `APPRAISAL BACK — ${days} days until EMD hard on ${address}`,
           html: emailBody({
             address,
             days,
@@ -141,5 +186,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, reminder7, reminder4, appraisalAlerts, total: data?.length ?? 0 });
+  return NextResponse.json({ ok: true, wentHard, reminder7, reminder4, appraisalAlerts, total: deals.length });
 }
