@@ -359,6 +359,14 @@ export interface DocExtraction {
   milestones: ExtractedMilestone[];
   term_changes: ExtractedTermChange[];
   summary: string;
+  /** Earnest money amount stated in the document, if any (EMD intelligence, Phase 2). */
+  emd_amount: number | null;
+  /** True if this document is or references a completed appraisal report. */
+  appraisal_detected: boolean;
+  /** True if this document is or references an EMD/closing extension. */
+  extension_detected: boolean;
+  /** Free-text detail on the extension terms, if extension_detected. */
+  extension_note: string | null;
 }
 
 const DOC_SCHEMA = {
@@ -402,15 +410,31 @@ const DOC_SCHEMA = {
       },
     },
     summary: { type: "string" },
+    emd_amount: { type: ["number", "null"] },
+    appraisal_detected: { type: "boolean" },
+    extension_detected: { type: "boolean" },
+    extension_note: { type: ["string", "null"] },
   },
-  required: ["milestones", "term_changes", "summary"],
+  required: [
+    "milestones",
+    "term_changes",
+    "summary",
+    "emd_amount",
+    "appraisal_detected",
+    "extension_detected",
+    "extension_note",
+  ],
 } as const;
 
 const DOC_SYSTEM = `You read real-estate deal documents (contracts, amendments, LOIs, addenda) for Portfolio AI. Extract:
 - milestones: key dated deadlines — earnest money (emd), inspection/due-diligence period end (inspection), close of escrow (coe), or other (custom). target_date MUST be ISO YYYY-MM-DD. Only include dates actually present.
 - term_changes: any deal economics stated in the document that may differ from the current record — purchase_price, arv, loan_amount, seller_note_amount, interest_rate, holdback, lender_name, quote_number. suggested_value is the value found in the document. Only include terms actually stated.
+- emd_amount: the earnest money deposit amount stated in the document, or null if not stated.
+- appraisal_detected: true only if this document IS a completed appraisal report (not just a mention of one being ordered).
+- extension_detected: true if this document is an extension of the EMD hard date, inspection period, or closing date.
+- extension_note: if extension_detected, one line on what was extended and to when. Otherwise null.
 - summary: one or two sentences on what this document is and what changed.
-Use empty arrays if nothing applies. Always call extract_document.`;
+Use empty arrays / false / null where nothing applies. Always call extract_document.`;
 
 /** Extract milestone dates + term changes from a single PDF document. */
 export async function extractDocumentUpdates(

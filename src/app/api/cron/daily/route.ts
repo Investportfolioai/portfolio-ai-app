@@ -2,16 +2,17 @@ import { NextResponse } from "next/server";
 import { GET as deadlinesGET } from "@/app/api/alerts/deadlines/route";
 import { GET as cleanupGET } from "@/app/api/deals/cleanup/route";
 import { GET as emdRemindersGET } from "@/app/api/cron/emd-reminders/route";
+import { GET as gmailScanGET } from "@/app/api/cron/gmail-scan/route";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * Consolidated daily cron — runs the deadline digest, dead-deal cleanup, and
- * EMD reminder sweep in one job. Hobby allows only 2 cron jobs, so these share
- * a slot to leave room for the weekly snapshot. Requires the CRON_SECRET
- * bearer token.
+ * Consolidated daily cron — runs the deadline digest, dead-deal cleanup, EMD
+ * reminder sweep, and Gmail EMD-document scan in one job. Hobby allows only
+ * 2 cron jobs, so these share a slot to leave room for the weekly snapshot.
+ * Requires the CRON_SECRET bearer token.
  */
 export async function GET(req: Request) {
   if (!isAuthorizedCron(req)) {
@@ -20,10 +21,12 @@ export async function GET(req: Request) {
   const deadlines = await deadlinesGET(req);
   const cleanup = await cleanupGET(req);
   const emdReminders = await emdRemindersGET(req);
+  const gmailScan = await gmailScanGET(req);
   return NextResponse.json({
     ok: true,
     deadlines: deadlines.status,
     cleanup: cleanup.status,
     emdReminders: emdReminders.status,
+    gmailScan: gmailScan.status,
   });
 }

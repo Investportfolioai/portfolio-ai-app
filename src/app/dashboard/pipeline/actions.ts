@@ -859,7 +859,18 @@ export async function uploadDealDocument(
   // Images are stored as-is; skip AI text extraction.
   if (isImage) {
     revalidatePath("/dashboard/pipeline");
-    return { ok: true, extraction: { summary: "", milestones: [], term_changes: [] } };
+    return {
+      ok: true,
+      extraction: {
+        summary: "",
+        milestones: [],
+        term_changes: [],
+        emd_amount: null,
+        appraisal_detected: false,
+        extension_detected: false,
+        extension_note: null,
+      },
+    };
   }
 
   let extraction: DocExtraction;
