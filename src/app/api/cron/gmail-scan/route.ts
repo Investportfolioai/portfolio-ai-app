@@ -107,7 +107,7 @@ export async function GET(req: Request) {
   let timedOut = 0;
 
   if (!candidates.length) {
-    return NextResponse.json({ ok: true, scanned: 0, matched, unmatched, ambiguous, applied, errors, timedOut });
+    return NextResponse.json({ ok: true, scanned: 0, reached: 0, remaining: 0, matched, unmatched, ambiguous, applied, errors, timedOut });
   }
 
   const { data: seenRows } = await admin
@@ -118,7 +118,7 @@ export async function GET(req: Request) {
   const fresh = candidates.filter((c) => !seen.has(c.messageId));
 
   if (!fresh.length) {
-    return NextResponse.json({ ok: true, scanned: candidates.length, matched, unmatched, ambiguous, applied, errors, timedOut });
+    return NextResponse.json({ ok: true, scanned: candidates.length, reached: 0, remaining: 0, matched, unmatched, ambiguous, applied, errors, timedOut });
   }
 
   const { data: dealRows } = await admin
@@ -127,8 +127,13 @@ export async function GET(req: Request) {
     .in("status", ["active", "pending"]);
   const deals = (dealRows ?? []) as CandidateDeal[];
 
+  let reached = 0;
   for (const candidate of fresh) {
-    if (!timeLeft()) break;
+    if (!timeLeft()) {
+      timedOut++;
+      break;
+    }
+    reached++;
 
     try {
       const result = matchDeal(`${candidate.subject} ${candidate.snippet}`, deals);
@@ -295,5 +300,16 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, scanned: fresh.length, matched, unmatched, ambiguous, applied, errors, timedOut });
+  return NextResponse.json({
+    ok: true,
+    scanned: fresh.length,
+    reached,
+    remaining: fresh.length - reached,
+    matched,
+    unmatched,
+    ambiguous,
+    applied,
+    errors,
+    timedOut,
+  });
 }
