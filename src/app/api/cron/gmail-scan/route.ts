@@ -15,6 +15,18 @@ const BUCKET = "deal-documents";
 // count within the shared 60s budget of /api/cron/daily.
 const MAX_MESSAGES_PER_RUN = 5;
 
+// A single message can carry many PDFs (a real escrow package easily has
+// 8-10 disclosure/advisory forms) — cap attachments per message so one busy
+// thread can't alone exhaust the run's time budget.
+const MAX_ATTACHMENTS_PER_MESSAGE = 10;
+
+// Wall-clock budget for the whole run, held well under maxDuration (60s) so
+// there's always time left to exit cleanly instead of hitting a hard
+// FUNCTION_INVOCATION_TIMEOUT mid-write. Checked before starting each new
+// message and each new attachment; a message cut short is unmarked from
+// gmail_processed_messages so it retries in full next run.
+const RUN_TIME_BUDGET_MS = 45_000;
+
 interface CandidateDeal {
   id: string;
   property_address: string;
@@ -68,6 +80,14 @@ function matchDeal(text: string, deals: CandidateDeal[]): MatchResult {
  * Phase 2 plan). CRON_SECRET-guarded; folded into /api/cron/daily rather
  * than given its own vercel.json entry — Hobby caps cron jobs at 2, both
  * already claimed by daily + snapshot.
+ *
+ * Three layered guards keep a single run bounded: MAX_MESSAGES_PER_RUN caps
+ * candidate messages examined, MAX_ATTACHMENTS_PER_MESSAGE caps attachments
+ * within one message (a real escrow package can carry 8-10 PDFs and alone
+ * exhaust the run), and the RUN_TIME_BUDGET_MS wall-clock guard stops the
+ * run cleanly with room to spare under maxDuration — any message it cuts
+ * off mid-attachment-list is unmarked from gmail_processed_messages so it
+ * retries in full next run instead of being silently left half-done.
  */
 export async function GET(req: Request) {
   if (!isAuthorizedCron(req)) {
@@ -75,6 +95,8 @@ export async function GET(req: Request) {
   }
 
   const admin = createAdminClient();
+  const startedAt = Date.now();
+  const timeLeft = () => Date.now() - startedAt < RUN_TIME_BUDGET_MS;
 
   const candidates = (await searchAttachmentCandidates()).slice(0, MAX_MESSAGES_PER_RUN);
   let matched = 0;
@@ -82,9 +104,10 @@ export async function GET(req: Request) {
   let ambiguous = 0;
   let applied = 0;
   let errors = 0;
+  let timedOut = 0;
 
   if (!candidates.length) {
-    return NextResponse.json({ ok: true, scanned: 0, matched, unmatched, ambiguous, applied, errors });
+    return NextResponse.json({ ok: true, scanned: 0, matched, unmatched, ambiguous, applied, errors, timedOut });
   }
 
   const { data: seenRows } = await admin
@@ -95,7 +118,7 @@ export async function GET(req: Request) {
   const fresh = candidates.filter((c) => !seen.has(c.messageId));
 
   if (!fresh.length) {
-    return NextResponse.json({ ok: true, scanned: candidates.length, matched, unmatched, ambiguous, applied, errors });
+    return NextResponse.json({ ok: true, scanned: candidates.length, matched, unmatched, ambiguous, applied, errors, timedOut });
   }
 
   const { data: dealRows } = await admin
@@ -105,6 +128,8 @@ export async function GET(req: Request) {
   const deals = (dealRows ?? []) as CandidateDeal[];
 
   for (const candidate of fresh) {
+    if (!timeLeft()) break;
+
     try {
       const result = matchDeal(`${candidate.subject} ${candidate.snippet}`, deals);
 
@@ -140,7 +165,7 @@ export async function GET(req: Request) {
       // Matched — only now do we spend anything on downloading/extracting.
       matched++;
       const deal = result.deal;
-      const attachments = await listPdfAttachments(candidate.messageId);
+      const attachments = (await listPdfAttachments(candidate.messageId)).slice(0, MAX_ATTACHMENTS_PER_MESSAGE);
 
       if (!attachments.length) {
         await admin.from("emd_extraction_staging").insert({
@@ -152,7 +177,12 @@ export async function GET(req: Request) {
         continue;
       }
 
+      let cutShort = false;
       for (const att of attachments) {
+        if (!timeLeft()) {
+          cutShort = true;
+          break;
+        }
         try {
           const bytes = await fetchAttachmentBytes(candidate.messageId, att.attachmentId);
           if (!bytes) {
@@ -249,11 +279,21 @@ export async function GET(req: Request) {
           });
         }
       }
+
+      if (cutShort) {
+        // Didn't finish this message's attachments within budget — unmark it
+        // so the dedupe ledger lets it retry in full next run rather than
+        // silently treating it as done. Whatever attachments did complete
+        // above are left in place (no rollback); a retry may reprocess them.
+        await admin.from("gmail_processed_messages").delete().eq("message_id", candidate.messageId);
+        timedOut++;
+        break;
+      }
     } catch (err) {
       console.error(`gmail-scan: failed processing message ${candidate.messageId}:`, err);
       errors++;
     }
   }
 
-  return NextResponse.json({ ok: true, scanned: fresh.length, matched, unmatched, ambiguous, applied, errors });
+  return NextResponse.json({ ok: true, scanned: fresh.length, matched, unmatched, ambiguous, applied, errors, timedOut });
 }
