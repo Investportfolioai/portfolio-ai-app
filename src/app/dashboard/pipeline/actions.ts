@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
 import { sendWholesalerResponse, type WholesalerResponseKind } from "@/lib/email";
+import { EDITABLE_FIELDS } from "@/lib/editable-fields";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   underwriteDeal,
@@ -13,7 +14,18 @@ import {
   extractDocumentUpdates,
   type DocExtraction,
 } from "@/lib/underwriting";
-import type { DealStatus, UnderwritingOutput, DealMilestone, WaterfallInput, CashflowInput, EmdEvent } from "@/lib/types";
+import type {
+  DealStatus,
+  UnderwritingOutput,
+  DealMilestone,
+  WaterfallInput,
+  CashflowInput,
+  EmdEvent,
+  DealUpdateSource,
+  DealUpdateEventType,
+  DealUpdateStatus,
+  UserRole,
+} from "@/lib/types";
 import { calculateMorbyWaterfall, calculateCashflow } from "@/lib/waterfall";
 import { fireWebhookById } from "@/lib/webhooks";
 
@@ -46,11 +58,32 @@ export interface DocumentEntry {
   file_type: string | null;
   url: string | null;
 }
+export interface DealNoteEntry {
+  id: string;
+  body: string;
+  created_at: string;
+  author_id: string;
+  author_name: string | null;
+  author_role: UserRole | null;
+}
+export interface DealUpdateEntry {
+  id: string;
+  source: DealUpdateSource;
+  event_type: DealUpdateEventType;
+  summary: string;
+  status: DealUpdateStatus;
+  created_at: string;
+  reviewed_by: string | null;
+  reviewed_by_name: string | null;
+  reviewed_at: string | null;
+}
 export interface DealDetail {
   activity: ActivityEntry[];
   documents: DocumentEntry[];
   milestones: DealMilestone[];
   emdEvents: EmdEvent[];
+  notes: DealNoteEntry[];
+  approvedUpdates: DealUpdateEntry[];
 }
 
 const BUCKET = "deal-documents";
@@ -155,7 +188,7 @@ export async function negotiateDeal(
 export async function getDealDetail(dealId: string): Promise<DealDetail> {
   const supabase = await createClient();
 
-  const [activityRes, docsRes, milestonesRes, emdEventsRes] = await Promise.all([
+  const [activityRes, docsRes, milestonesRes, emdEventsRes, notesRes, updatesRes] = await Promise.all([
     supabase
       .from("deal_activity")
       .select("id, action, note, created_at")
@@ -176,11 +209,57 @@ export async function getDealDetail(dealId: string): Promise<DealDetail> {
       .select("id, deal_id, event_type, detail, created_at")
       .eq("deal_id", dealId)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("deal_notes")
+      .select("id, body, created_at, author_id, author:author_id(full_name, role)")
+      .eq("deal_id", dealId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("deal_updates")
+      .select("id, source, event_type, summary, status, created_at, reviewed_by, reviewed_at, reviewer:reviewed_by(full_name)")
+      .eq("deal_id", dealId)
+      .eq("status", "approved")
+      .order("created_at", { ascending: false }),
   ]);
 
   const activity = (activityRes.data ?? []) as ActivityEntry[];
   const milestones = (milestonesRes.data ?? []) as DealMilestone[];
   const emdEvents = (emdEventsRes.data ?? []) as EmdEvent[];
+  const notes: DealNoteEntry[] = ((notesRes.data ?? []) as unknown as {
+    id: string;
+    body: string;
+    created_at: string;
+    author_id: string;
+    author: { full_name: string | null; role: UserRole | null } | null;
+  }[]).map((n) => ({
+    id: n.id,
+    body: n.body,
+    created_at: n.created_at,
+    author_id: n.author_id,
+    author_name: n.author?.full_name ?? null,
+    author_role: n.author?.role ?? null,
+  }));
+  const approvedUpdates: DealUpdateEntry[] = ((updatesRes.data ?? []) as unknown as {
+    id: string;
+    source: DealUpdateSource;
+    event_type: DealUpdateEventType;
+    summary: string;
+    status: DealUpdateStatus;
+    created_at: string;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+    reviewer: { full_name: string | null } | null;
+  }[]).map((u) => ({
+    id: u.id,
+    source: u.source,
+    event_type: u.event_type,
+    summary: u.summary,
+    status: u.status,
+    created_at: u.created_at,
+    reviewed_by: u.reviewed_by,
+    reviewed_by_name: u.reviewer?.full_name ?? null,
+    reviewed_at: u.reviewed_at,
+  }));
 
   // Sign storage paths with the service role (private bucket).
   const admin = createAdminClient();
@@ -204,7 +283,7 @@ export async function getDealDetail(dealId: string): Promise<DealDetail> {
     }),
   );
 
-  return { activity, documents, milestones, emdEvents };
+  return { activity, documents, milestones, emdEvents, notes, approvedUpdates };
 }
 
 /**
@@ -623,38 +702,8 @@ export async function markDealClosed(
 }
 
 /** Item 4 — inline field edit on the Overview tab. */
-const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean; date?: boolean }> = {
-  property_address: { label: "Address", numeric: false },
-  purchase_price: { label: "Purchase Price", numeric: true },
-  arv: { label: "ARV", numeric: true },
-  loan_amount: { label: "Loan Amount", numeric: true },
-  ltv_percent: { label: "LTV %", numeric: true },
-  seller_note_amount: { label: "Seller Note Balance", numeric: true },
-  assignment_fee: { label: "Assignment Fee", numeric: true },
-  interest_rate: { label: "Interest Rate", numeric: true },
-  holdback: { label: "Holdback", numeric: true },
-  lender_name: { label: "Lender", numeric: false },
-  quote_number: { label: "Quote #", numeric: false },
-  notes: { label: "Notes", numeric: false },
-  // Cost inputs for waterfall / cashflow underwriting
-  realtor_commission: { label: "Realtor Commission", numeric: true },
-  insurance_annual: { label: "Insurance (Annual)", numeric: true },
-  taxes_annual: { label: "Taxes (Annual)", numeric: true },
-  hoa_monthly: { label: "HOA (Monthly)", numeric: true },
-  first_lien_monthly: { label: "First Lien / mo", numeric: true },
-  seller_carry_monthly: { label: "Seller Carry / mo", numeric: true },
-  // Closing cost fees (subtracted before credit partner split)
-  tc_fee: { label: "TC Fee", numeric: true },
-  attorney_fee: { label: "Attorney Fee", numeric: true },
-  pm_fee: { label: "PM Fee", numeric: true },
-  dpts_override: { label: "Down Payment to Seller", numeric: true },
-  wholesaler_name: { label: "Wholesaler Name", numeric: false },
-  // EMD intelligence (migration 20260802010000)
-  emd_amount: { label: "EMD Amount", numeric: true },
-  emd_hard_date: { label: "EMD Hard Date", numeric: false, date: true },
-  emd_extension_count: { label: "EMD Extensions", numeric: true },
-  emd_notes: { label: "EMD Notes", numeric: false },
-};
+// EDITABLE_FIELDS lives in @/lib/editable-fields — a "use server" module may
+// only export async functions, so the whitelist itself can't live here.
 
 // Fields whose changes require a waterfall write-back to cashback_at_close et al.
 const WATERFALL_RECALC_FIELDS = new Set([

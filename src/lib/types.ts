@@ -268,6 +268,81 @@ export const EMD_EVENT_LABELS: Record<EmdEventType, string> = {
   date_changed: "Hard Date Changed",
 };
 
+// ---------------------------------------------------------------------------
+// Deal Intelligence Engine — approval queue (deal_updates / deal_notes,
+// migration 20260802220000)
+// ---------------------------------------------------------------------------
+
+export type DealUpdateSource = "email" | "note" | "appraisal_report" | "system";
+
+export type DealUpdateEventType =
+  | "communication"
+  | "doc_received"
+  | "status_change"
+  | "milestone"
+  | "emd_change"
+  | "appraisal_result"
+  | "extension"
+  | "task"
+  | "other";
+
+export type DealUpdateStatus = "pending" | "approved" | "rejected" | "auto";
+
+export const DEAL_UPDATE_SOURCE_LABELS: Record<DealUpdateSource, string> = {
+  email: "Email",
+  note: "Note",
+  appraisal_report: "Appraisal Report",
+  system: "System",
+};
+
+export const DEAL_UPDATE_EVENT_LABELS: Record<DealUpdateEventType, string> = {
+  communication: "Communication",
+  doc_received: "Document Received",
+  status_change: "Status Change",
+  milestone: "Milestone",
+  emd_change: "EMD Change",
+  appraisal_result: "Appraisal Result",
+  extension: "Extension",
+  task: "Task",
+  other: "Other",
+};
+
+/**
+ * proposed_changes shape: { [field]: { new: value, was: value } }. `was` is
+ * a snapshot of the field's value at proposal-creation time — approval
+ * compares it against the field's current value to detect whether the deal
+ * moved on since the proposal was made (see approveDealUpdate).
+ */
+export type ProposedFieldChange = {
+  new: string | number | null;
+  was: string | number | null;
+};
+export type ProposedChanges = Record<string, ProposedFieldChange>;
+
+export interface DealUpdate {
+  id: string;
+  deal_id: string;
+  source: DealUpdateSource;
+  source_ref: string | null;
+  author_id: string | null;
+  event_type: DealUpdateEventType;
+  summary: string;
+  proposed_changes: ProposedChanges | null;
+  status: DealUpdateStatus;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export interface DealNote {
+  id: string;
+  deal_id: string;
+  author_id: string;
+  body: string;
+  ai_processed_at: string | null;
+  created_at: string;
+}
+
 export interface EmdEvent {
   id: string;
   deal_id: string;

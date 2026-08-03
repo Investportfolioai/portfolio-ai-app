@@ -18,6 +18,8 @@ import {
   type WaterfallResult,
   type CashflowResult,
   type EmdEvent,
+  DEAL_UPDATE_SOURCE_LABELS,
+  DEAL_UPDATE_EVENT_LABELS,
   ASSIGNMENT_STATUS_LABELS,
   MILESTONE_LABELS,
   EMD_EVENT_LABELS,
@@ -48,6 +50,8 @@ import {
   deleteMilestone,
   uploadDealDocument,
   type DealDetail,
+  type DealNoteEntry,
+  type DealUpdateEntry,
   type NewDealInput,
   type UploadResult,
 } from "./actions";
@@ -57,6 +61,7 @@ import {
   getAvailableKps,
   removeKpAssignment,
 } from "./kp-actions";
+import { createNote } from "./deal-updates-actions";
 import { saveNotes } from "./actions";
 
 type Extraction = Extract<UploadResult, { ok: true }>["extraction"];
@@ -1237,10 +1242,18 @@ function NotesTab({
   dealId,
   initialNotes,
   canEdit,
+  notes,
+  canPostNote,
+  loading,
+  onChanged,
 }: {
   dealId: string;
   initialNotes: string | null;
   canEdit: boolean;
+  notes: DealNoteEntry[];
+  canPostNote: boolean;
+  loading: boolean;
+  onChanged: () => void;
 }) {
   const [value, setValue] = useState(initialNotes ?? "");
   const [saved, setSaved] = useState(false);
@@ -1320,6 +1333,139 @@ function NotesTab({
         <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginTop: "8px" }}>
           Read-only — only owners and partners can edit notes.
         </p>
+      )}
+
+      <div style={{ marginTop: "28px", paddingTop: "20px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <DealNotesSection dealId={dealId} notes={notes} canPost={canPostNote} loading={loading} onChanged={onChanged} />
+      </div>
+    </div>
+  );
+}
+
+/** Structured, multi-author deal notes (deal_notes table) — chronological, KP-badged. */
+function DealNotesSection({
+  dealId,
+  notes,
+  canPost,
+  loading,
+  onChanged,
+}: {
+  dealId: string;
+  notes: DealNoteEntry[];
+  canPost: boolean;
+  loading: boolean;
+  onChanged: () => void;
+}) {
+  const [body, setBody] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [posting, startPost] = useTransition();
+
+  function post() {
+    const trimmed = body.trim();
+    if (!trimmed) return;
+    setError(null);
+    startPost(async () => {
+      const res = await createNote(dealId, trimmed);
+      if (res.ok) {
+        setBody("");
+        onChanged();
+      } else {
+        setError(res.error);
+      }
+    });
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.25)", marginBottom: "12px" }}>
+        Deal Notes
+      </div>
+
+      {canPost && (
+        <div style={{ marginBottom: "16px" }}>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            placeholder="Add a note — seller calls, extension asks, anything the team should see..."
+            rows={3}
+            style={{
+              width: "100%",
+              background: "rgba(26,29,39,0.85)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              borderRadius: "10px",
+              padding: "10px 12px",
+              fontSize: "13px",
+              fontFamily: "var(--font-body), DM Sans, sans-serif",
+              color: "#fff",
+              resize: "vertical",
+              outline: "none",
+              lineHeight: 1.5,
+              boxSizing: "border-box",
+            }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(201,168,76,0.5)"; }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.10)"; }}
+          />
+          {error && <p style={{ fontSize: "11px", color: "#ef4444", marginTop: "6px" }}>{error}</p>}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "8px" }}>
+            <button
+              type="button"
+              disabled={posting || !body.trim()}
+              onClick={post}
+              style={{
+                background: "#C9A84C",
+                border: "none",
+                borderRadius: "8px",
+                padding: "8px 18px",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#0A0B14",
+                cursor: posting || !body.trim() ? "default" : "pointer",
+                opacity: posting || !body.trim() ? 0.6 : 1,
+              }}
+            >
+              {posting ? "Posting…" : "Post Note"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.4)" }}>Loading…</p>
+      ) : notes.length === 0 ? (
+        <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}>No notes yet.</p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {notes.map((n) => (
+            <div key={n.id} style={{ borderLeft: "2px solid rgba(201,168,76,0.4)", paddingLeft: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>
+                  {n.author_name ?? "Unknown"}
+                </span>
+                {n.author_role === "kp" && (
+                  <span
+                    style={{
+                      fontSize: "9px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.04em",
+                      padding: "1px 6px",
+                      borderRadius: "999px",
+                      background: "rgba(96,165,250,0.15)",
+                      color: "#60a5fa",
+                    }}
+                    title="Note from a Key Principal — consideration only"
+                  >
+                    KP note
+                  </span>
+                )}
+                <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)" }}>{fmtDateTime(n.created_at)}</span>
+              </div>
+              <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.75)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+                {n.body}
+              </p>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -1659,6 +1805,7 @@ function DealPanel({ deal, onClose, userRole }: { deal: Deal; onClose: () => voi
                         dealId={deal.id}
                         milestones={detail?.milestones ?? []}
                         emdEvents={detail?.emdEvents ?? []}
+                        approvedUpdates={detail?.approvedUpdates ?? []}
                         loading={loadingDetail}
                         onChanged={onChanged}
                       />
@@ -1676,6 +1823,10 @@ function DealPanel({ deal, onClose, userRole }: { deal: Deal; onClose: () => voi
                         dealId={deal.id}
                         initialNotes={deal.notes}
                         canEdit={userRole === "owner" || userRole === "partner"}
+                        notes={detail?.notes ?? []}
+                        canPostNote={userRole === "owner" || userRole === "partner" || userRole === "manager"}
+                        loading={loadingDetail}
+                        onChanged={onChanged}
                       />
                     )}
                     {tab === "KPs" && <KpsTab dealId={deal.id} onChanged={onChanged} />}
@@ -2814,16 +2965,32 @@ function DocumentsTab({
   );
 }
 
+function SourceIcon({ source }: { source: DealUpdateEntry["source"] }) {
+  const common = { width: 13, height: 13, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.6, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  if (source === "email") {
+    return <svg {...common}><path d="M4 4h16v16H4z" /><path d="M4 6l8 7 8-7" /></svg>;
+  }
+  if (source === "note") {
+    return <svg {...common}><path d="M4 4h16v16H4z" /><path d="M8 9h8M8 13h5" /></svg>;
+  }
+  if (source === "appraisal_report") {
+    return <svg {...common}><path d="M12 2l9 4.5v9L12 20l-9-4.5v-9L12 2z" /></svg>;
+  }
+  return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 8v4l3 2" /></svg>;
+}
+
 function TimelineTab({
   dealId,
   milestones,
   emdEvents,
+  approvedUpdates,
   loading,
   onChanged,
 }: {
   dealId: string;
   milestones: DealMilestone[];
   emdEvents: EmdEvent[];
+  approvedUpdates: DealUpdateEntry[];
   loading: boolean;
   onChanged: () => void;
 }) {
@@ -2862,6 +3029,35 @@ function TimelineTab({
 
   return (
     <div className="space-y-4">
+      {approvedUpdates.length > 0 && (
+        <div>
+          <div className="mb-2 text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
+            Deal Updates
+          </div>
+          <ul className="space-y-3">
+            {approvedUpdates.map((u) => (
+              <li key={u.id} className="border-l-2 border-accent/40 pl-3">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
+                    <span className="text-muted-foreground" title={DEAL_UPDATE_SOURCE_LABELS[u.source]}>
+                      <SourceIcon source={u.source} />
+                    </span>
+                    {u.summary}
+                  </span>
+                  <span className="data-number shrink-0 text-[11px] text-muted-foreground">
+                    {fmtDateTime(u.created_at)}
+                  </span>
+                </div>
+                <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="rounded-full bg-secondary px-2 py-0.5 font-medium">{DEAL_UPDATE_EVENT_LABELS[u.event_type]}</span>
+                  {u.reviewed_by_name && <span>approved by {u.reviewed_by_name}</span>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : milestones.length === 0 ? (

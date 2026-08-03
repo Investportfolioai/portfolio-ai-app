@@ -1,5 +1,8 @@
 import type { SidebarUser } from "./sidebar";
 import { UserMenu } from "./user-menu";
+import { ReviewQueueBell } from "./review-queue-bell";
+
+const TRUSTED_ROLES = new Set(["owner", "partner", "manager"]);
 
 export function TopBar({ user }: { user: SidebarUser }) {
   return (
@@ -13,7 +16,10 @@ export function TopBar({ user }: { user: SidebarUser }) {
         <img src="/logo-white.png" alt="Portfolio AI" className="max-h-7 max-w-full" />
       </div>
 
-      <UserMenu user={user} />
+      <div className="flex items-center gap-3">
+        {user.role && TRUSTED_ROLES.has(user.role) && <ReviewQueueBell />}
+        <UserMenu user={user} />
+      </div>
     </header>
   );
 }
