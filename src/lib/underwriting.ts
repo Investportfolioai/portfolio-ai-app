@@ -367,6 +367,10 @@ export interface DocExtraction {
   extension_detected: boolean;
   /** Free-text detail on the extension terms, if extension_detected. */
   extension_note: string | null;
+  /** Classified document type — drives the review-queue hierarchy (Automation Push, section 4). */
+  doc_type: "purchase_contract" | "addendum" | "extension" | "appraisal" | "email" | "other";
+  /** The document's own effective/signed date (YYYY-MM-DD) for chronological provenance, or null. */
+  document_date: string | null;
 }
 
 const DOC_SCHEMA = {
@@ -414,6 +418,11 @@ const DOC_SCHEMA = {
     appraisal_detected: { type: "boolean" },
     extension_detected: { type: "boolean" },
     extension_note: { type: ["string", "null"] },
+    doc_type: {
+      type: "string",
+      enum: ["purchase_contract", "addendum", "extension", "appraisal", "email", "other"],
+    },
+    document_date: { type: ["string", "null"] },
   },
   required: [
     "milestones",
@@ -423,6 +432,8 @@ const DOC_SCHEMA = {
     "appraisal_detected",
     "extension_detected",
     "extension_note",
+    "doc_type",
+    "document_date",
   ],
 } as const;
 
@@ -433,6 +444,8 @@ const DOC_SYSTEM = `You read real-estate deal documents (contracts, amendments, 
 - appraisal_detected: true only if this document IS a completed appraisal report (not just a mention of one being ordered).
 - extension_detected: true if this document is an extension of the EMD hard date, inspection period, or closing date.
 - extension_note: if extension_detected, one line on what was extended and to when. Otherwise null.
+- doc_type: classify the document — purchase_contract (the base purchase agreement/PSA), addendum (an amendment/addendum to a contract), extension (an EMD/closing/inspection extension), appraisal (a completed appraisal report), email (an email or letter, not a signed form), or other.
+- document_date: the document's own effective, signed, or execution date as ISO YYYY-MM-DD (NOT a deadline inside it) — used to order addenda chronologically. Null if not stated.
 - summary: one or two sentences on what this document is and what changed.
 Use empty arrays / false / null where nothing applies. Always call extract_document.`;
 
@@ -477,4 +490,55 @@ export async function extractDocumentUpdates(
     throw new Error("Document extraction returned no structured output.");
   }
   return block.input as DocExtraction;
+}
+
+// ---------------------------------------------------------------------------
+// Outbound email classification (Automation Push §5) — is a SENT email a
+// request we're now waiting on the counterparty to fulfill?
+// ---------------------------------------------------------------------------
+
+export interface OutboundClassification {
+  is_request: boolean;
+  /** Short (<=8 word) phrase naming what we asked for, or null. */
+  request: string | null;
+}
+
+const OUTBOUND_SCHEMA = {
+  type: "object",
+  properties: {
+    is_request: { type: "boolean" },
+    request: { type: ["string", "null"] },
+  },
+  required: ["is_request", "request"],
+} as const;
+
+const OUTBOUND_SYSTEM = `You classify an OUTBOUND (sent) email from a real-estate acquisitions team to a counterparty (seller, lender, title/escrow, agent). Decide if it contains an actionable REQUEST we are now WAITING ON the counterparty to fulfill — e.g. an EMD/closing extension ask, a document request, a payoff request, a wire/figures request, a signature request. is_request=true ONLY if we are waiting on their response/action. request: a short (<=8 word) phrase naming what we asked for, or null. Informational/FYI notes, confirmations, and thank-yous are is_request=false. Always call classify_outbound.`;
+
+/** Classify a single outbound email. Never writes anything — sent mail cannot confirm data (§5 hard rule). */
+export async function classifyOutboundEmail(subject: string, snippet: string): Promise<OutboundClassification> {
+  const client = getClient();
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 200,
+      system: [{ type: "text", text: OUTBOUND_SYSTEM, cache_control: { type: "ephemeral" } }],
+      tools: [
+        {
+          name: "classify_outbound",
+          description: "Submit whether the outbound email is a pending request we await a reply on.",
+          input_schema: OUTBOUND_SCHEMA as unknown as Anthropic.Tool["input_schema"],
+        },
+      ],
+      tool_choice: { type: "tool", name: "classify_outbound" },
+      messages: [{ role: "user", content: [{ type: "text", text: `Subject: ${subject}\n\n${snippet}` }] }],
+    });
+  } catch (err) {
+    throw wrapApiError("classifyOutboundEmail", err);
+  }
+  const block = response.content.find((b) => b.type === "tool_use");
+  if (!block || block.type !== "tool_use") {
+    throw new Error("Outbound classification returned no structured output.");
+  }
+  return block.input as OutboundClassification;
 }

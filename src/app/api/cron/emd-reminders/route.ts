@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { daysUntil } from "@/lib/types";
-import { sendReminder } from "@/lib/reminders";
+import { sendReminder, scheduleReminderEmail } from "@/lib/reminders";
 import { money } from "@/lib/format";
 
 export const runtime = "nodejs";
@@ -14,10 +14,26 @@ interface EmdCandidate {
   emd_hard_date: string;
   emd_extension_count: number;
   appraisal_received_at: string | null;
-  emd_reminder_7_sent_at: string | null;
-  emd_reminder_4_sent_at: string | null;
+  emd_reminder_10_sent_at: string | null;
+  emd_reminder_5_sent_at: string | null;
+  emd_reminder_3_sent_at: string | null;
+  emd_reminder_2_sent_at: string | null;
   emd_appraisal_reminder_sent_at: string | null;
 }
+
+/**
+ * Reminder thresholds, ordered from least to most urgent (largest day-count
+ * first). Each has its own idempotency stamp on the deal and its own
+ * emd_events audit type. daysUntil <= days means the threshold is crossed.
+ */
+const THRESHOLDS = [
+  { days: 10, col: "emd_reminder_10_sent_at", event: "reminder_10" },
+  { days: 5, col: "emd_reminder_5_sent_at", event: "reminder_5" },
+  { days: 3, col: "emd_reminder_3_sent_at", event: "reminder_3" },
+  { days: 2, col: "emd_reminder_2_sent_at", event: "reminder_2" },
+] as const;
+
+type Threshold = (typeof THRESHOLDS)[number];
 
 function appUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
@@ -30,6 +46,44 @@ function runwaySummary(days: number, extensions: number): string {
   return extensions > 0
     ? `${runway} left (${extensions} extension${extensions === 1 ? "" : "s"} already granted).`
     : `${runway} before EMD is non-refundable.`;
+}
+
+/** Reminders at 3 days or fewer read as urgent; 10/5-day read as heads-up. */
+function subjectFor(t: Threshold, days: number, address: string): string {
+  const tag = t.days <= 3 ? "EMD URGENT" : "EMD reminder";
+  return `${tag} — ${days}d to hard date — ${address}`;
+}
+
+/**
+ * ISO timestamp for 8:00 AM America/New_York on the morning AFTER `from`
+ * (DST-aware). The nightly sweep runs ~10pm ET, so "the next morning" is the
+ * following ET calendar day at 8am — 12:00 UTC under EDT, 13:00 UTC under EST.
+ * Used for the section-3 scheduled "final window" follow-up (Resend scheduledAt).
+ */
+function morningFollowUpISO(from: Date): string {
+  // from's ET calendar date (en-CA formats as YYYY-MM-DD).
+  const etDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(from);
+  const [y, m, d] = etDate.split("-").map(Number);
+  // Next ET calendar day (UTC math handles month/year rollover cleanly).
+  const next = new Date(Date.UTC(y, m - 1, d + 1));
+  const ny = next.getUTCFullYear();
+  const nm = next.getUTCMonth();
+  const nd = next.getUTCDate();
+  // Probe that morning to learn whether ET is on EST or EDT.
+  const probe = new Date(Date.UTC(ny, nm, nd, 12, 0));
+  const zone = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    timeZoneName: "short",
+  })
+    .formatToParts(probe)
+    .find((p) => p.type === "timeZoneName")?.value;
+  const utcHour = zone === "EST" ? 13 : 12; // 8am EST = 13:00Z, 8am EDT = 12:00Z
+  return new Date(Date.UTC(ny, nm, nd, utcHour, 0, 0)).toISOString();
 }
 
 function emailBody(params: {
@@ -56,18 +110,24 @@ function emailBody(params: {
 }
 
 /**
- * Daily EMD reminder sweep. Each hard date gets at most one email per run:
- * a past-hard-date deal gets a single "went hard" alert (permanently, via the
- * went_hard emd_event — no further 7/4-day or appraisal reminders after
- * that); otherwise, if both the 7-day and 4-day thresholds are crossed
- * unstamped in the same run (e.g. a deal enters the system already inside
- * the 4-day window), only the more urgent 4-day reminder is sent and the
- * skipped 7-day threshold is backfill-stamped silently — no email, no
- * emd_event — so it never fires late. Stamps guard every send so it fires
- * exactly once per hard date (changing emd_hard_date resets the stamps; see
- * updateDealField in pipeline/actions.ts). CRON_SECRET-guarded; folded into
- * /api/cron/daily rather than given its own vercel.json entry — Hobby caps
- * cron jobs at 2, both already claimed by daily + snapshot.
+ * Daily EMD reminder sweep — thresholds at 10, 5, 3, and 2 days to the hard
+ * date. Each hard date gets at most one email per run:
+ *
+ *  - A past-hard-date deal gets a single "went hard" alert (permanently, via
+ *    the went_hard emd_event — no further threshold or appraisal reminders
+ *    after that).
+ *  - Otherwise the MOST URGENT unstamped crossed threshold is sent, and every
+ *    other crossed-but-unstamped threshold is backfill-stamped silently — no
+ *    email, no emd_event — so a deal that enters mid-window (e.g. already 4
+ *    days out) sends only the 5-day notice and never fires the skipped 10-day
+ *    one late.
+ *
+ * Stamps guard every send so each threshold fires exactly once per hard date
+ * (changing emd_hard_date resets the stamps; see updateDealField in
+ * pipeline/actions.ts). Legacy 7/4-day columns are retained but no longer
+ * written. CRON_SECRET-guarded; folded into /api/cron/daily rather than given
+ * its own vercel.json entry — Hobby caps cron jobs at 2, both already claimed
+ * by daily + snapshot.
  */
 export async function GET(req: Request) {
   if (!isAuthorizedCron(req)) {
@@ -78,7 +138,7 @@ export async function GET(req: Request) {
   const { data, error } = await admin
     .from("deals")
     .select(
-      "id, property_address, emd_amount, emd_hard_date, emd_extension_count, appraisal_received_at, emd_reminder_7_sent_at, emd_reminder_4_sent_at, emd_appraisal_reminder_sent_at",
+      "id, property_address, emd_amount, emd_hard_date, emd_extension_count, appraisal_received_at, emd_reminder_10_sent_at, emd_reminder_5_sent_at, emd_reminder_3_sent_at, emd_reminder_2_sent_at, emd_appraisal_reminder_sent_at",
     )
     .eq("status", "active")
     .not("escrow_date", "is", null)
@@ -98,15 +158,15 @@ export async function GET(req: Request) {
   const alreadyHard = new Set((hardEventRows ?? []).map((r) => r.deal_id));
 
   let wentHard = 0;
-  let reminder7 = 0;
-  let reminder4 = 0;
   let appraisalAlerts = 0;
+  let morningScheduled = 0;
+  const reminders: Record<string, number> = { reminder_10: 0, reminder_5: 0, reminder_3: 0, reminder_2: 0 };
 
   for (const deal of deals) {
     const days = daysUntil(deal.emd_hard_date);
     const address = deal.property_address;
 
-    // Past-hard-date takes priority and permanently silences 7/4-day + appraisal reminders.
+    // Past-hard-date takes priority and permanently silences threshold + appraisal reminders.
     if (days <= 0) {
       if (!alreadyHard.has(deal.id)) {
         try {
@@ -123,7 +183,13 @@ export async function GET(req: Request) {
           const now = new Date().toISOString();
           await admin
             .from("deals")
-            .update({ emd_reminder_7_sent_at: now, emd_reminder_4_sent_at: now, emd_appraisal_reminder_sent_at: now })
+            .update({
+              emd_reminder_10_sent_at: now,
+              emd_reminder_5_sent_at: now,
+              emd_reminder_3_sent_at: now,
+              emd_reminder_2_sent_at: now,
+              emd_appraisal_reminder_sent_at: now,
+            })
             .eq("id", deal.id);
           await admin.from("emd_events").insert({ deal_id: deal.id, event_type: "went_hard", detail: `hard date ${deal.emd_hard_date}` });
           wentHard++;
@@ -134,34 +200,55 @@ export async function GET(req: Request) {
       continue;
     }
 
-    const due7 = days <= 7 && !deal.emd_reminder_7_sent_at;
-    const due4 = days <= 4 && !deal.emd_reminder_4_sent_at;
-
-    if (due4) {
+    // Crossed + unstamped thresholds, ordered least→most urgent. The most
+    // urgent (smallest day-count, i.e. the last entry) is the one we email;
+    // the rest are backfill-stamped silently.
+    const due = THRESHOLDS.filter((t) => days <= t.days && !deal[t.col]);
+    if (due.length) {
+      const send = due[due.length - 1];
       try {
         await sendReminder({
-          subject: `EMD URGENT — ${days}d to hard date — ${address}`,
+          subject: subjectFor(send, days, address),
           html: emailBody({ address, days, amount: deal.emd_amount, extensions: deal.emd_extension_count }),
         });
-        const updates: Record<string, string> = { emd_reminder_4_sent_at: new Date().toISOString() };
-        if (due7) updates.emd_reminder_7_sent_at = new Date().toISOString(); // backfill silently — no email, no event
+        const now = new Date().toISOString();
+        const updates: Record<string, string> = {};
+        for (const t of due) updates[t.col] = now; // stamp the sent one + backfill the rest
         await admin.from("deals").update(updates).eq("id", deal.id);
-        await admin.from("emd_events").insert({ deal_id: deal.id, event_type: "reminder_4", detail: `${days}d to hard date` });
-        reminder4++;
+        await admin.from("emd_events").insert({ deal_id: deal.id, event_type: send.event, detail: `${days}d to hard date` });
+        reminders[send.event]++;
+
+        // Section 3: the night the 2-day reminder fires (exactly 2 days out),
+        // also schedule the 8am "final window" follow-up for the next morning
+        // via Resend scheduledAt — no morning cron slot exists on Hobby. Only
+        // at days === 2 (not a late 1-day entry, where no morning remains).
+        if (send.event === "reminder_2" && days === 2) {
+          try {
+            const scheduledAt = morningFollowUpISO(new Date());
+            const emailId = await scheduleReminderEmail({
+              subject: `FINAL WINDOW: 1 business day to extend EMD on ${address}`,
+              html: emailBody({
+                address,
+                days: 1,
+                amount: deal.emd_amount,
+                extensions: deal.emd_extension_count,
+                lede: "One business day left to request an EMD extension — act this morning before the window closes.",
+              }),
+              scheduledAt,
+            });
+            // Store the scheduled email id so a hard-date change can cancel it
+            // before it sends (see updateDealField in pipeline/actions.ts).
+            if (emailId) await admin.from("deals").update({ emd_morning_email_id: emailId }).eq("id", deal.id);
+            await admin
+              .from("emd_events")
+              .insert({ deal_id: deal.id, event_type: "reminder_1_morning", detail: `scheduled ${scheduledAt}${emailId ? ` (${emailId})` : ""}` });
+            morningScheduled++;
+          } catch (e) {
+            console.error(`emd-reminders: morning follow-up scheduling failed for ${deal.id}:`, e);
+          }
+        }
       } catch (e) {
-        console.error(`emd-reminders: 4-day reminder failed for ${deal.id}:`, e);
-      }
-    } else if (due7) {
-      try {
-        await sendReminder({
-          subject: `EMD reminder — ${days}d to hard date — ${address}`,
-          html: emailBody({ address, days, amount: deal.emd_amount, extensions: deal.emd_extension_count }),
-        });
-        await admin.from("deals").update({ emd_reminder_7_sent_at: new Date().toISOString() }).eq("id", deal.id);
-        await admin.from("emd_events").insert({ deal_id: deal.id, event_type: "reminder_7", detail: `${days}d to hard date` });
-        reminder7++;
-      } catch (e) {
-        console.error(`emd-reminders: 7-day reminder failed for ${deal.id}:`, e);
+        console.error(`emd-reminders: ${send.event} failed for ${deal.id}:`, e);
       }
     }
 
@@ -186,5 +273,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, wentHard, reminder7, reminder4, appraisalAlerts, total: deals.length });
+  return NextResponse.json({ ok: true, wentHard, ...reminders, morningScheduled, appraisalAlerts, total: deals.length });
 }

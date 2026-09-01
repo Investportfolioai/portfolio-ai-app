@@ -6,7 +6,7 @@ import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
 import { updateDealField } from "./actions";
 import { EDITABLE_FIELDS } from "@/lib/editable-fields";
-import type { DealUpdateSource, DealUpdateEventType, ProposedChanges } from "@/lib/types";
+import type { DealUpdateSource, DealUpdateEventType, DealUpdateStatus, ProposedChanges } from "@/lib/types";
 
 export type DealUpdateActionState = { ok: true } | { ok: false; error: string };
 
@@ -31,6 +31,9 @@ export interface PendingDealUpdate {
   event_type: DealUpdateEventType;
   summary: string;
   proposed_changes: ProposedChanges | null;
+  status: DealUpdateStatus;
+  doc_type: string | null;
+  document_date: string | null;
   created_at: string;
 }
 
@@ -59,31 +62,27 @@ export async function getPendingDealUpdatesCount(): Promise<number> {
 }
 
 /** Pending deal_updates for the review queue panel, oldest first (work through the backlog in order). */
-export async function getPendingDealUpdates(): Promise<PendingDealUpdate[]> {
-  const user = await getSessionUser();
-  if (!user || !canManage(user.role)) return [];
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("deal_updates")
-    .select(
-      "id, deal_id, source, source_ref, event_type, summary, proposed_changes, created_at, deal:deal_id(property_address), author:author_id(full_name)",
-    )
-    .eq("status", "pending")
-    .order("created_at", { ascending: true });
-  if (error) return [];
+const UPDATE_SELECT =
+  "id, deal_id, source, source_ref, event_type, summary, proposed_changes, status, doc_type, document_date, created_at, deal:deal_id(property_address), author:author_id(full_name)";
 
-  return ((data ?? []) as unknown as {
-    id: string;
-    deal_id: string;
-    source: DealUpdateSource;
-    source_ref: string | null;
-    event_type: DealUpdateEventType;
-    summary: string;
-    proposed_changes: ProposedChanges | null;
-    created_at: string;
-    deal: { property_address: string } | null;
-    author: { full_name: string | null } | null;
-  }[]).map((u) => ({
+type UpdateRow = {
+  id: string;
+  deal_id: string;
+  source: DealUpdateSource;
+  source_ref: string | null;
+  event_type: DealUpdateEventType;
+  summary: string;
+  proposed_changes: ProposedChanges | null;
+  status: DealUpdateStatus;
+  doc_type: string | null;
+  document_date: string | null;
+  created_at: string;
+  deal: { property_address: string } | null;
+  author: { full_name: string | null } | null;
+};
+
+function mapUpdateRow(u: UpdateRow): PendingDealUpdate {
+  return {
     id: u.id,
     deal_id: u.deal_id,
     deal_address: u.deal?.property_address ?? "—",
@@ -93,8 +92,82 @@ export async function getPendingDealUpdates(): Promise<PendingDealUpdate[]> {
     event_type: u.event_type,
     summary: u.summary,
     proposed_changes: u.proposed_changes,
+    status: u.status,
+    doc_type: u.doc_type,
+    document_date: u.document_date,
     created_at: u.created_at,
-  }));
+  };
+}
+
+export async function getPendingDealUpdates(): Promise<PendingDealUpdate[]> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("deal_updates")
+    .select(UPDATE_SELECT)
+    .eq("status", "pending")
+    .order("created_at", { ascending: true });
+  if (error) return [];
+  return ((data ?? []) as unknown as UpdateRow[]).map(mapUpdateRow);
+}
+
+/**
+ * Recently auto-applied updates (status 'auto', excluding waiting-on task
+ * markers) for the review queue's done-with-UNDO section. Newest first, last
+ * 14 days — undo stays available "anytime" via the row id even beyond this.
+ */
+export async function getAutoAppliedDealUpdates(): Promise<PendingDealUpdate[]> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return [];
+  const supabase = await createClient();
+  const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
+  const { data, error } = await supabase
+    .from("deal_updates")
+    .select(UPDATE_SELECT)
+    .eq("status", "auto")
+    .neq("event_type", "task")
+    .gte("created_at", since)
+    .order("created_at", { ascending: false });
+  if (error) return [];
+  return ((data ?? []) as unknown as UpdateRow[]).map(mapUpdateRow);
+}
+
+/**
+ * Open waiting-on markers (status 'auto', event_type 'task') for the review
+ * queue's "Waiting on" section (Automation Push, section 5). Newest first.
+ */
+export async function getWaitingOnItems(): Promise<PendingDealUpdate[]> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("deal_updates")
+    .select(UPDATE_SELECT)
+    .eq("status", "auto")
+    .eq("event_type", "task")
+    .order("created_at", { ascending: false });
+  if (error) return [];
+  return ((data ?? []) as unknown as UpdateRow[]).map(mapUpdateRow);
+}
+
+/** Manually clear a waiting-on marker (operator says it's handled). */
+export async function dismissWaitingOn(updateId: string): Promise<DealUpdateActionState> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("deal_updates")
+    .update({ status: "cleared", resolved_ref: "manual", reviewed_by: user.id, reviewed_at: new Date().toISOString() })
+    .eq("id", updateId)
+    .eq("status", "auto")
+    .eq("event_type", "task")
+    .select("id")
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "Not found or already cleared." };
+  revalidatePath("/dashboard/pipeline");
+  return { ok: true };
 }
 
 /**
@@ -186,6 +259,51 @@ export async function rejectDealUpdate(updateId: string): Promise<DealUpdateActi
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "Update not found or already reviewed." };
 
+  revalidatePath("/dashboard/pipeline");
+  return { ok: true };
+}
+
+/**
+ * Undo an auto-applied update (Automation Push, section 4). Any trusted user,
+ * anytime: reverts each proposed field to its 'was' snapshot through the
+ * whitelisted updateDealField path (so EMD stamp-resets/events fire correctly),
+ * marks the row 'rejected' with an "Undone by …" note, and logs the timeline.
+ * The filed document (if any) is intentionally left in DOCS — a filed PDF is
+ * harmless and the dedupe ledger prevents re-filing.
+ */
+export async function undoDealUpdate(updateId: string): Promise<DealUpdateActionState> {
+  const user = await getSessionUser();
+  if (!user || !canManage(user.role)) return { ok: false, error: "Not authorized." };
+  const supabase = await createClient();
+
+  const { data: row, error: rowError } = await supabase
+    .from("deal_updates")
+    .select("id, deal_id, status, summary, proposed_changes")
+    .eq("id", updateId)
+    .maybeSingle();
+  if (rowError) return { ok: false, error: rowError.message };
+  if (!row) return { ok: false, error: "Update not found." };
+  if (row.status !== "auto") return { ok: false, error: `Only auto-applied updates can be undone (this is ${row.status}).` };
+
+  const proposed = (row.proposed_changes ?? {}) as ProposedChanges;
+  for (const field of Object.keys(proposed)) {
+    if (!EDITABLE_FIELDS[field]) continue; // skip anything not writable via the whitelist
+    const was = proposed[field].was;
+    const res = await updateDealField(row.deal_id, field, was == null ? "" : String(was));
+    if (!res.ok) return { ok: false, error: `${EDITABLE_FIELDS[field].label}: ${res.error}` };
+  }
+
+  const { data: me } = await supabase.from("users").select("full_name").eq("id", user.id).maybeSingle();
+  const who = me?.full_name ?? "operator";
+
+  const { error: updErr } = await supabase
+    .from("deal_updates")
+    .update({ status: "rejected", reviewed_by: user.id, reviewed_at: new Date().toISOString() })
+    .eq("id", updateId)
+    .eq("status", "auto");
+  if (updErr) return { ok: false, error: updErr.message };
+
+  await logActivity(row.deal_id, "deal_update_undone", `Undone by ${who}: ${row.summary}`);
   revalidatePath("/dashboard/pipeline");
   return { ok: true };
 }

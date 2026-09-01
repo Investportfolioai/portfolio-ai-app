@@ -4,8 +4,12 @@ import { useEffect, useState, useTransition } from "react";
 import {
   getPendingDealUpdatesCount,
   getPendingDealUpdates,
+  getAutoAppliedDealUpdates,
+  getWaitingOnItems,
   approveDealUpdate,
   rejectDealUpdate,
+  undoDealUpdate,
+  dismissWaitingOn,
   type PendingDealUpdate,
   type ApproveConflict,
 } from "@/app/dashboard/pipeline/deal-updates-actions";
@@ -37,6 +41,22 @@ function fmtRelative(iso: string): string {
   const hrs = Math.round(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.round(hrs / 24)}d ago`;
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        fontSize: "10px",
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.1em",
+        color: "rgba(255,255,255,0.3)",
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 export function ReviewQueueBell() {
@@ -123,6 +143,8 @@ function ReviewQueuePanel({
   onCountChange: (n: number) => void;
 }) {
   const [items, setItems] = useState<PendingDealUpdate[] | null>(null);
+  const [autoItems, setAutoItems] = useState<PendingDealUpdate[]>([]);
+  const [waitItems, setWaitItems] = useState<PendingDealUpdate[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<Record<string, ApproveConflict[]>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -133,6 +155,8 @@ function ReviewQueuePanel({
       setItems(list);
       onCountChange(list.length);
     });
+    getAutoAppliedDealUpdates().then(setAutoItems);
+    getWaitingOnItems().then(setWaitItems);
   };
 
   useEffect(() => {
@@ -166,6 +190,28 @@ function ReviewQueuePanel({
     setErrors((e) => ({ ...e, [id]: "" }));
     startTransition(async () => {
       const res = await rejectDealUpdate(id);
+      setBusyId(null);
+      if (res.ok) reload();
+      else setErrors((e) => ({ ...e, [id]: res.error }));
+    });
+  }
+
+  function undo(id: string) {
+    setBusyId(id);
+    setErrors((e) => ({ ...e, [id]: "" }));
+    startTransition(async () => {
+      const res = await undoDealUpdate(id);
+      setBusyId(null);
+      if (res.ok) reload();
+      else setErrors((e) => ({ ...e, [id]: res.error }));
+    });
+  }
+
+  function dismiss(id: string) {
+    setBusyId(id);
+    setErrors((e) => ({ ...e, [id]: "" }));
+    startTransition(async () => {
+      const res = await dismissWaitingOn(id);
       setBusyId(null);
       if (res.ok) reload();
       else setErrors((e) => ({ ...e, [id]: res.error }));
@@ -249,7 +295,7 @@ function ReviewQueuePanel({
         <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
           {items === null ? (
             <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "13px" }}>Loading…</p>
-          ) : items.length === 0 ? (
+          ) : items.length === 0 && autoItems.length === 0 && waitItems.length === 0 ? (
             <div
               style={{
                 textAlign: "center",
@@ -261,18 +307,53 @@ function ReviewQueuePanel({
               Nothing pending — you&apos;re caught up.
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {items.map((item) => (
-                <ReviewCard
-                  key={item.id}
-                  item={item}
-                  busy={busyId === item.id}
-                  conflicts={conflicts[item.id]}
-                  error={errors[item.id]}
-                  onApprove={() => approve(item.id)}
-                  onReject={() => reject(item.id)}
-                />
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              {items.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <SectionLabel>Needs review · {items.length}</SectionLabel>
+                  {items.map((item) => (
+                    <ReviewCard
+                      key={item.id}
+                      item={item}
+                      busy={busyId === item.id}
+                      conflicts={conflicts[item.id]}
+                      error={errors[item.id]}
+                      onApprove={() => approve(item.id)}
+                      onReject={() => reject(item.id)}
+                    />
+                  ))}
+                </div>
+              )}
+              {waitItems.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <SectionLabel>Waiting on · {waitItems.length}</SectionLabel>
+                  {waitItems.map((item) => (
+                    <ReviewCard
+                      key={item.id}
+                      item={item}
+                      mode="waiting"
+                      busy={busyId === item.id}
+                      error={errors[item.id]}
+                      onDismiss={() => dismiss(item.id)}
+                    />
+                  ))}
+                </div>
+              )}
+              {autoItems.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <SectionLabel>Auto-applied · undoable</SectionLabel>
+                  {autoItems.map((item) => (
+                    <ReviewCard
+                      key={item.id}
+                      item={item}
+                      mode="auto"
+                      busy={busyId === item.id}
+                      error={errors[item.id]}
+                      onUndo={() => undo(item.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -288,13 +369,19 @@ function ReviewCard({
   error,
   onApprove,
   onReject,
+  onUndo,
+  onDismiss,
+  mode = "review",
 }: {
   item: PendingDealUpdate;
   busy: boolean;
   conflicts?: ApproveConflict[];
   error?: string;
-  onApprove: () => void;
-  onReject: () => void;
+  onApprove?: () => void;
+  onReject?: () => void;
+  onUndo?: () => void;
+  onDismiss?: () => void;
+  mode?: "review" | "auto" | "waiting";
 }) {
   const changes = item.proposed_changes ? Object.entries(item.proposed_changes) : [];
 
@@ -321,6 +408,13 @@ function ReviewCard({
       <div style={{ fontSize: "13px", color: "rgba(255,255,255,0.7)", marginBottom: "10px", lineHeight: 1.4 }}>
         {item.summary}
       </div>
+
+      {item.doc_type && (
+        <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", marginBottom: "10px" }}>
+          {item.doc_type}
+          {item.document_date ? ` · dated ${item.document_date}` : ""}
+        </div>
+      )}
 
       {changes.length > 0 && (
         <div
@@ -414,36 +508,17 @@ function ReviewCard({
         </div>
       )}
 
-      <div style={{ display: "flex", gap: "8px" }}>
+      {mode === "auto" || mode === "waiting" ? (
         <button
           type="button"
           disabled={busy}
-          onClick={onApprove}
+          onClick={mode === "auto" ? onUndo : onDismiss}
           style={{
-            flex: 1,
-            background: "#C9A84C",
-            border: "none",
-            borderRadius: "10px",
-            padding: "14px",
-            fontSize: "13px",
-            fontWeight: 600,
-            color: "#0A0B14",
-            cursor: busy ? "default" : "pointer",
-            opacity: busy ? 0.6 : 1,
-          }}
-        >
-          {busy ? "…" : "Approve"}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onReject}
-          style={{
-            flex: 1,
+            width: "100%",
             background: "rgba(255,255,255,0.05)",
             border: "1px solid rgba(255,255,255,0.1)",
             borderRadius: "10px",
-            padding: "14px",
+            padding: "12px",
             fontSize: "13px",
             fontWeight: 600,
             color: "rgba(255,255,255,0.6)",
@@ -451,9 +526,50 @@ function ReviewCard({
             opacity: busy ? 0.6 : 1,
           }}
         >
-          Reject
+          {busy ? "…" : mode === "auto" ? "Undo" : "Dismiss"}
         </button>
-      </div>
+      ) : (
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onApprove}
+            style={{
+              flex: 1,
+              background: "#C9A84C",
+              border: "none",
+              borderRadius: "10px",
+              padding: "14px",
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "#0A0B14",
+              cursor: busy ? "default" : "pointer",
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            {busy ? "…" : "Approve"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onReject}
+            style={{
+              flex: 1,
+              background: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: "10px",
+              padding: "14px",
+              fontSize: "13px",
+              fontWeight: 600,
+              color: "rgba(255,255,255,0.6)",
+              cursor: busy ? "default" : "pointer",
+              opacity: busy ? 0.6 : 1,
+            }}
+          >
+            Reject
+          </button>
+        </div>
+      )}
     </div>
   );
 }

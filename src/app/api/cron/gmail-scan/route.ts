@@ -3,27 +3,33 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthorizedCron } from "@/lib/cron-auth";
 import { searchAttachmentCandidates, listPdfAttachments, fetchAttachmentBytes } from "@/lib/gmail";
 import { extractDocumentUpdates } from "@/lib/underwriting";
+import { recordAutoApply, recordPending, clearWaitingOn, isEmpty } from "@/lib/deal-updates";
+import { matchDeal } from "@/lib/deal-match";
+import type { ProposedChanges } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const BUCKET = "deal-documents";
 
-// Hard cap on candidate messages examined per run — a stopgap ahead of
-// Phase 3's real resumable-cursor batching. Unmatched messages are nearly
-// free to reject, so this really bounds worst-case matched-and-extracted
-// count within the shared 60s budget of /api/cron/daily.
-const MAX_MESSAGES_PER_RUN = 5;
+// Cap on candidate messages examined per run. Unmatched messages are nearly
+// free to reject, so this really bounds the worst-case matched-and-extracted
+// count. Raised 5 → 12 (Automation Push §6): at current volume the real
+// governor is the wall-clock deadline below, not this count, and 12 clears a
+// busy escrow day's backlog in a single nightly run without risking the shared
+// 60s budget of /api/cron/daily.
+const MAX_MESSAGES_PER_RUN = 12;
 
 // A single message can carry many PDFs (a real escrow package easily has
 // 8-10 disclosure/advisory forms) — cap attachments per message so one busy
 // thread can't alone exhaust the run's time budget.
 const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 
-// Wall-clock budget for the whole run, held well under maxDuration (60s) so
-// there's always time left to exit cleanly instead of hitting a hard
-// FUNCTION_INVOCATION_TIMEOUT mid-write. Checked before starting each new
-// message and each new attachment; a message cut short is unmarked from
+// Standalone wall-clock budget, used only when this route is invoked directly
+// (manual/testing). Inside /api/cron/daily the fan-out passes a shared absolute
+// deadline via the x-cron-deadline header so scan → comms → digest all fit the
+// one 60s function; that deadline takes precedence over this fallback. Checked
+// before each new message and attachment; a message cut short is unmarked from
 // gmail_processed_messages so it retries in full next run.
 const RUN_TIME_BUDGET_MS = 45_000;
 
@@ -33,41 +39,6 @@ interface CandidateDeal {
   emd_hard_date: string | null;
   emd_amount: number | null;
   appraisal_received_at: string | null;
-}
-
-/** Street-number token + significant word tokens from a free-text address. */
-function tokenizeAddress(address: string): { streetNumber: string | null; words: string[] } {
-  const tokens = address.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-  const streetNumber = tokens.find((t) => /^\d+$/.test(t)) ?? null;
-  const words = tokens.filter((t) => !/^\d+$/.test(t) && t.length > 3);
-  return { streetNumber, words };
-}
-
-type MatchResult =
-  | { method: "matched"; deal: CandidateDeal }
-  | { method: "unmatched" }
-  | { method: "ambiguous"; candidates: CandidateDeal[] };
-
-/**
- * Anchored on the street number (unlike the looser "any 2 words" matcher
- * used for WhatsApp) — financial documents are higher stakes than a text
- * message. Requires the street number AND at least one street-name word to
- * appear in the message text. Zero or multiple matches both fall back to
- * "don't guess" (unmatched / ambiguous).
- */
-function matchDeal(text: string, deals: CandidateDeal[]): MatchResult {
-  const lower = text.toLowerCase();
-  const matches: CandidateDeal[] = [];
-  for (const deal of deals) {
-    const { streetNumber, words } = tokenizeAddress(deal.property_address);
-    if (!streetNumber) continue;
-    if (lower.includes(streetNumber) && words.some((w) => lower.includes(w))) {
-      matches.push(deal);
-    }
-  }
-  if (matches.length === 1) return { method: "matched", deal: matches[0] };
-  if (matches.length === 0) return { method: "unmatched" };
-  return { method: "ambiguous", candidates: matches };
 }
 
 /**
@@ -95,8 +66,11 @@ export async function GET(req: Request) {
   }
 
   const admin = createAdminClient();
-  const startedAt = Date.now();
-  const timeLeft = () => Date.now() - startedAt < RUN_TIME_BUDGET_MS;
+  // Prefer the shared cross-step deadline from /api/cron/daily; fall back to a
+  // standalone budget for direct invocation.
+  const headerDeadline = Number(req.headers.get("x-cron-deadline")) || 0;
+  const budgetEnd = headerDeadline || Date.now() + RUN_TIME_BUDGET_MS;
+  const timeLeft = () => Date.now() < budgetEnd;
 
   const candidates = (await searchAttachmentCandidates()).slice(0, MAX_MESSAGES_PER_RUN);
   let matched = 0;
@@ -223,42 +197,66 @@ export async function GET(req: Request) {
             console.error(`gmail-scan: extraction failed for ${candidate.messageId}/${att.filename}:`, e);
           }
 
-          const appliedFields: Record<string, string | number> = {};
-          const conflictFields: Record<string, { extracted: string | number; existing: string | number }> = {};
+          const docType = extraction?.doc_type ?? null;
+          const documentDate = extraction?.document_date ?? null;
+          const autoChanges: ProposedChanges = {};
+          const pendingChanges: ProposedChanges = {};
 
           if (extraction) {
             const emdMilestone = extraction.milestones
               .filter((m) => m.milestone_type === "emd")
               .sort((a, b) => a.target_date.localeCompare(b.target_date))[0];
             if (emdMilestone) {
-              if (deal.emd_hard_date == null) {
-                appliedFields.emd_hard_date = emdMilestone.target_date;
-              } else if (deal.emd_hard_date !== emdMilestone.target_date) {
-                conflictFields.emd_hard_date = { extracted: emdMilestone.target_date, existing: deal.emd_hard_date };
-                await admin.from("emd_events").insert({
-                  deal_id: deal.id,
-                  event_type: "date_changed",
-                  detail: `extracted ${emdMilestone.target_date} conflicts with set ${deal.emd_hard_date} — review`,
-                });
-              }
+              // Null → auto-fill baseline; conflict → one-tap queue (never silently override).
+              if (isEmpty(deal.emd_hard_date)) autoChanges.emd_hard_date = { new: emdMilestone.target_date, was: null };
+              else if (deal.emd_hard_date !== emdMilestone.target_date)
+                pendingChanges.emd_hard_date = { new: emdMilestone.target_date, was: deal.emd_hard_date };
             }
 
             if (extraction.emd_amount != null) {
-              if (deal.emd_amount == null) {
-                appliedFields.emd_amount = extraction.emd_amount;
-              } else if (deal.emd_amount !== extraction.emd_amount) {
-                conflictFields.emd_amount = { extracted: extraction.emd_amount, existing: deal.emd_amount };
-              }
+              if (isEmpty(deal.emd_amount)) autoChanges.emd_amount = { new: extraction.emd_amount, was: null };
+              else if (deal.emd_amount !== extraction.emd_amount)
+                pendingChanges.emd_amount = { new: extraction.emd_amount, was: deal.emd_amount };
             }
 
-            if (extraction.appraisal_detected && deal.appraisal_received_at == null) {
-              appliedFields.appraisal_received_at = new Date().toISOString();
+            if (extraction.appraisal_detected && isEmpty(deal.appraisal_received_at)) {
+              autoChanges.appraisal_received_at = { new: new Date().toISOString(), was: null };
             }
           }
 
-          if (Object.keys(appliedFields).length > 0) {
-            await admin.from("deals").update(appliedFields).eq("id", deal.id);
-            applied++;
+          // Section 4: the document filing itself always auto-applies (filed to
+          // DOCS above) — recorded as one 'auto' row carrying any null-fill
+          // field writes (undoable). Conflicts route to the one-tap queue with
+          // doc-type + document-date provenance shown on the card.
+          const autoFieldNames = Object.keys(autoChanges);
+          await recordAutoApply(admin, {
+            dealId: deal.id,
+            source: extraction?.appraisal_detected ? "appraisal_report" : "email",
+            sourceRef: att.filename,
+            docType,
+            documentDate,
+            eventType: "doc_received",
+            summary: `Filed ${att.filename}${docType ? ` (${docType})` : ""}${autoFieldNames.length ? ` — auto-applied ${autoFieldNames.join(", ")}` : ""}`,
+            changes: autoFieldNames.length ? autoChanges : undefined,
+          });
+          if (autoFieldNames.length) applied++;
+
+          // A signed document arriving on the deal clears any open waiting-on flags (section 5).
+          await clearWaitingOn(admin, deal.id, `doc:${att.filename}`);
+
+          const pendingFieldNames = Object.keys(pendingChanges);
+          if (pendingFieldNames.length) {
+            const supersede = docType === "addendum" || docType === "extension";
+            await recordPending(admin, {
+              dealId: deal.id,
+              source: "email",
+              sourceRef: att.filename,
+              docType,
+              documentDate,
+              eventType: "emd_change",
+              summary: `${docType ?? "Document"}${documentDate ? ` dated ${documentDate}` : ""} ${supersede ? "supersedes prior terms" : "conflicts with current values"} — review ${pendingFieldNames.join(", ")}`,
+              changes: pendingChanges,
+            });
           }
 
           await admin.from("emd_extraction_staging").insert({
@@ -269,8 +267,8 @@ export async function GET(req: Request) {
             match_method: "matched",
             match_detail: deal.property_address,
             extracted: extraction,
-            applied_fields: Object.keys(appliedFields).length ? appliedFields : null,
-            conflict_fields: Object.keys(conflictFields).length ? conflictFields : null,
+            applied_fields: autoFieldNames.length ? autoChanges : null,
+            conflict_fields: pendingFieldNames.length ? pendingChanges : null,
           });
         } catch (attErr) {
           console.error(`gmail-scan: attachment processing failed for ${candidate.messageId}/${att.filename}:`, attErr);

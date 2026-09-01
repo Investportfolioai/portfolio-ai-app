@@ -173,6 +173,76 @@ export async function searchAttachmentCandidates(): Promise<GmailAttachmentCandi
   }
 }
 
+export interface GmailCommMessage {
+  messageId: string;
+  subject: string;
+  snippet: string;
+  from: string;
+  to: string;
+  direction: "sent" | "inbound";
+  internalDate: string; // epoch ms, as returned by the Gmail API
+}
+
+/**
+ * Search sent + inbound mail (last 14 days) mentioning any of the given deal
+ * address phrases — the section-5 communication scan. Metadata only (no
+ * bodies); the caller matches each message to a specific deal and decides what
+ * to record. Drafts are excluded and direction is derived from the SENT label.
+ * Empty when not configured or when no phrases are supplied. Read-only — the
+ * mailbox is never modified.
+ */
+export async function searchDealCommunications(addressPhrases: string[]): Promise<GmailCommMessage[]> {
+  if (!isGmailConfigured() || addressPhrases.length === 0) return [];
+  try {
+    const { google } = await import("googleapis");
+    const oauth2 = new google.auth.OAuth2(
+      process.env.GMAIL_CLIENT_ID,
+      process.env.GMAIL_CLIENT_SECRET,
+    );
+    oauth2.setCredentials({ refresh_token: process.env.GMAIL_REFRESH_TOKEN });
+
+    const gmail = google.gmail({ version: "v1", auth: oauth2 });
+
+    const q = `newer_than:14d -in:drafts (${addressPhrases.join(" OR ")})`;
+    const listRes = await gmail.users.messages.list({ userId: "me", q, maxResults: 30 });
+    const messages = listRes.data.messages ?? [];
+    if (!messages.length) return [];
+
+    const full = await Promise.all(
+      messages.map((m) =>
+        gmail.users.messages.get({
+          userId: "me",
+          id: m.id!,
+          format: "metadata",
+          metadataHeaders: ["Subject", "From", "To"],
+        }),
+      ),
+    );
+
+    return full
+      .filter((r) => !(r.data.labelIds ?? []).includes("DRAFT"))
+      .map((r) => {
+        const headers = r.data.payload?.headers ?? [];
+        const h = (name: string) =>
+          headers.find((hh) => hh.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
+        const labelIds = r.data.labelIds ?? [];
+        return {
+          messageId: r.data.id ?? "",
+          subject: h("Subject"),
+          snippet: r.data.snippet ?? "",
+          from: h("From"),
+          to: h("To"),
+          direction: labelIds.includes("SENT") ? ("sent" as const) : ("inbound" as const),
+          internalDate: r.data.internalDate ?? "0",
+        };
+      })
+      .sort((a, b) => Number(a.internalDate) - Number(b.internalDate));
+  } catch (e) {
+    console.error("Gmail communication search failed:", e);
+    return [];
+  }
+}
+
 export interface GmailPdfAttachment {
   attachmentId: string;
   filename: string;

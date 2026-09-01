@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
 import { sendWholesalerResponse, type WholesalerResponseKind } from "@/lib/email";
+import { cancelScheduledEmail } from "@/lib/reminders";
 import { EDITABLE_FIELDS } from "@/lib/editable-fields";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -735,11 +736,11 @@ export async function updateDealField(
 
   // emd_hard_date / emd_extension_count carry emd_events side effects — read
   // the prior value first so we can tell whether it actually changed.
-  let beforeEmd: { emd_hard_date: string | null; emd_extension_count: number } | null = null;
+  let beforeEmd: { emd_hard_date: string | null; emd_extension_count: number; emd_morning_email_id: string | null } | null = null;
   if (field === "emd_hard_date" || field === "emd_extension_count") {
     const { data } = await supabase
       .from("deals")
-      .select("emd_hard_date, emd_extension_count")
+      .select("emd_hard_date, emd_extension_count, emd_morning_email_id")
       .eq("id", dealId)
       .single();
     beforeEmd = data;
@@ -748,9 +749,17 @@ export async function updateDealField(
   const updates: Record<string, string | number | null> = { [field]: parsed };
   if (field === "emd_hard_date" && beforeEmd && beforeEmd.emd_hard_date !== parsed) {
     // A new hard date invalidates any reminders already sent against the old one.
-    updates.emd_reminder_7_sent_at = null;
-    updates.emd_reminder_4_sent_at = null;
+    updates.emd_reminder_10_sent_at = null;
+    updates.emd_reminder_5_sent_at = null;
+    updates.emd_reminder_3_sent_at = null;
+    updates.emd_reminder_2_sent_at = null;
     updates.emd_appraisal_reminder_sent_at = null;
+    // Cancel any pending 8am "final window" email queued against the old hard
+    // date before it sends stale (best-effort — a already-sent id just no-ops).
+    if (beforeEmd.emd_morning_email_id) {
+      await cancelScheduledEmail(beforeEmd.emd_morning_email_id);
+      updates.emd_morning_email_id = null;
+    }
   }
 
   const { error } = await supabase.from("deals").update(updates).eq("id", dealId);
@@ -918,6 +927,8 @@ export async function uploadDealDocument(
         appraisal_detected: false,
         extension_detected: false,
         extension_note: null,
+        doc_type: "other",
+        document_date: null,
       },
     };
   }
