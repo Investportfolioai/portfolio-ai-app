@@ -35,6 +35,9 @@ export interface DigestData {
   goingHardCount: number;
   goingHardSum: number;
   goingHardSoonest: string | null;
+  /** Addresses (with amount + date) composing each exposure bucket. */
+  hardNowDeals: string[];
+  goingHardDeals: string[];
   deals: DigestDealSection[];
   awaitingReviewCount: number;
   quiet: boolean;
@@ -79,6 +82,7 @@ const s = StyleSheet.create({
   expLabel: { fontFamily: "Helvetica", fontSize: 8, color: COLORS.faint, textTransform: "uppercase", letterSpacing: 0.6 },
   expNum: { fontFamily: "Courier-Bold", fontSize: 18, color: COLORS.ink, marginTop: 2 },
   expNote: { fontFamily: "Helvetica", fontSize: 9, color: COLORS.sub, marginTop: 2 },
+  expList: { fontFamily: "Helvetica", fontSize: 7.5, color: COLORS.faint, marginTop: 2, lineHeight: 1.35 },
   dealCard: { borderWidth: 1, borderColor: COLORS.rule, borderRadius: 6, padding: 12, marginBottom: 10 },
   dealHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
   dealAddr: { fontFamily: "Times-Roman", fontSize: 13, color: COLORS.ink, flex: 1, paddingRight: 8 },
@@ -89,7 +93,7 @@ const s = StyleSheet.create({
   subhead: { fontFamily: "Helvetica-Bold", fontSize: 8, color: COLORS.sub, marginTop: 6, marginBottom: 2, textTransform: "uppercase", letterSpacing: 0.5 },
   bullet: { fontFamily: "Helvetica", fontSize: 9, color: COLORS.ink, marginBottom: 1.5, lineHeight: 1.3 },
   bulletRed: { fontFamily: "Helvetica", fontSize: 9, color: COLORS.red, marginBottom: 1.5, lineHeight: 1.3 },
-  quiet: { fontFamily: "Times-Roman", fontSize: 14, color: COLORS.sub, textAlign: "center", marginTop: 40 },
+  quietBanner: { fontFamily: "Times-Roman", fontSize: 12, color: COLORS.sub, marginTop: 12, marginBottom: 2 },
   footer: { marginTop: 18, borderTopWidth: 1, borderTopColor: COLORS.rule, paddingTop: 10 },
   footerText: { fontFamily: "Helvetica", fontSize: 9, color: COLORS.sub },
   footerLink: { fontFamily: "Helvetica", fontSize: 9, color: COLORS.gold },
@@ -163,6 +167,11 @@ function DigestDocument({ data }: { data: DigestData }) {
           <View style={s.expBox}>
             <Text style={s.expLabel}>Hard now</Text>
             <Text style={s.expNum}>{money(data.exposureHardNow)}</Text>
+            {data.hardNowDeals.map((t, i) => (
+              <Text key={i} style={s.expList}>
+                {t}
+              </Text>
+            ))}
           </View>
           <View style={s.expBox}>
             <Text style={s.expLabel}>Going hard ≤10d</Text>
@@ -171,18 +180,22 @@ function DigestDocument({ data }: { data: DigestData }) {
               {data.goingHardCount} deal{data.goingHardCount === 1 ? "" : "s"}
               {soonest ? ` · soonest: ${soonest}` : ""}
             </Text>
+            {data.goingHardDeals.map((t, i) => (
+              <Text key={i} style={s.expList}>
+                {t}
+              </Text>
+            ))}
           </View>
         </View>
 
-        {data.quiet ? (
-          <Text style={s.quiet}>All quiet — no changes today.</Text>
+        {data.quiet && <Text style={s.quietBanner}>All quiet — no changes today.</Text>}
+
+        {/* Roster renders EVERY night; quiet only suppresses the per-deal activity subsections. */}
+        <Text style={s.sectionLabel}>Escrow Deals · {data.deals.length}</Text>
+        {data.deals.length ? (
+          data.deals.map((d, i) => <DealCard key={i} d={d} />)
         ) : (
-          <>
-            <Text style={s.sectionLabel}>Escrow Deals</Text>
-            {data.deals.map((d, i) => (
-              <DealCard key={i} d={d} />
-            ))}
-          </>
+          <Text style={s.bullet}>• No escrow deals.</Text>
         )}
 
         {data.weekInReview && (

@@ -117,15 +117,20 @@ export async function GET(req: Request) {
   let goingHardSum = 0;
   let goingHardCount = 0;
   let soonest: { address: string; date: string; days: number } | null = null;
+  const hardNowDeals: string[] = [];
+  const goingHardDeals: string[] = [];
+  const amtLabel = (n: number | null) => (n != null ? money(n) : "amount not set");
   for (const d of deals) {
     if (!d.emd_hard_date) continue;
     const days = daysUntil(d.emd_hard_date);
     const amt = d.emd_amount ?? 0;
     if (days <= 0) {
       exposureHardNow += amt;
+      hardNowDeals.push(`${d.property_address} — ${amtLabel(d.emd_amount)} (hard ${d.emd_hard_date})`);
     } else if (days <= 10) {
       goingHardSum += amt;
       goingHardCount++;
+      goingHardDeals.push(`${d.property_address} — ${amtLabel(d.emd_amount)} (${d.emd_hard_date}, ${days}d)`);
       if (!soonest || days < soonest.days) soonest = { address: d.property_address, date: d.emd_hard_date, days };
     }
   }
@@ -192,6 +197,8 @@ export async function GET(req: Request) {
     goingHardCount,
     goingHardSum,
     goingHardSoonest: soonest ? `${soonest.address} (${soonest.date})` : null,
+    hardNowDeals,
+    goingHardDeals,
     deals: dealSections,
     awaitingReviewCount: awaitingReviewCount ?? 0,
     quiet: totalActivity === 0,
