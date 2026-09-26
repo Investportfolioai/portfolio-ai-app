@@ -25,6 +25,7 @@ import type {
   DealUpdateSource,
   DealUpdateEventType,
   DealUpdateStatus,
+  DealExpectedItem,
   UserRole,
 } from "@/lib/types";
 import { calculateMorbyWaterfall, calculateCashflow } from "@/lib/waterfall";
@@ -85,6 +86,7 @@ export interface DealDetail {
   emdEvents: EmdEvent[];
   notes: DealNoteEntry[];
   approvedUpdates: DealUpdateEntry[];
+  ledgerItems: DealExpectedItem[];
 }
 
 const BUCKET = "deal-documents";
@@ -189,7 +191,7 @@ export async function negotiateDeal(
 export async function getDealDetail(dealId: string): Promise<DealDetail> {
   const supabase = await createClient();
 
-  const [activityRes, docsRes, milestonesRes, emdEventsRes, notesRes, updatesRes] = await Promise.all([
+  const [activityRes, docsRes, milestonesRes, emdEventsRes, notesRes, updatesRes, ledgerRes] = await Promise.all([
     supabase
       .from("deal_activity")
       .select("id, action, note, created_at")
@@ -221,6 +223,11 @@ export async function getDealDetail(dealId: string): Promise<DealDetail> {
       .eq("deal_id", dealId)
       .eq("status", "approved")
       .order("created_at", { ascending: false }),
+    supabase
+      .from("deal_expected_items")
+      .select("id, deal_id, item_key, label, owner_party, status, source, evidence_ref, requested_at, received_at, cleared_at, notes, created_at")
+      .eq("deal_id", dealId)
+      .order("created_at", { ascending: true }),
   ]);
 
   const activity = (activityRes.data ?? []) as ActivityEntry[];
@@ -284,7 +291,9 @@ export async function getDealDetail(dealId: string): Promise<DealDetail> {
     }),
   );
 
-  return { activity, documents, milestones, emdEvents, notes, approvedUpdates };
+  const ledgerItems = (ledgerRes.data ?? []) as DealExpectedItem[];
+
+  return { activity, documents, milestones, emdEvents, notes, approvedUpdates, ledgerItems };
 }
 
 /**
@@ -929,6 +938,12 @@ export async function uploadDealDocument(
         extension_note: null,
         doc_type: "other",
         document_date: null,
+        appraised_value: null,
+        subject_to_conditions: false,
+        conditions_list: [],
+        entity_name: null,
+        emd_receipt_detected: false,
+        detected_items: [],
       },
     };
   }

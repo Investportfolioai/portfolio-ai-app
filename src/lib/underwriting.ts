@@ -355,6 +355,24 @@ export interface ExtractedTermChange {
   suggested_value: number | string | null;
   note: string;
 }
+
+/**
+ * A ledger-relevant item this document/email represents — Transaction
+ * Intelligence, Phase G Section 2a. item_key_guess should match a known
+ * deal_expected_items key (title_commitment, survey, emd_receipt,
+ * insurance_policy, appraisal_report, pof_submission, clear_to_close,
+ * rent_roll, t12) when the document plainly is one of those; otherwise a new
+ * deal-specific snake_case key. confidence is 0-1 — low-confidence guesses are
+ * dropped by the caller rather than creating a spurious ledger row.
+ */
+export interface DetectedLedgerItem {
+  item_key_guess: string;
+  label: string;
+  direction: "received" | "requested" | "cleared";
+  counterparty: string | null;
+  confidence: number;
+}
+
 export interface DocExtraction {
   milestones: ExtractedMilestone[];
   term_changes: ExtractedTermChange[];
@@ -371,7 +389,31 @@ export interface DocExtraction {
   doc_type: "purchase_contract" | "addendum" | "extension" | "appraisal" | "email" | "other";
   /** The document's own effective/signed date (YYYY-MM-DD) for chronological provenance, or null. */
   document_date: string | null;
+  /** The appraised value stated in a completed appraisal report, or null (Transaction Intelligence, Section 2a). */
+  appraised_value: number | null;
+  /** True if the appraisal is subject to repairs/conditions rather than a clean turnkey value. */
+  subject_to_conditions: boolean;
+  /** The specific conditions/repairs listed, when subject_to_conditions. */
+  conditions_list: string[];
+  /** Vesting/taking-title entity named in the document ("Vesting Entity: X LLC", "Entity: X"), or null. */
+  entity_name: string | null;
+  /** True if this document IS a wire confirmation, deposit slip, or earnest-money receipt. */
+  emd_receipt_detected: boolean;
+  /** Ledger items this document represents (filed insurance policy, signed rent roll, etc.). */
+  detected_items: DetectedLedgerItem[];
 }
+
+const DETECTED_ITEM_SCHEMA = {
+  type: "object",
+  properties: {
+    item_key_guess: { type: "string" },
+    label: { type: "string" },
+    direction: { type: "string", enum: ["received", "requested", "cleared"] },
+    counterparty: { type: ["string", "null"] },
+    confidence: { type: "number" },
+  },
+  required: ["item_key_guess", "label", "direction", "counterparty", "confidence"],
+} as const;
 
 const DOC_SCHEMA = {
   type: "object",
@@ -423,6 +465,12 @@ const DOC_SCHEMA = {
       enum: ["purchase_contract", "addendum", "extension", "appraisal", "email", "other"],
     },
     document_date: { type: ["string", "null"] },
+    appraised_value: { type: ["number", "null"] },
+    subject_to_conditions: { type: "boolean" },
+    conditions_list: { type: "array", items: { type: "string" } },
+    entity_name: { type: ["string", "null"] },
+    emd_receipt_detected: { type: "boolean" },
+    detected_items: { type: "array", items: DETECTED_ITEM_SCHEMA },
   },
   required: [
     "milestones",
@@ -434,10 +482,16 @@ const DOC_SCHEMA = {
     "extension_note",
     "doc_type",
     "document_date",
+    "appraised_value",
+    "subject_to_conditions",
+    "conditions_list",
+    "entity_name",
+    "emd_receipt_detected",
+    "detected_items",
   ],
 } as const;
 
-const DOC_SYSTEM = `You read real-estate deal documents (contracts, amendments, LOIs, addenda) for Portfolio AI. Extract:
+const DOC_SYSTEM = `You read real-estate deal documents (contracts, amendments, LOIs, addenda, appraisals, receipts) for Portfolio AI. Extract:
 - milestones: key dated deadlines — earnest money (emd), inspection/due-diligence period end (inspection), close of escrow (coe), or other (custom). target_date MUST be ISO YYYY-MM-DD. Only include dates actually present.
 - term_changes: any deal economics stated in the document that may differ from the current record — purchase_price, arv, loan_amount, seller_note_amount, interest_rate, holdback, lender_name, quote_number. suggested_value is the value found in the document. Only include terms actually stated.
 - emd_amount: the earnest money deposit amount stated in the document, or null if not stated.
@@ -446,6 +500,12 @@ const DOC_SYSTEM = `You read real-estate deal documents (contracts, amendments, 
 - extension_note: if extension_detected, one line on what was extended and to when. Otherwise null.
 - doc_type: classify the document — purchase_contract (the base purchase agreement/PSA), addendum (an amendment/addendum to a contract), extension (an EMD/closing/inspection extension), appraisal (a completed appraisal report), email (an email or letter, not a signed form), or other.
 - document_date: the document's own effective, signed, or execution date as ISO YYYY-MM-DD (NOT a deadline inside it) — used to order addenda chronologically. Null if not stated.
+- appraised_value: the dollar value stated in a completed appraisal report. Null if this isn't an appraisal or no value is stated.
+- subject_to_conditions: true if the appraisal value is subject to repairs/conditions rather than a clean as-is/turnkey value.
+- conditions_list: the specific conditions/repairs listed, when subject_to_conditions. Empty array otherwise.
+- entity_name: the vesting/taking-title entity named in the document — look for patterns like "Vesting Entity: X LLC" or "Entity: X". Null if not stated.
+- emd_receipt_detected: true only if this document IS a wire confirmation, deposit slip, or earnest-money receipt (not just a mention of a deposit being due).
+- detected_items: ledger items this document represents being received/requested/cleared. Guess item_key_guess against these known keys when the document plainly is one of them: title_commitment, survey, emd_receipt, insurance_policy, appraisal_report, pof_submission, clear_to_close, rent_roll, t12 — otherwise invent a new deal-specific snake_case key. Set confidence 0-1; only include an item you're reasonably confident about (0.6+) — never guess.
 - summary: one or two sentences on what this document is and what changed.
 Use empty arrays / false / null where nothing applies. Always call extract_document.`;
 
@@ -501,6 +561,8 @@ export interface OutboundClassification {
   is_request: boolean;
   /** Short (<=8 word) phrase naming what we asked for, or null. */
   request: string | null;
+  /** Ledger item(s) this request pertains to, if any (Transaction Intelligence, Section 2a/c). */
+  detected_items: DetectedLedgerItem[];
 }
 
 const OUTBOUND_SCHEMA = {
@@ -508,20 +570,27 @@ const OUTBOUND_SCHEMA = {
   properties: {
     is_request: { type: "boolean" },
     request: { type: ["string", "null"] },
+    detected_items: { type: "array", items: DETECTED_ITEM_SCHEMA },
   },
-  required: ["is_request", "request"],
+  required: ["is_request", "request", "detected_items"],
 } as const;
 
-const OUTBOUND_SYSTEM = `You classify an OUTBOUND (sent) email from a real-estate acquisitions team to a counterparty (seller, lender, title/escrow, agent). Decide if it contains an actionable REQUEST we are now WAITING ON the counterparty to fulfill — e.g. an EMD/closing extension ask, a document request, a payoff request, a wire/figures request, a signature request. is_request=true ONLY if we are waiting on their response/action. request: a short (<=8 word) phrase naming what we asked for, or null. Informational/FYI notes, confirmations, and thank-yous are is_request=false. Always call classify_outbound.`;
+const OUTBOUND_SYSTEM = `You classify an OUTBOUND (sent) email from a real-estate acquisitions team to a counterparty (seller, lender, title/escrow, agent). Decide if it contains an actionable REQUEST we are now WAITING ON the counterparty to fulfill — e.g. an EMD/closing extension ask, a document request, a payoff request, a wire/figures request, a signature request. is_request=true ONLY if we are waiting on their response/action. request: a short (<=8 word) phrase naming what we asked for, or null. Informational/FYI notes, confirmations, and thank-yous are is_request=false.
+detected_items: if is_request is true and the ask is for one of our tracked closing items, name it — item_key_guess against these known keys when it plainly is one: title_commitment, survey, emd_receipt, insurance_policy, appraisal_report, pof_submission, clear_to_close, rent_roll, t12 (otherwise a new deal-specific snake_case key). direction is always "requested" here — this is an ask, never a confirmed receipt. Empty array if the request isn't about a tracked item (e.g. a payoff figures ask). Always call classify_outbound.`;
 
-/** Classify a single outbound email. Never writes anything — sent mail cannot confirm data (§5 hard rule). */
+/**
+ * Classify a single OUTBOUND (sent) email. Structurally never confirms a
+ * fact about the deal — is_request/detected_items only ever describe an ASK
+ * we made (§5 hard rule: sent mail cannot write a deals field, and may only
+ * advance a ledger item to 'requested', never 'received'/'cleared').
+ */
 export async function classifyOutboundEmail(subject: string, snippet: string): Promise<OutboundClassification> {
   const client = getClient();
   let response: Anthropic.Message;
   try {
     response = await client.messages.create({
       model: MODEL,
-      max_tokens: 200,
+      max_tokens: 300,
       system: [{ type: "text", text: OUTBOUND_SYSTEM, cache_control: { type: "ephemeral" } }],
       tools: [
         {
@@ -541,4 +610,84 @@ export async function classifyOutboundEmail(subject: string, snippet: string): P
     throw new Error("Outbound classification returned no structured output.");
   }
   return block.input as OutboundClassification;
+}
+
+// ---------------------------------------------------------------------------
+// Inbound email classification (Transaction Intelligence, Phase G §2a) — an
+// INBOUND reply may state facts (an appraisal value, a vesting entity, a
+// receipt) or confirm/request a tracked ledger item. Unlike outbound mail,
+// inbound content IS trusted to drive auto-apply/pending field writes and
+// 'received'/'cleared' ledger advancement — mirroring the attachment scan's
+// tier rules exactly (null-fill auto-applies, conflicts go one-tap).
+// ---------------------------------------------------------------------------
+
+export interface InboundEmailClassification {
+  appraised_value: number | null;
+  subject_to_conditions: boolean;
+  conditions_list: string[];
+  entity_name: string | null;
+  emd_receipt_detected: boolean;
+  detected_items: DetectedLedgerItem[];
+  /** True if the email clearly says something arrived/was completed but no detected_items entry resolves it confidently — never guess an item_key, flag it instead. */
+  unresolved_received: boolean;
+}
+
+const INBOUND_SCHEMA = {
+  type: "object",
+  properties: {
+    appraised_value: { type: ["number", "null"] },
+    subject_to_conditions: { type: "boolean" },
+    conditions_list: { type: "array", items: { type: "string" } },
+    entity_name: { type: ["string", "null"] },
+    emd_receipt_detected: { type: "boolean" },
+    detected_items: { type: "array", items: DETECTED_ITEM_SCHEMA },
+    unresolved_received: { type: "boolean" },
+  },
+  required: [
+    "appraised_value",
+    "subject_to_conditions",
+    "conditions_list",
+    "entity_name",
+    "emd_receipt_detected",
+    "detected_items",
+    "unresolved_received",
+  ],
+} as const;
+
+const INBOUND_SYSTEM = `You classify an INBOUND (received) email from a real-estate counterparty (seller, lender, title/escrow, agent) to Portfolio AI's acquisitions team. Extract facts stated in the email body itself (not attachments — those are handled separately):
+- appraised_value: a dollar value, ONLY if the email states a completed appraisal came back at that value. Null otherwise.
+- subject_to_conditions / conditions_list: if the appraisal is stated as subject to repairs/conditions rather than clean/turnkey.
+- entity_name: the vesting/taking-title entity named in the email — patterns like "Vesting Entity: X LLC" or "Entity: X". Null if not stated.
+- emd_receipt_detected: true only if the email itself IS a wire/deposit/earnest-money receipt confirmation (not a mention that one is coming).
+- detected_items: tracked closing items this email confirms were received, requested of us, or cleared. Guess item_key_guess against: title_commitment, survey, emd_receipt, insurance_policy, appraisal_report, pof_submission, clear_to_close, rent_roll, t12 (otherwise a new deal-specific snake_case key). Only include an item at confidence 0.6+ — never guess a low-confidence match.
+- unresolved_received: true if the email clearly states something was delivered, attached, completed, or received, but you cannot confidently map it to a specific item in detected_items. This flags it for manual review instead of guessing.
+Use empty arrays / false / null where nothing applies. Always call classify_inbound.`;
+
+/** Classify a single INBOUND email for deal facts and ledger signals. */
+export async function classifyInboundEmail(subject: string, snippet: string): Promise<InboundEmailClassification> {
+  const client = getClient();
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 400,
+      system: [{ type: "text", text: INBOUND_SYSTEM, cache_control: { type: "ephemeral" } }],
+      tools: [
+        {
+          name: "classify_inbound",
+          description: "Submit deal facts and ledger signals detected in the inbound email.",
+          input_schema: INBOUND_SCHEMA as unknown as Anthropic.Tool["input_schema"],
+        },
+      ],
+      tool_choice: { type: "tool", name: "classify_inbound" },
+      messages: [{ role: "user", content: [{ type: "text", text: `Subject: ${subject}\n\n${snippet}` }] }],
+    });
+  } catch (err) {
+    throw wrapApiError("classifyInboundEmail", err);
+  }
+  const block = response.content.find((b) => b.type === "tool_use");
+  if (!block || block.type !== "tool_use") {
+    throw new Error("Inbound classification returned no structured output.");
+  }
+  return block.input as InboundEmailClassification;
 }

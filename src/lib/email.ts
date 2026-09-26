@@ -6,6 +6,7 @@ import {
   type DealStructure,
   type Recommendation,
 } from "@/lib/types";
+import { money } from "@/lib/format";
 
 /**
  * Transactional email via Resend. Sends from the investportfolio.ai domain
@@ -281,6 +282,47 @@ export async function sendDeadlineDigest(alerts: DeadlineAlert[]): Promise<void>
     from: "Portfolio AI <noreply@mail.investportfolio.ai>",
     to: TO,
     subject: `Deal deadlines — ${alerts.length} milestone${alerts.length === 1 ? "" : "s"} approaching`,
+    html,
+  });
+}
+
+export interface PofRequiredAlert {
+  amount: number;
+  appraisedValue: number;
+  propertyAddress: string;
+  entityName: string | null;
+}
+
+/**
+ * Fired once per distinct appraised_value (Transaction Intelligence, Section
+ * 2d) — dedupe lives in maybeTriggerPof (src/lib/deal-ledger.ts), not here.
+ * Best-effort.
+ */
+export async function sendPofRequiredAlert(alert: PofRequiredAlert): Promise<void> {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
+    console.warn("RESEND_API_KEY missing — skipping POF required alert.");
+    return;
+  }
+  const resend = new Resend(key);
+  const entityLabel = alert.entityName ?? "ENTITY UNKNOWN";
+  const subject = `POF REQUIRED: ${money(alert.amount)} (32% of ${money(alert.appraisedValue)} appraised) — ${alert.propertyAddress} — ${entityLabel}`;
+  const html = `
+    <div style="font-family:system-ui,sans-serif;color:#0a0a0a;line-height:1.6;max-width:560px">
+      <h2 style="color:#0f1c3f;margin:0 0 4px">Proof of Funds required</h2>
+      <table style="border-collapse:collapse;font-size:14px;margin:12px 0 0">
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">Property</td><td><b>${alert.propertyAddress}</b></td></tr>
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">Appraised value</td><td>${money(alert.appraisedValue)}</td></tr>
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">POF required (32%)</td><td><b style="color:#d4af37">${money(alert.amount)}</b></td></tr>
+        <tr><td style="padding:3px 16px 3px 0;color:#6e6e73">Vesting entity</td><td>${entityLabel}</td></tr>
+      </table>
+    </div>`;
+
+  await resend.emails.send({
+    from: FROM,
+    to: ["john@investportfolio.ai", "loa@investportfolio.ai"],
+    replyTo: "john@investportfolio.ai",
+    subject,
     html,
   });
 }

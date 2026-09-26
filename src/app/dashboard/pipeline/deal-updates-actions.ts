@@ -6,6 +6,7 @@ import { getSessionUser } from "@/lib/auth";
 import { canManage } from "@/lib/permissions";
 import { updateDealField } from "./actions";
 import { EDITABLE_FIELDS } from "@/lib/editable-fields";
+import { maybeTriggerPof } from "@/lib/deal-ledger";
 import type { DealUpdateSource, DealUpdateEventType, DealUpdateStatus, ProposedChanges } from "@/lib/types";
 
 export type DealUpdateActionState = { ok: true } | { ok: false; error: string };
@@ -13,9 +14,9 @@ export type DealUpdateActionState = { ok: true } | { ok: false; error: string };
 export interface ApproveConflict {
   field: string;
   label: string;
-  proposedNew: string | number | null;
-  expectedWas: string | number | null;
-  currentValue: string | number | null;
+  proposedNew: string | number | string[] | null;
+  expectedWas: string | number | string[] | null;
+  currentValue: string | number | string[] | null;
 }
 export type ApproveResult =
   | { ok: true; applied: string[] }
@@ -228,6 +229,23 @@ export async function approveDealUpdate(updateId: string): Promise<ApproveResult
       const value = proposed[field].new;
       const res = await updateDealField(row.deal_id, field, value == null ? "" : String(value));
       if (!res.ok) return { ok: false, error: `${EDITABLE_FIELDS[field].label}: ${res.error}` };
+    }
+
+    // A one-tap-approved appraised value just landed live on the deal — fire the POF trigger.
+    if (fields.includes("appraised_value")) {
+      const { data: dealInfo } = await supabase
+        .from("deals")
+        .select("property_address, entity_name, appraised_value")
+        .eq("id", row.deal_id)
+        .maybeSingle();
+      if (dealInfo?.appraised_value != null) {
+        await maybeTriggerPof(supabase, {
+          id: row.deal_id,
+          property_address: dealInfo.property_address,
+          entity_name: dealInfo.entity_name,
+          appraised_value: dealInfo.appraised_value,
+        });
+      }
     }
   }
 

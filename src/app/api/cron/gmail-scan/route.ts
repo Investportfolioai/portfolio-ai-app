@@ -5,6 +5,7 @@ import { searchAttachmentCandidates, listPdfAttachments, fetchAttachmentBytes } 
 import { extractDocumentUpdates } from "@/lib/underwriting";
 import { recordAutoApply, recordPending, clearWaitingOn, isEmpty } from "@/lib/deal-updates";
 import { matchDeal } from "@/lib/deal-match";
+import { advanceOrCreateLedgerItem, maybeTriggerPof } from "@/lib/deal-ledger";
 import type { ProposedChanges } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -39,6 +40,9 @@ interface CandidateDeal {
   emd_hard_date: string | null;
   emd_amount: number | null;
   appraisal_received_at: string | null;
+  appraised_value: number | null;
+  entity_name: string | null;
+  emd_received_at: string | null;
 }
 
 /**
@@ -97,9 +101,12 @@ export async function GET(req: Request) {
 
   const { data: dealRows } = await admin
     .from("deals")
-    .select("id, property_address, emd_hard_date, emd_amount, appraisal_received_at")
+    .select("id, property_address, emd_hard_date, emd_amount, appraisal_received_at, appraised_value, entity_name, emd_received_at")
     .in("status", ["active", "pending"]);
   const deals = (dealRows ?? []) as CandidateDeal[];
+
+  // Per-deal cap on AI-created ledger items, shared across this whole run (Section 2c).
+  const aiCreatedCounts = new Map<string, number>();
 
   let reached = 0;
   for (const candidate of fresh) {
@@ -222,6 +229,34 @@ export async function GET(req: Request) {
             if (extraction.appraisal_detected && isEmpty(deal.appraisal_received_at)) {
               autoChanges.appraisal_received_at = { new: new Date().toISOString(), was: null };
             }
+
+            // Transaction Intelligence — appraised value + subject-to conditions (Section 2a/b).
+            // Conditions ride along with the value's own null-fill only; a conflicting
+            // re-appraisal goes one-tap on the value alone (conditions aren't re-litigated
+            // until the value itself is resolved).
+            if (extraction.appraised_value != null) {
+              if (isEmpty(deal.appraised_value)) {
+                autoChanges.appraised_value = { new: extraction.appraised_value, was: null };
+                autoChanges.appraisal_conditions = {
+                  new: extraction.subject_to_conditions ? extraction.conditions_list : [],
+                  was: null,
+                };
+              } else if (deal.appraised_value !== extraction.appraised_value) {
+                pendingChanges.appraised_value = { new: extraction.appraised_value, was: deal.appraised_value };
+              }
+            }
+
+            // Vesting entity (Section 2a/b).
+            if (extraction.entity_name) {
+              if (isEmpty(deal.entity_name)) autoChanges.entity_name = { new: extraction.entity_name, was: null };
+              else if (deal.entity_name !== extraction.entity_name)
+                pendingChanges.entity_name = { new: extraction.entity_name, was: deal.entity_name };
+            }
+
+            // EMD receipt (Section 2a/b) — mirrors appraisal_received_at: boolean detection, null-fill only.
+            if (extraction.emd_receipt_detected && isEmpty(deal.emd_received_at)) {
+              autoChanges.emd_received_at = { new: new Date().toISOString(), was: null };
+            }
           }
 
           // Section 4: the document filing itself always auto-applies (filed to
@@ -241,6 +276,16 @@ export async function GET(req: Request) {
           });
           if (autoFieldNames.length) applied++;
 
+          // Appraised value just landed live on the deal — fire the POF trigger (Section 2d).
+          if (autoChanges.appraised_value) {
+            await maybeTriggerPof(admin, {
+              id: deal.id,
+              property_address: deal.property_address,
+              entity_name: (autoChanges.entity_name?.new as string | null) ?? deal.entity_name,
+              appraised_value: autoChanges.appraised_value.new as number,
+            });
+          }
+
           // A signed document arriving on the deal clears any open waiting-on flags (section 5).
           await clearWaitingOn(admin, deal.id, `doc:${att.filename}`);
 
@@ -256,6 +301,25 @@ export async function GET(req: Request) {
               eventType: "emd_change",
               summary: `${docType ?? "Document"}${documentDate ? ` dated ${documentDate}` : ""} ${supersede ? "supersedes prior terms" : "conflicts with current values"} — review ${pendingFieldNames.join(", ")}`,
               changes: pendingChanges,
+            });
+          }
+
+          // Ledger advancement from this document's detected items (Section 2c). A filed
+          // attachment is evidence of receipt, not a mere ask — only 'received'/'cleared'
+          // directions apply here; 'requested' is the outbound-email path's domain.
+          for (const item of extraction?.detected_items ?? []) {
+            if (item.direction === "requested") continue;
+            await advanceOrCreateLedgerItem(admin, {
+              dealId: deal.id,
+              itemKeyGuess: item.item_key_guess,
+              label: item.label,
+              direction: item.direction,
+              counterparty: item.counterparty,
+              confidence: item.confidence,
+              evidenceRef: `doc:${att.filename}`,
+              source: "ai_doc",
+              allowCreate: true,
+              createdCount: aiCreatedCounts,
             });
           }
 

@@ -18,11 +18,15 @@ import {
   type WaterfallResult,
   type CashflowResult,
   type EmdEvent,
+  type DealExpectedItem,
+  type ExpectedItemOwner,
   DEAL_UPDATE_SOURCE_LABELS,
   DEAL_UPDATE_EVENT_LABELS,
   ASSIGNMENT_STATUS_LABELS,
   MILESTONE_LABELS,
   EMD_EVENT_LABELS,
+  EXPECTED_ITEM_OWNER_LABELS,
+  EXPECTED_ITEM_STATUS_LABELS,
   STATUS_LABELS,
   STRUCTURE_LABELS,
   capitalRunwayMultiple,
@@ -63,6 +67,7 @@ import {
 } from "./kp-actions";
 import { createNote } from "./deal-updates-actions";
 import { saveNotes } from "./actions";
+import { addLedgerItem, advanceLedgerItem, revertLedgerItem, waiveLedgerItem } from "./ledger-actions";
 
 type Extraction = Extract<UploadResult, { ok: true }>["extraction"];
 
@@ -1471,12 +1476,13 @@ function DealNotesSection({
   );
 }
 
-const TABS = ["Overview", "AI Underwriting", "Timeline", "Documents", "Notes", "KPs", "Activity"] as const;
+const TABS = ["Overview", "AI Underwriting", "Ledger", "Timeline", "Documents", "Notes", "KPs", "Activity"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABELS: Record<Tab, string> = {
   "Overview": "OVERVIEW",
   "AI Underwriting": "AI",
+  "Ledger": "LEDGER",
   "Timeline": "TIMELINE",
   "Documents": "DOCS",
   "Notes": "NOTES",
@@ -1800,6 +1806,14 @@ function DealPanel({ deal, onClose, userRole }: { deal: Deal; onClose: () => voi
                     {tab === "AI Underwriting" && (
                       <AiTab deal={deal} running={running} onRun={onRun} />
                     )}
+                    {tab === "Ledger" && (
+                      <LedgerTab
+                        dealId={deal.id}
+                        items={detail?.ledgerItems ?? []}
+                        loading={loadingDetail}
+                        onChanged={onChanged}
+                      />
+                    )}
                     {tab === "Timeline" && (
                       <TimelineTab
                         dealId={deal.id}
@@ -1922,6 +1936,7 @@ function OverviewTab({
       <Section title="Overview · click a value to edit">
         <EditableRow dealId={deal.id} field="property_address" label="Address" raw={deal.property_address} display={deal.property_address} onSaved={makeOnSaved("property_address")} />
         <EditableRow dealId={deal.id} field="wholesaler_name" label="Wholesaler" raw={deal.wholesaler_name ?? null} display={deal.wholesaler_name ?? "—"} onSaved={makeOnSaved("wholesaler_name")} />
+        <EditableRow dealId={deal.id} field="entity_name" label="Entity" raw={deal.entity_name ?? null} display={deal.entity_name ?? "UNKNOWN"} onSaved={makeOnSaved("entity_name")} />
         <Row label="Asset Type" value={assetType} mono={false} />
         <EditableRow
           dealId={deal.id} field="purchase_price" label="Purchase Price" numeric
@@ -2057,6 +2072,12 @@ function OverviewTab({
           raw={deal.emd_hard_date} display={deal.emd_hard_date ?? "—"}
           onSaved={makeOnSaved("emd_hard_date")}
         />
+        <EditableRow
+          dealId={deal.id} field="emd_received_at" label="Received" date
+          raw={deal.emd_received_at ? deal.emd_received_at.slice(0, 10) : null}
+          display={deal.emd_received_at ? deal.emd_received_at.slice(0, 10) : "Not received"}
+          onSaved={makeOnSaved("emd_received_at")}
+        />
         <EmdExtensionRow dealId={deal.id} count={deal.emd_extension_count} onSaved={makeOnSaved("emd_extension_count")} />
         <EditableRow
           dealId={deal.id} field="emd_notes" label="Notes" raw={deal.emd_notes} display={deal.emd_notes ?? "—"}
@@ -2066,6 +2087,203 @@ function OverviewTab({
 
       <WholesalerActions deal={deal} onChanged={onChanged} />
       <EscrowAction deal={deal} onChanged={onChanged} />
+    </div>
+  );
+}
+
+const LEDGER_STATUS_COLORS: Record<DealExpectedItem["status"], { bg: string; color: string }> = {
+  expected: { bg: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.5)" },
+  requested: { bg: "rgba(245,158,11,0.12)", color: "#f59e0b" },
+  received: { bg: "rgba(34,197,94,0.12)", color: "#22c55e" },
+  cleared: { bg: "rgba(201,168,76,0.15)", color: "#C9A84C" },
+  waived: { bg: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.3)" },
+};
+
+function LedgerStatusChip({ status }: { status: DealExpectedItem["status"] }) {
+  const c = LEDGER_STATUS_COLORS[status];
+  return (
+    <span
+      style={{
+        display: "inline-flex", alignItems: "center", gap: "4px",
+        background: c.bg, color: c.color,
+        borderRadius: "999px", padding: "2px 8px",
+        fontSize: "10px", fontWeight: 700,
+        letterSpacing: "0.06em", textTransform: "uppercase",
+        textDecoration: status === "waived" ? "line-through" : undefined,
+      }}
+    >
+      {EXPECTED_ITEM_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+function LedgerOwnerBadge({ owner }: { owner: ExpectedItemOwner }) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.6)",
+        borderRadius: "999px", padding: "2px 8px",
+        fontSize: "10px", fontWeight: 600,
+        letterSpacing: "0.04em", textTransform: "uppercase",
+      }}
+    >
+      {EXPECTED_ITEM_OWNER_LABELS[owner]}
+    </span>
+  );
+}
+
+/** Most recent status-change date on an item — whichever of cleared/received/requested is set. */
+function ledgerItemSinceDate(item: DealExpectedItem): string | null {
+  return item.cleared_at ?? item.received_at ?? item.requested_at ?? null;
+}
+
+const LEDGER_OWNER_OPTIONS = Object.keys(EXPECTED_ITEM_OWNER_LABELS) as ExpectedItemOwner[];
+
+/**
+ * Deal ledger — deal_expected_items (Transaction Intelligence, Phase G Section
+ * 3). Seeded by the nightly digest's backfill and advanced by the Gmail scans
+ * (AI, undoable via the Timeline/Review Queue) or manually here. Manual
+ * add/advance/revert/waive are attributed via a deal_updates row per action.
+ */
+function LedgerTab({
+  dealId,
+  items,
+  loading,
+  onChanged,
+}: {
+  dealId: string;
+  items: DealExpectedItem[];
+  loading: boolean;
+  onChanged: () => void;
+}) {
+  const [label, setLabel] = useState("");
+  const [owner, setOwner] = useState<ExpectedItemOwner>("internal");
+  const [adding, startAdd] = useTransition();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [, startAction] = useTransition();
+
+  function add() {
+    if (!label.trim()) return;
+    startAdd(async () => {
+      const res = await addLedgerItem(dealId, label, owner);
+      if (res.ok) {
+        setLabel("");
+        setOwner("internal");
+        onChanged();
+      } else {
+        toast.error(res.error);
+      }
+    });
+  }
+
+  function runAction(itemId: string, action: (id: string) => Promise<{ ok: boolean; error?: string }>) {
+    setBusyId(itemId);
+    startAction(async () => {
+      const res = await action(itemId);
+      setBusyId(null);
+      if (res.ok) onChanged();
+      else toast.error(res.error ?? "Failed.");
+    });
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.25)", marginBottom: "12px" }}>
+        Expected Items
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+          No ledger items yet — they seed automatically once this deal enters escrow.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border rounded-xl border border-border">
+          {items.map((item) => {
+            const since = ledgerItemSinceDate(item);
+            const canAdvance = item.status !== "cleared" && item.status !== "waived";
+            const canRevert = item.status !== "expected";
+            const canWaive = item.status !== "waived";
+            const rowBusy = busyId === item.id;
+            return (
+              <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-primary">{item.label}</span>
+                    <LedgerOwnerBadge owner={item.owner_party} />
+                    <LedgerStatusChip status={item.status} />
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    {since && <span>since {since.slice(0, 10)}</span>}
+                    {item.evidence_ref && <span className="data-number">{item.evidence_ref}</span>}
+                    {item.notes && <span>{item.notes}</span>}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={!canAdvance || rowBusy}
+                    onClick={() => runAction(item.id, advanceLedgerItem)}
+                    className="rounded-md bg-secondary px-2 py-1 text-[11px] font-medium text-foreground disabled:opacity-30"
+                  >
+                    Advance
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canRevert || rowBusy}
+                    onClick={() => runAction(item.id, revertLedgerItem)}
+                    className="rounded-md bg-secondary px-2 py-1 text-[11px] font-medium text-foreground disabled:opacity-30"
+                  >
+                    Revert
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canWaive || rowBusy}
+                    onClick={() => runAction(item.id, waiveLedgerItem)}
+                    className="rounded-md bg-secondary px-2 py-1 text-[11px] font-medium text-muted-foreground disabled:opacity-30"
+                  >
+                    Waive
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div style={{ marginTop: "20px", paddingTop: "16px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.25)", marginBottom: "10px" }}>
+          Add Item
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+            placeholder="e.g. Lien payoff letter"
+            className="min-w-0 flex-1 rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          />
+          <select
+            value={owner}
+            onChange={(e) => setOwner(e.target.value as ExpectedItemOwner)}
+            className="rounded-md border border-border bg-secondary px-2 py-1.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            {LEDGER_OWNER_OPTIONS.map((o) => (
+              <option key={o} value={o}>{EXPECTED_ITEM_OWNER_LABELS[o]}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            disabled={adding || !label.trim()}
+            onClick={add}
+            className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground disabled:opacity-60"
+          >
+            {adding ? "…" : "Add"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

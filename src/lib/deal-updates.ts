@@ -52,7 +52,7 @@ export async function recordAutoApply(
   const changes = params.changes ?? {};
   const fields = Object.keys(changes);
   if (fields.length > 0) {
-    const patch: Record<string, string | number | null> = {};
+    const patch: Record<string, string | number | string[] | null> = {};
     for (const f of fields) patch[f] = changes[f].new;
     await admin.from("deals").update(patch).eq("id", params.dealId);
   }

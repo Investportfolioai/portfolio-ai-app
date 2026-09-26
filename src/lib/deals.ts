@@ -30,6 +30,7 @@ const BASE_COLUMNS = `
   hoa_monthly, first_lien_monthly, seller_carry_monthly,
   emd_amount, emd_hard_date, emd_extension_count, emd_notes, appraisal_received_at,
   emd_reminder_7_sent_at, emd_reminder_4_sent_at, emd_appraisal_reminder_sent_at,
+  emd_received_at, entity_name, appraised_value, appraisal_conditions,
   owner:owner_id(${PRINCIPAL}),
   coowner:coowner_id(${PRINCIPAL})
 `;

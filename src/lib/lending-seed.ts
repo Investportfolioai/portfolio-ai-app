@@ -3,6 +3,36 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const EARLY_STAGES = new Set(["loi", "purchase_contract"]);
 
+export const LENDING_STAGES = [
+  "loi",
+  "purchase_contract",
+  "emd_setup",
+  "lender_submission",
+  "appraisal_insurance",
+  "clear_to_close",
+  "closed",
+] as const;
+
+/**
+ * Effective lending stage: the earliest stage with an incomplete item, else
+ * 'closed' once every seeded stage is fully complete, else 'loi' when nothing
+ * has been seeded yet. Shared by the Lending detail page and the nightly
+ * digest (Transaction Intelligence, Section 4) so both agree on "current stage."
+ */
+export function computeAutoStage(
+  byStage: Map<string, { completed: boolean }[]>,
+  stageOrder: readonly string[] = LENDING_STAGES,
+): string {
+  let hasAnyItems = false;
+  for (const stage of stageOrder) {
+    const items = byStage.get(stage) ?? [];
+    if (items.length === 0) continue;
+    hasAnyItems = true;
+    if (!items.every((i) => i.completed)) return stage;
+  }
+  return hasAnyItems ? "closed" : "loi";
+}
+
 /** Seed checklist from templates for a deal. Idempotent — no-ops if already seeded.
  *  Pass markEarlyStagesComplete=true at escrow time to pre-complete LOI + Purchase Contract. */
 export async function seedDealChecklistAdmin(

@@ -191,6 +191,14 @@ export interface Deal {
   emd_reminder_7_sent_at: string | null;
   emd_reminder_4_sent_at: string | null;
   emd_appraisal_reminder_sent_at: string | null;
+
+  /** Transaction Intelligence (Phase G, migration 20260925010000). */
+  emd_received_at: string | null;
+  /** Vesting LLC — editable via the Overview tab. */
+  entity_name: string | null;
+  appraised_value: number | null;
+  /** Subject-to conditions from the appraisal report, or null when turnkey. */
+  appraisal_conditions: string[] | null;
 }
 
 /** Deal workflow status (enum `public.deal_status`). */
@@ -314,8 +322,9 @@ export const DEAL_UPDATE_EVENT_LABELS: Record<DealUpdateEventType, string> = {
  * moved on since the proposal was made (see approveDealUpdate).
  */
 export type ProposedFieldChange = {
-  new: string | number | null;
-  was: string | number | null;
+  /** string[] only ever appears for appraisal_conditions, a jsonb array field that piggybacks on an appraised_value auto-apply (see gmail-scan/gmail-comms). */
+  new: string | number | string[] | null;
+  was: string | number | string[] | null;
 };
 export type ProposedChanges = Record<string, ProposedFieldChange>;
 
@@ -348,6 +357,57 @@ export interface EmdEvent {
   deal_id: string;
   event_type: EmdEventType;
   detail: string | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Transaction Intelligence — deal_expected_items ledger (Phase G, Section 1)
+// ---------------------------------------------------------------------------
+
+export type ExpectedItemOwner =
+  | "agent"
+  | "tc"
+  | "lender"
+  | "title"
+  | "buyer"
+  | "seller"
+  | "internal"
+  | "other";
+
+export type ExpectedItemStatus = "expected" | "requested" | "received" | "cleared" | "waived";
+
+export const EXPECTED_ITEM_OWNER_LABELS: Record<ExpectedItemOwner, string> = {
+  agent: "Agent",
+  tc: "TC",
+  lender: "Lender",
+  title: "Title",
+  buyer: "Buyer",
+  seller: "Seller",
+  internal: "Internal",
+  other: "Other",
+};
+
+export const EXPECTED_ITEM_STATUS_LABELS: Record<ExpectedItemStatus, string> = {
+  expected: "Expected",
+  requested: "Requested",
+  received: "Received",
+  cleared: "Cleared",
+  waived: "Waived",
+};
+
+export interface DealExpectedItem {
+  id: string;
+  deal_id: string;
+  item_key: string;
+  label: string;
+  owner_party: ExpectedItemOwner;
+  status: ExpectedItemStatus;
+  source: string | null;
+  evidence_ref: string | null;
+  requested_at: string | null;
+  received_at: string | null;
+  cleared_at: string | null;
+  notes: string | null;
   created_at: string;
 }
 

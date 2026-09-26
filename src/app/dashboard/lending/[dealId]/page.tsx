@@ -6,6 +6,7 @@ import { canManage } from "@/lib/permissions";
 import { getDealGmailThreads } from "../lending-actions";
 import type { GmailThread } from "@/lib/gmail";
 import { LendingDetailClient } from "./lending-detail-client";
+import { LENDING_STAGES, computeAutoStage } from "@/lib/lending-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -48,30 +49,6 @@ export type AddendumDraft = {
   version: number;
   created_at: string;
 };
-
-const LENDING_STAGES = [
-  "loi",
-  "purchase_contract",
-  "emd_setup",
-  "lender_submission",
-  "appraisal_insurance",
-  "clear_to_close",
-  "closed",
-] as const;
-
-function computeAutoStage(
-  byStage: Map<string, ChecklistItem[]>,
-  stageOrder: readonly string[],
-): string {
-  let hasAnyItems = false;
-  for (const stage of stageOrder) {
-    const items = byStage.get(stage) ?? [];
-    if (items.length === 0) continue;
-    hasAnyItems = true;
-    if (!items.every((i) => i.completed)) return stage;
-  }
-  return hasAnyItems ? "closed" : "loi";
-}
 
 async function LendingDetailContent({ dealId }: { dealId: string }) {
   const user = await getSessionUser();

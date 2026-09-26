@@ -39,4 +39,11 @@ export const EDITABLE_FIELDS: Record<string, { label: string; numeric: boolean; 
   // Written programmatically by approveDealUpdate (Deal Intelligence Engine,
   // migration 20260802220000) — not exposed as a manual EditableRow anywhere.
   appraisal_received_at: { label: "Appraisal Received", numeric: false },
+  // Transaction Intelligence (migration 20260925010000). entity_name and
+  // emd_received_at are manual EditableRows on the Overview tab; appraised_value
+  // is written by the Gmail scans (auto-fill or one-tap conflict approval) —
+  // not exposed as a manual EditableRow anywhere, same precedent as appraisal_received_at above.
+  entity_name: { label: "Entity", numeric: false },
+  emd_received_at: { label: "EMD Received", numeric: false, date: true },
+  appraised_value: { label: "Appraised Value", numeric: true },
 };

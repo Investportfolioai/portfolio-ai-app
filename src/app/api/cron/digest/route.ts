@@ -2,9 +2,21 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isAuthorizedCron } from "@/lib/cron-auth";
-import { daysUntil } from "@/lib/types";
+import { daysUntil, EMD_EVENT_LABELS, EXPECTED_ITEM_OWNER_LABELS, EXPECTED_ITEM_STATUS_LABELS } from "@/lib/types";
+import type { EmdEventType, ExpectedItemOwner, ExpectedItemStatus } from "@/lib/types";
 import { money } from "@/lib/format";
-import { renderDigestPdf, type DigestData, type DigestDealSection } from "@/lib/digest-pdf";
+import {
+  renderDigestPdf,
+  type DigestData,
+  type DigestDealSection,
+  type DigestActivityEntry,
+  type DigestAppraisalSummary,
+  type DigestLendingSummary,
+  type DigestOutstandingItem,
+  type DigestPofEntityGroup,
+} from "@/lib/digest-pdf";
+import { backfillExpectedItems, POF_PCT } from "@/lib/deal-ledger";
+import { LENDING_STAGES, computeAutoStage } from "@/lib/lending-seed";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -12,6 +24,8 @@ export const maxDuration = 60;
 const FROM = "Portfolio AI <deals@mail.investportfolio.ai>";
 const TO = ["john@investportfolio.ai", "dani@investportfolio.ai", "loa@investportfolio.ai"];
 const REPLY_TO = ["john@investportfolio.ai", "loa@investportfolio.ai"];
+
+const STALE_THRESHOLD_DAYS = 14;
 
 interface EscrowDeal {
   id: string;
@@ -22,7 +36,11 @@ interface EscrowDeal {
   escrow_date: string | null;
   emd_hard_date: string | null;
   emd_amount: number | null;
+  emd_received_at: string | null;
   appraisal_received_at: string | null;
+  appraised_value: number | null;
+  appraisal_conditions: string[] | null;
+  entity_name: string | null;
 }
 
 interface UpdateRow {
@@ -32,6 +50,33 @@ interface UpdateRow {
   status: string;
   created_at: string;
   reviewed_at: string | null;
+}
+
+interface EmdEventRow {
+  deal_id: string;
+  event_type: string;
+  detail: string | null;
+  created_at: string;
+}
+
+interface LedgerRow {
+  id: string;
+  deal_id: string;
+  item_key: string;
+  label: string;
+  owner_party: ExpectedItemOwner;
+  status: ExpectedItemStatus;
+  requested_at: string | null;
+  received_at: string | null;
+  cleared_at: string | null;
+  created_at: string;
+}
+
+interface ChecklistRow {
+  deal_id: string;
+  stage: string;
+  completed: boolean;
+  item_text: string;
 }
 
 function titleize(v: string): string {
@@ -50,12 +95,140 @@ function emdLine(deal: EscrowDeal): string {
   return `${amount}hard ${deal.emd_hard_date} (${countdown})`;
 }
 
+function emdReceivedFor(deal: EscrowDeal): { label: string; bad: boolean } | null {
+  if (deal.emd_amount == null) return null;
+  return deal.emd_received_at
+    ? { label: `RECEIVED ${deal.emd_received_at.slice(0, 10)}`, bad: false }
+    : { label: "NOT RECEIVED", bad: true };
+}
+
+/**
+ * Lending checklist stage + progress (Section 4). stage_override (constrained
+ * to the 7 lending stages, migration 20260617000001) wins when set, exactly
+ * mirroring the Lending detail page's own effectiveStage — the digest and the
+ * Lending tab must never disagree on "current stage."
+ */
+function lendingSummaryFor(deal: EscrowDeal, checklist: ChecklistRow[]): DigestLendingSummary {
+  const byStage = new Map<string, { completed: boolean }[]>();
+  for (const stage of LENDING_STAGES) byStage.set(stage, []);
+  for (const c of checklist) (byStage.get(c.stage) ?? []).push({ completed: c.completed });
+  const stage = deal.stage_override ?? computeAutoStage(byStage, LENDING_STAGES);
+  const done = checklist.filter((c) => c.completed).length;
+  const total = checklist.length;
+  const missing = checklist.filter((c) => !c.completed).map((c) => c.item_text).slice(0, 5);
+  return { stageLabel: titleize(stage), done, total, missing };
+}
+
+/**
+ * NEXT UP — the single most blocking item (Section 4), in priority order:
+ * unreceived EMD (amount set) > oldest outstanding 'requested' ledger item >
+ * earliest still-'expected' item > falls back to the lending stage itself.
+ */
+function computeNextUp(deal: EscrowDeal, ledger: LedgerRow[], lendingStageLabel: string): string {
+  if (deal.emd_amount != null && !deal.emd_received_at) {
+    return `EMD not received (${money(deal.emd_amount)})`;
+  }
+
+  const requested = ledger
+    .filter((i) => i.status === "requested")
+    .sort((a, b) => (a.requested_at ?? a.created_at).localeCompare(b.requested_at ?? b.created_at));
+  if (requested.length) {
+    const item = requested[0];
+    const since = (item.requested_at ?? item.created_at).slice(0, 10);
+    return `Requested: ${item.label} (since ${since})`;
+  }
+
+  const expected = ledger.filter((i) => i.status === "expected").sort((a, b) => a.created_at.localeCompare(b.created_at));
+  if (expected.length) {
+    return `Expected: ${expected[0].label}`;
+  }
+
+  return `Awaiting ${lendingStageLabel}`;
+}
+
+/**
+ * Up to 3 most recent events (deal_updates ∪ emd_events), however old, plus a
+ * STALE flag when the most recent is 14+ days back. Pending deal_updates are
+ * excluded — they're not "activity" yet, and already surface via "Needs a tap."
+ */
+function latestActivityFor(
+  updates: UpdateRow[],
+  emdEvents: EmdEventRow[],
+  fallbackSinceIso: string | null,
+  now: Date,
+): { latestActivity: DigestActivityEntry[]; stale: string | null } {
+  const candidates: { date: string; text: string }[] = [];
+  for (const u of updates) {
+    if (u.status === "pending") continue;
+    candidates.push({ date: u.created_at, text: u.summary });
+  }
+  for (const e of emdEvents) {
+    const label = EMD_EVENT_LABELS[e.event_type as EmdEventType] ?? titleize(e.event_type);
+    candidates.push({ date: e.created_at, text: e.detail ? `${label}: ${e.detail}` : label });
+  }
+  candidates.sort((a, b) => b.date.localeCompare(a.date));
+
+  const latestActivity = candidates.slice(0, 3).map((c) => ({ date: c.date.slice(0, 10), text: c.text }));
+  const mostRecentIso = candidates[0]?.date ?? fallbackSinceIso;
+  let stale: string | null = null;
+  if (mostRecentIso) {
+    const daysSince = Math.floor((now.getTime() - new Date(mostRecentIso).getTime()) / 86_400_000);
+    if (daysSince >= STALE_THRESHOLD_DAYS) stale = `STALE: no activity since ${mostRecentIso.slice(0, 10)}`;
+  }
+  return { latestActivity, stale };
+}
+
+function appraisalSummaryFor(deal: EscrowDeal, ledger: LedgerRow[]): DigestAppraisalSummary {
+  const appraisalItem = ledger.find((i) => i.item_key === "appraisal_report");
+  const pofItem = ledger.find((i) => i.item_key === "pof_submission");
+
+  let status: DigestAppraisalSummary["status"];
+  let valueLabel: string | null = null;
+  let conditions: string[] = [];
+
+  if (deal.appraised_value != null) {
+    conditions = deal.appraisal_conditions ?? [];
+    valueLabel = money(deal.appraised_value);
+    status = conditions.length > 0 ? "back_conditions" : "back_turnkey";
+  } else if (deal.appraisal_received_at) {
+    status = "back_pending_extraction";
+  } else if (appraisalItem?.status === "requested") {
+    status = "ordered_waiting";
+  } else {
+    status = "not_ordered";
+  }
+
+  let pofDueLabel: string | null = null;
+  if (deal.appraised_value != null && pofItem && pofItem.status !== "cleared" && pofItem.status !== "waived") {
+    pofDueLabel = `POF DUE: ${money(Math.round(deal.appraised_value * POF_PCT))} (32%)`;
+  }
+
+  return { status, valueLabel, conditions, pofDueLabel };
+}
+
+function outstandingFor(ledger: LedgerRow[]): DigestOutstandingItem[] {
+  return ledger
+    .filter((i) => i.status === "expected" || i.status === "requested")
+    .map((i) => ({
+      label: i.label,
+      owner: EXPECTED_ITEM_OWNER_LABELS[i.owner_party],
+      status: EXPECTED_ITEM_STATUS_LABELS[i.status],
+      since: (i.requested_at ?? i.created_at)?.slice(0, 10) ?? null,
+    }));
+}
+
 export async function GET(req: Request) {
   if (!isAuthorizedCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const admin = createAdminClient();
+
+  // Seed the expected-item ledger for every active escrow deal before reading
+  // anything else — idempotent (upsert-do-nothing on the deal_id/item_key
+  // unique key), so this is safe to run every night ahead of the digest build.
+  const ledgerBackfill = await backfillExpectedItems(admin);
+
   const now = new Date();
   const dateLabel = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -64,9 +237,12 @@ export async function GET(req: Request) {
     year: "numeric",
   }).format(now);
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "long" }).format(now);
-  // TEMPORARY test override (CRON_SECRET-guarded): ?section=week_in_review |
-  // week_ahead | both forces the weekly sections on any day. Remove after
-  // the live-test pass.
+  // CRON_SECRET-guarded test override (the whole route already requires the
+  // bearer token — see isAuthorizedCron above — so this param is unreachable
+  // without it): ?section=week_in_review | week_ahead | both forces the
+  // weekly sections on any day. Kept past the original "temporary" label
+  // (Automation Push) because Section 5's live-test pass still wants it to
+  // force Friday/Sunday sections on demand; safe to strip once that's done.
   const forceSection = new URL(req.url).searchParams.get("section");
 
   const { data: stateRow } = await admin.from("digest_state").select("last_digest_at").eq("id", 1).maybeSingle();
@@ -76,7 +252,7 @@ export async function GET(req: Request) {
   const { data: dealRows } = await admin
     .from("deals")
     .select(
-      "id, property_address, stage, stage_override, status_changed_at, escrow_date, emd_hard_date, emd_amount, appraisal_received_at",
+      "id, property_address, stage, stage_override, status_changed_at, escrow_date, emd_hard_date, emd_amount, emd_received_at, appraisal_received_at, appraised_value, appraisal_conditions, entity_name",
     )
     .eq("status", "active")
     .not("escrow_date", "is", null)
@@ -84,13 +260,39 @@ export async function GET(req: Request) {
   const deals = (dealRows ?? []) as EscrowDeal[];
   const dealIds = deals.map((d) => d.id);
 
-  // All relevant updates for those deals, bucketed in memory.
-  const updates: UpdateRow[] = dealIds.length
-    ? (((await admin
-        .from("deal_updates")
-        .select("deal_id, event_type, summary, status, created_at, reviewed_at")
-        .in("deal_id", dealIds)).data ?? []) as UpdateRow[])
-    : [];
+  const [updatesRes, emdEventsRes, ledgerRes, checklistRes] = await Promise.all([
+    dealIds.length
+      ? admin.from("deal_updates").select("deal_id, event_type, summary, status, created_at, reviewed_at").in("deal_id", dealIds)
+      : Promise.resolve({ data: [] }),
+    dealIds.length
+      ? admin.from("emd_events").select("deal_id, event_type, detail, created_at").in("deal_id", dealIds)
+      : Promise.resolve({ data: [] }),
+    dealIds.length
+      ? admin
+          .from("deal_expected_items")
+          .select("id, deal_id, item_key, label, owner_party, status, requested_at, received_at, cleared_at, created_at")
+          .in("deal_id", dealIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [] }),
+    dealIds.length
+      ? admin.from("lending_checklist_items").select("deal_id, stage, completed, item_text").in("deal_id", dealIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const updates = (updatesRes.data ?? []) as UpdateRow[];
+  const emdEvents = (emdEventsRes.data ?? []) as EmdEventRow[];
+  const ledgerRows = (ledgerRes.data ?? []) as LedgerRow[];
+  const checklistRows = (checklistRes.data ?? []) as ChecklistRow[];
+
+  const byDealArr = <T,>(rows: T[], keyOf: (r: T) => string): Record<string, T[]> => {
+    const map: Record<string, T[]> = {};
+    for (const r of rows) (map[keyOf(r)] ??= []).push(r);
+    return map;
+  };
+  const updatesByDeal = byDealArr(updates, (u) => u.deal_id);
+  const emdEventsByDeal = byDealArr(emdEvents, (e) => e.deal_id);
+  const ledgerByDeal = byDealArr(ledgerRows, (l) => l.deal_id);
+  const checklistByDeal = byDealArr(checklistRows, (c) => c.deal_id);
 
   const byDeal = (predicate: (u: UpdateRow) => boolean) => {
     const map: Record<string, string[]> = {};
@@ -101,16 +303,62 @@ export async function GET(req: Request) {
   const autoByDeal = byDeal((u) => u.status === "auto" && u.event_type !== "task" && u.created_at > lastDigestAt);
   const pendingByDeal = byDeal((u) => u.status === "pending");
 
-  const dealSections: DigestDealSection[] = deals.map((d) => ({
-    address: d.property_address,
-    stageLabel: titleize(d.stage_override ?? d.stage ?? "—"),
-    inEscrowDays: d.escrow_date ? daysBetween(d.escrow_date, now) : null,
-    emdLine: emdLine(d),
-    appraisal: d.appraisal_received_at ? `Received ${d.appraisal_received_at.slice(0, 10)}` : "Pending",
-    waitingOn: waitingByDeal[d.id] ?? [],
-    autoApplied: autoByDeal[d.id] ?? [],
-    pending: pendingByDeal[d.id] ?? [],
-  }));
+  const dealSections: DigestDealSection[] = deals.map((d) => {
+    const ledger = ledgerByDeal[d.id] ?? [];
+    const checklist = checklistByDeal[d.id] ?? [];
+    const lending = lendingSummaryFor(d, checklist);
+    const { latestActivity, stale } = latestActivityFor(
+      updatesByDeal[d.id] ?? [],
+      emdEventsByDeal[d.id] ?? [],
+      d.escrow_date,
+      now,
+    );
+    return {
+      address: d.property_address,
+      stageLabel: titleize(d.stage_override ?? d.stage ?? "—"),
+      inEscrowDays: d.escrow_date ? daysBetween(d.escrow_date, now) : null,
+      entityLabel: d.entity_name ?? "UNKNOWN",
+      entityUnknown: !d.entity_name,
+      nextUp: computeNextUp(d, ledger, lending.stageLabel),
+      latestActivity,
+      stale,
+      lending,
+      emdLine: emdLine(d),
+      emdReceived: emdReceivedFor(d),
+      appraisal: appraisalSummaryFor(d, ledger),
+      outstanding: outstandingFor(ledger),
+      waitingOn: waitingByDeal[d.id] ?? [],
+      autoApplied: autoByDeal[d.id] ?? [],
+      pending: pendingByDeal[d.id] ?? [],
+    };
+  });
+
+  // POF Planning — grouped by vesting entity, across every escrow deal with a POF currently due
+  // (ledger status 'requested' — set once by maybeTriggerPof, cleared once submitted/cleared).
+  const pofGroups = new Map<string, { deals: { address: string; amount: number }[]; total: number }>();
+  let unknownGroup: { deals: { address: string; amount: number }[]; total: number } | null = null;
+  for (const d of deals) {
+    if (d.appraised_value == null) continue;
+    const pofItem = (ledgerByDeal[d.id] ?? []).find((i) => i.item_key === "pof_submission");
+    if (!pofItem || pofItem.status !== "requested") continue;
+    const amount = Math.round(d.appraised_value * POF_PCT);
+    if (d.entity_name) {
+      const g = pofGroups.get(d.entity_name) ?? { deals: [], total: 0 };
+      g.deals.push({ address: d.property_address, amount });
+      g.total += amount;
+      pofGroups.set(d.entity_name, g);
+    } else {
+      unknownGroup ??= { deals: [], total: 0 };
+      unknownGroup.deals.push({ address: d.property_address, amount });
+      unknownGroup.total += amount;
+    }
+  }
+  const pofPlanning: DigestPofEntityGroup[] = [...pofGroups.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([entityName, g]) => ({ entityName, unknown: false, deals: g.deals, total: g.total }));
+  if (unknownGroup) {
+    pofPlanning.push({ entityName: "ENTITY UNKNOWN, assign in app", unknown: true, deals: unknownGroup.deals, total: unknownGroup.total });
+  }
 
   // EMD exposure header.
   let exposureHardNow = 0;
@@ -200,6 +448,7 @@ export async function GET(req: Request) {
     hardNowDeals,
     goingHardDeals,
     deals: dealSections,
+    pofPlanning,
     awaitingReviewCount: awaitingReviewCount ?? 0,
     quiet: totalActivity === 0,
     appUrl: (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, ""),
@@ -246,5 +495,7 @@ export async function GET(req: Request) {
     awaitingReview: data.awaitingReviewCount,
     weekInReview: !!weekInReview,
     weekAhead: !!weekAhead,
+    pofPlanningEntities: pofPlanning.length,
+    ledgerBackfill,
   });
 }
